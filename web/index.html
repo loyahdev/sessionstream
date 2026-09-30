@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en" data-mode="__MODE__">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SessionStream — listen in</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="shell">
+    <header><span class="brand">SESSION<span class="brand-icon" aria-hidden="true">≋</span>STREAM</span></header>
+    <main>
+      <section class="listener" aria-label="Audio session">
+        <p id="intro-text" class="description">Listen to audio shared straight from your DAW, wherever you are.</p>
+        <h1 id="heading">Listen in</h1>
+        <div class="connection-status"><span class="dot" id="status-dot"></span><span id="status-label">READY TO LISTEN</span></div>
+        <div id="studio-settings" hidden>
+          <label for="title">Session name</label><input id="title" value="Studio session" maxlength="80">
+          <label for="bitrate">Quality</label><select id="bitrate"><option value="320000">High · 320 kbps stereo</option><option value="510000">Maximum · 510 kbps stereo</option><option value="192000">Lean · 192 kbps stereo</option></select>
+        </div>
+        <button id="connect" class="primary">Start listening <span aria-hidden="true">↗</span></button>
+        <div id="listener-settings" class="volume-control">
+          <label for="volume">Volume</label><input id="volume" type="range" min="0" max="1" step="0.01" value="1" aria-label="Listening volume"><output id="volume-label">100%</output>
+        </div>
+        <section class="audio-details" aria-label="Audio details">
+          <div class="audio-summary"><span id="quality">STEREO AUDIO</span><span id="source-label">WAITING FOR AUDIO</span></div>
+          <canvas id="scope" aria-label="Live audio waveform"></canvas>
+          <dl class="metrics">
+            <div><dt>Connection</dt><dd id="transport">—</dd></div>
+            <div><dt>Network RTT</dt><dd id="rtt">—</dd></div>
+            <div><dt>Audio buffer</dt><dd id="buffer">—</dd></div>
+            <div><dt id="fourth-label">Packet loss</dt><dd id="fourth-value">—</dd></div>
+          </dl>
+        </section>
+        <p class="message" id="message" role="status"></p>
+        <button id="fallback" class="text-button">Use compatibility audio</button>
+      </section>
+      <section class="invite" id="invite-panel" hidden>
+        <label for="invite">Listener link</label>
+        <div class="invite-actions"><input id="invite" readonly><button id="copy">Copy link</button><button id="rotate">New invite</button></div>
+        <p id="link-note"></p>
+      </section>
+      <span id="session-title" hidden></span>
+    </main>
+    <footer>built by loyahdev.</footer>
+  </div>
+  <script type="module" src="/app.mjs"></script>
+</body>
+</html>

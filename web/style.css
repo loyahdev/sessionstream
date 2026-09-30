@@ -1,0 +1,33 @@
+:root{color-scheme:dark;--bg:#121614;--line:#303931;--lime:#baf77a;--text:#f3f2e9;--muted:#9ba69e;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text)}
+button,input,select{font:inherit}button{cursor:pointer}button:disabled{opacity:.5;cursor:default}[hidden]{display:none!important}
+.shell{min-height:100svh;max-width:1200px;margin:auto;padding:0 40px;display:flex;flex-direction:column}
+header{height:84px;flex-shrink:0;border-bottom:1px solid var(--line);display:flex;align-items:center}
+.brand{font-weight:800;letter-spacing:-.8px;font-size:19px;display:flex;align-items:center;gap:4px}
+.brand-icon{font-size:34px;color:var(--lime);line-height:1;transform:rotate(-20deg);margin:0 2px}
+main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:64px 0;min-width:0}
+.listener{width:100%;text-align:center}
+.description{font-size:14px;line-height:1.6;color:var(--muted);margin:0 auto 22px;max-width:420px}
+h1{font-size:clamp(58px,8vw,100px);line-height:1.05;letter-spacing:-.055em;font-weight:550;margin:0;overflow-wrap:anywhere}
+.connection-status{display:flex;justify-content:center;align-items:center;gap:8px;margin:20px 0 32px;font-size:10px;letter-spacing:1.4px;color:var(--muted)}
+.dot{width:6px;height:6px;background:#728176;border-radius:50%;flex-shrink:0}.dot.live{background:var(--lime)}.dot.error{background:#ed977f}
+.primary{background:var(--lime);color:#192216;width:240px;max-width:100%;height:52px;border:0;border-radius:6px;display:flex;align-items:center;justify-content:space-between;margin:0 auto;padding:0 18px;font-size:14px;font-weight:650}
+.primary span{font-size:21px}.primary.stop{background:#273128;color:var(--lime);border:1px solid #475747}
+.volume-control{display:flex;align-items:center;gap:12px;margin:24px auto 0;max-width:280px;color:var(--muted);font-size:11px}
+input[type=range]{min-width:0;flex:1;width:100%;accent-color:var(--lime);cursor:pointer}output{min-width:34px;text-align:right;font-variant-numeric:tabular-nums}
+.message{max-width:430px;margin:20px auto 0;min-height:18px;font-size:12px;line-height:1.5;color:var(--muted)}.message.error{color:#ed977f}
+.audio-details{max-width:560px;margin:30px auto 0;text-align:left}
+.audio-summary{display:flex;justify-content:space-between;gap:12px;color:var(--muted);font-size:9px;letter-spacing:1px;line-height:1.6}
+#quality{color:var(--lime)}#source-label{text-align:right}
+#scope{display:block;width:100%;height:100px;margin:12px 0;border-bottom:1px solid var(--line)}
+.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px;margin:20px 0 0}
+.metrics dt{font-size:10px;color:var(--muted);margin-bottom:9px}.metrics dd{font-size:12px;margin:0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.text-button{background:none;border:0;color:var(--muted);font-size:11px;text-decoration:underline;text-underline-offset:4px;margin-top:12px;padding:8px}
+footer{border-top:1px solid var(--line);padding:24px 0;color:var(--muted);font-size:11px;flex-shrink:0}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--lime);outline-offset:4px}
+#studio-settings{max-width:440px;margin:0 auto 24px;display:grid;grid-template-columns:auto 1fr;align-items:center;gap:12px;font-size:12px;color:var(--muted);text-align:left}
+input:not([type=range]),select{background:#1b211d;border:1px solid var(--line);border-radius:5px;color:var(--text);padding:10px;min-width:0;width:100%;font-size:12px}
+.invite{max-width:580px;width:100%;margin-top:24px;font-size:12px;color:var(--muted)}.invite-actions{display:flex;gap:8px;margin-top:10px}.invite button{border:1px solid var(--line);background:#273128;color:var(--text);border-radius:5px;font-size:11px;padding:10px;white-space:nowrap}.invite p{line-height:1.5}
+@media(max-width:600px){.shell{padding:0 22px}header{height:72px}.brand{font-size:17px}main{padding:48px 0}.description{max-width:280px;font-size:13px}h1{font-size:clamp(48px,12vw,72px)}.invite-actions{flex-wrap:wrap}.invite-actions input{flex-basis:100%}}
+@media(max-width:600px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}.audio-details{max-width:360px}.audio-summary{font-size:8px}#scope{height:86px}main{padding:36px 0}h1{font-size:clamp(48px,12vw,72px)}}
