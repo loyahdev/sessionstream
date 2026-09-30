@@ -11,7 +11,7 @@ SessionStream 0.10 was built, ad-hoc signed and installed on this Apple Silicon 
 - The hidden decoder stayed muted even when its element volume was forced to full, simulating devices that ignore volume-zero assignments. Listener volume zero silenced the Web Audio output. Repeated PCM/WebRTC switches left one explicitly muted decoder in WebRTC mode and none in PCM mode.
 - The listener starts with both its slider and actual Web Audio output gain at 100%. The centered listening page has the requested description, top bar and built by loyahdev footer; the marketing labels are removed; waveform and visible audio metrics were restored in the follow-up. Desktop and phone screenshots were inspected.
 - Listener reconnect, stop/start and mobile-width layout checks passed, with no page errors. Native sender underruns and trims were zero during the continuous playback portion of the test.
-- The plugin was installed at ~/Library/Audio/Plug-Ins/VST3/SessionStream.vst3, preserving the previous installed bundle. The current test tunnel is running with streaming off.
+- The plugin was installed at ~/Library/Audio/Plug-Ins/VST3/SessionStream.vst3, preserving the previous installed bundle. At the time of that check, the test tunnel was running with streaming off.
 
 Detailed evidence: `artifacts/browser-report.json` and `artifacts/browser-0.10-installed.log`.
 
@@ -55,12 +55,22 @@ DAW compatibility and two-format installer follow-up:
 - Evidence: artifacts/build-au-installer.log, artifacts/auval.log, artifacts/au-probe.log, artifacts/browser-au.log, artifacts/browser-au-report.json, artifacts/install-au-pkg.log, artifacts/au-package-probe.log and artifacts/vst3-au-package-probe.log.
 - Logic Pro and FL Studio themselves have not been exercised. AU validation and native-host streaming establish format/runtime behavior, not confirmed behavior in every DAW/version.
 
-Installer: `artifacts/SessionStream-0.10-mac-arm64.pkg`
+Installer from the DAW compatibility check, before source cleanup: `artifacts/SessionStream-0.10-mac-arm64.pkg`
 
 SHA-256: `72bc263012f8662f7e38dea0e5e49a96108127d8ec80e3cb0135dc93903b72c5`
 
-Plugin archive: `artifacts/SessionStream-mac-arm64.vst3.zip`
+Plugin archive from that check: `artifacts/SessionStream-mac-arm64.vst3.zip`
 
 SHA-256: `e9ede630556c3ea94d6ffbd583f429c6521bbe9f86ec5ab94ab7b1c023d3f22a`
+
+Source cleanup and clean source-build verification:
+
+- An extracted source export, without vendor dependencies, node_modules or a build directory, completed the documented `npm ci`, `npm test`, `npm run build:plugin` and `npm run build:installer` sequence. All eighteen Node tests passed. JUCE and bundled Node archives were downloaded and their checksums verified.
+- VST3, AU and the development standalone app built for native arm64 with macOS 13.5 as the deployment target and passed deep strict ad-hoc signature verification. The freshly compiled native smoke test passed stereo passthrough, UDP packet delivery, stream gain, safe state restore and the complete 8192-frame burst. The VST3 extracted from the installer was discovered and loaded by the native test host and passed stereo passthrough and automation checks.
+- The final saved PKG was expanded and both VST3 and AU payloads passed deep strict signature verification. Bundled cloudflared and JUCE license notices are now included. This PKG was inspected, not installed into a DAW again; streaming and phone/browser behavior were not rerun for this documentation/build cleanup.
+- The local macOS `pkgbuild` prints four `write: Permission denied` messages, including when packaging a single plain text file unrelated to SessionStream. It exits successfully and produces a readable installer with verified plugin payloads. This is a local packaging-environment warning, not a failed source build.
+- Local documentation links and JavaScript/shell syntax were checked. Git ignore checks exclude dependencies, vendor downloads, build products, local runtime state, environment files and logs. The clean source ZIP includes only project source, installer resources, tests, documentation, screenshots, license and lockfile. A scan found no private keys, real credentials or user-specific absolute paths in those source files; the documentation screenshots show no invite URL.
+- Current local installer SHA-256: `248c7d9834cfeedada45668af5443213bbf44eab5eaae2da459f636c1ec0ba0f`.
+- Current local VST3 archive SHA-256: `3253c58fb60363a0287effcde34626f6cbbddbb1beae574f1e57baf566ca18a3`. Check `artifacts/SHA256SUMS.txt` after rebuilding; build artifacts are intentionally not committed.
 
 Not yet verified: the reporting client's exact browser/device, physical Safari/iOS audio, real client WAN WebRTC connections, long sessions, TURN operation or actual end-to-end latency. These checks establish the corrected playback routing and Chrome regression results; they do not establish worldwide reliability.

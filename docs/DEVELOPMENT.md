@@ -18,7 +18,7 @@ Use AU in Logic Pro; VST3 or AU in Ableton Live and FL Studio. These are format-
 4. Set **Stream output** in dB, then click **Start streaming**. L/R meters display the level sent to clients, in dBFS. Red means clipping; reduce the stream level.
 5. Click **Stop streaming** to silence listeners. The same invite works when you start again. **Generate share link** creates a new invitation and invalidates the previous one.
 
-The stream gain changes only the outgoing copy. Your Ableton track passes through unchanged. Gain is saved with the project, and streaming stays off when a saved project opens. Offline exports are never transmitted. One plugin owns an active session at a time, with up to eight listeners.
+The stream gain changes only the outgoing copy. Your DAW track passes through unchanged. Gain is saved with the project, and streaming stays off when a saved project opens. Offline exports are never transmitted. One plugin owns an active session at a time, with up to eight listeners.
 
 No sender browser, terminal, login, separately installed Node, or separate cloudflared installation is needed for the bundled plugin. A small background engine runs while using it. Keep your Mac awake and connected to the internet.
 
@@ -46,14 +46,28 @@ Invites use a temporary Cloudflare Quick Tunnel hostname. They work over the pub
 
 ## Build and install
 
+Build on Apple Silicon, outside Rosetta, with macOS 13.5+, native Node.js 24+ and npm, CMake 3.22+, Xcode Command Line Tools, and a macOS arm64 cloudflared executable. With [Homebrew](https://brew.sh/) installed:
+
 ```sh
-npm install
+xcode-select --install # only if Command Line Tools are not installed; finish installation first
+brew install node@24 cmake cloudflared
+export PATH="$(brew --prefix node@24)/bin:$PATH"
+```
+
+With nvm, `nvm install` / `nvm use` reads the supplied `.nvmrc` instead. Confirm `node -p process.arch` prints `arm64`. Node and cloudflared are needed on the developer's machine to build; they ship inside the plugins for end users. Homebrew formula references: [Node 24](https://formulae.brew.sh/formula/node@24), [cloudflared](https://formulae.brew.sh/formula/cloudflared).
+
+Run these commands from the repository root:
+
+```sh
+npm ci
+npm test
 npm run build:plugin
-npm run install:plugin
 npm run build:installer
 ```
 
-The build script downloads JUCE 8.0.12 and official Node v24.3.0 for macOS arm64, verifies the Node archive against the published checksum, bundles the native WebRTC addon and cloudflared, then ad-hoc signs the plugin. Building requires CMake, Command Line Tools and `/opt/homebrew/bin/cloudflared`. The installer backs up an existing installation before replacing it.
+The first build downloads JUCE 8.0.12 and official Node v24.3.0 for macOS arm64 and verifies both archives. `npm ci` installs the locked dependencies, including the optional macOS arm64 WebRTC addon; do not use `--omit=optional`. The build bundles the server, listener, runtime and notices into VST3, AU and the development standalone app, then ad-hoc signs and verifies each bundle. It uses Command Line Tools when available. No ripgrep installation is required. cloudflared is found on `PATH`; for a custom location, run `CLOUDFLARED_PATH="/path/to/cloudflared" npm run build:plugin`.
+
+Save and close your DAW before installing. `npm run install:plugin` installs both plugin formats into your user Library and preserves any previous bundles beside them with a timestamped `.backup-…` suffix. Opening the PKG also installs both formats, but the PKG replaces the previous installation without making that backup. Building the PKG does not require installing the plugins first.
 
 - Plugin: `build/SessionStream_artefacts/Release/VST3/SessionStream.vst3`
 - Audio Unit: `build/SessionStream_artefacts/Release/AU/SessionStream.component`
@@ -71,5 +85,17 @@ npm run test:browser     # actual VST3 auto-start → public invite → rendered
 ```
 
 `docs/VALIDATION.md` states what was tested and what remains unverified. Browser tests use synthetic quiet tones, check separate L/R energy, gain, reconnect, compatibility mode and stop/start. The old `/studio` broadcaster and `npm run start:tunnel` remain developer tools for the original browser sender; do not run them alongside the native plugin engine because they use the same local ports.
+
+`npm test` runs isolated server, protocol, buffering, and worklet checks and does not create a public tunnel. `npm run test:browser` requires Google Chrome installed at its normal macOS location, an internet connection, and an idle SessionStream engine. It takes ownership of the normal plugin session and creates a temporary public tunnel; stop broadcasts first. Its reports go into ignored `artifacts/`. The optional `scripts/Start Browser Broadcaster.command` launcher is a legacy development tool, not part of plugin installation.
+
+## Preparing GitHub source and releases
+
+```sh
+npm run package:source
+```
+
+This produces `artifacts/SessionStream-0.10-source.zip` and a separate `.sha256` file. Extract it and upload the contents of its `SessionStream` folder to the repository. It includes the plugin, server, listener, tests, installer resources, documentation, lockfile and license. The exporter excludes dependencies, compiled products, local runtime state, environment files and logs; `.gitignore` also excludes them during normal Git use. Local build products remain on your machine.
+
+Upload the PKG, VST3 ZIP and `SHA256SUMS.txt` as GitHub Release assets, rather than adding them to the source repository. The AU is included in the PKG; the standalone app is for development. Historical validation notes refer to local artifacts which are not part of a source checkout. Publish a new release before updating `version.txt`, and keep the version in `package.json`, `CMakeLists.txt`, `installer/Distribution.xml`, plugin UI/update checker and installer text consistent.
 
 SessionStream's source is AGPL-3.0-only. See `LICENSE` and `docs/THIRD_PARTY.md` for dependencies and notices.

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+  <title>SessionStream 0.10</title>
+  <welcome file="welcome.html"/>
+  <conclusion file="conclusion.html"/>
+  <options customize="never" require-scripts="false" hostArchitectures="arm64"/>
+  <domains enable_localSystem="false" enable_currentUserHome="true" enable_anywhere="false"/>
+  <allowed-os-versions><os-version min="13.5"/></allowed-os-versions>
+  <choices-outline><line choice="sessionstream"/></choices-outline>
+  <choice id="sessionstream" visible="false" title="SessionStream VST3 + Audio Units"><pkg-ref id="dev.loyah.sessionstream.vst3"/></choice>
+  <pkg-ref id="dev.loyah.sessionstream.vst3" version="0.10.0" auth="none">SessionStream-component.pkg</pkg-ref>
+</installer-gui-script>

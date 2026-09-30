@@ -1,0 +1,28 @@
+{
+  "name": "sessionstream",
+  "version": "0.10.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "engines": {
+    "node": ">=24"
+  },
+  "type": "module",
+  "scripts": {
+    "start": "node server/index.mjs",
+    "start:tunnel": "node scripts/quick-tunnel.mjs",
+    "test": "node --expose-gc --test tests/*.test.mjs",
+    "build:plugin": "zsh scripts/build-plugin.sh",
+    "test:browser": "node tests/browser.mjs",
+    "build:installer": "zsh scripts/build-installer.sh",
+    "install:plugin": "zsh scripts/install-plugin.sh",
+    "package:source": "node scripts/package-source.mjs",
+    "start:plugin": "node --expose-gc scripts/companion.mjs"
+  },
+  "dependencies": {
+    "@roamhq/wrtc": "^0.10.0",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  }
+}
