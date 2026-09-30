@@ -125,16 +125,29 @@ TryCloudflare use is governed by [Cloudflare's Website and Online Services Terms
 
 ## Build from source
 
-Requires Apple Silicon macOS, CMake, Xcode Command Line Tools, npm, and `/opt/homebrew/bin/cloudflared`.
+Build on an **Apple Silicon Mac running macOS 13.5+**, with native **Node.js 24+ / npm**, **CMake 3.22+**, **Xcode Command Line Tools**, and **cloudflared**. These are developer prerequisites; people installing the PKG need none of them.
+
+If needed, install Command Line Tools with `xcode-select --install`. With [Homebrew](https://brew.sh/) installed, set up the remaining tools:
 
 ```sh
-npm install
+brew install node@24 cmake cloudflared
+export PATH="$(brew --prefix node@24)/bin:$PATH"
+```
+
+From the repository root (the folder containing `package.json`):
+
+```sh
+npm ci
+npm test
 npm run build:plugin
-npm run install:plugin
 npm run build:installer
 ```
 
-The build downloads JUCE and bundles Node, the native WebRTC addon, and cloudflared, then ad-hoc signs the plugin. The installer is written to `artifacts/SessionStream-0.10-mac-arm64.pkg`.
+The first build requires internet access to download JUCE 8.0.12 and the bundled Node v24.3.0 runtime. It verifies those downloads, bundles the native WebRTC addon and your installed cloudflared, then ad-hoc signs VST3, AU, and a development standalone app. The PKG contains VST3 and AU and is written to `artifacts/SessionStream-0.10-mac-arm64.pkg`; checksums are in `artifacts/SHA256SUMS.txt`.
+
+To install your build locally, save and close your DAW, then run `npm run install:plugin` or open the PKG. If cloudflared is outside your `PATH`, set `CLOUDFLARED_PATH` to its full executable path before building.
+
+Use `npm run package:source` to create a clean source ZIP for GitHub. Keep compiled installers and plugin ZIPs in GitHub Releases; downloaded dependencies, build products, local state, and logs are excluded from source control.
 
 For build details, tests, and troubleshooting, see [development notes](docs/DEVELOPMENT.md).
 
@@ -149,6 +162,6 @@ For build details, tests, and troubleshooting, see [development notes](docs/DEVE
 ---
 
 <p align="center">
-  Built by <a href="https://github.com/loyahdev"><strong>loyahdev</strong></a> · <a href="LICENSE">Apache-2.0</a><br>
+  Built by <a href="https://github.com/loyahdev"><strong>loyahdev</strong></a> · <a href="LICENSE">AGPL-3.0</a><br>
   <sub>An independent project, unaffiliated with Waves, Audiomovers, or Cloudflare.</sub>
 </p>
