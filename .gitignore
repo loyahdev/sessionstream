@@ -1,0 +1,22 @@
+# Downloaded dependencies, compiled products, and local streaming state
+node_modules/
+/vendor/
+/build/
+/.runtime/
+/artifacts/
+
+# Local configuration and diagnostics
+.env
+.env.*
+!.env.example
+*.log
+*.tgz
+
+# macOS and editor metadata
+.DS_Store
+._*
+__MACOSX/
+*.swp
+*.swo
+.idea/
+.vscode/
