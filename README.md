@@ -55,9 +55,9 @@ SessionStream is a VST3 and Audio Units (AU) plugin for producers who teach, col
 
 ## Quick start
 
-**Current build: 0.10 · Apple Silicon · macOS 13.5+ · VST3 + AU**
+**Current build: 0.11 · Apple Silicon · macOS 13.5+ · VST3 + AU**
 
-Install `SessionStream-0.10-mac-arm64.pkg` and reopen your DAW. See [Releases](https://github.com/loyahdev/sessionstream/releases) for published installers, or [build from source](#build-from-source). Local builds place the installer in `artifacts/`.
+Install `SessionStream-0.11-mac-arm64.pkg` and reopen your DAW. See [Releases](https://github.com/loyahdev/sessionstream/releases) for published installers, or [build from source](#build-from-source). Local builds place the installer in `artifacts/`.
 
 1. **Add the plugin.** Put SessionStream on the track you want to share, or last on your Main/Master bus for the full mix.
 2. **Generate a link.** Click **Generate share link** and wait for it to become ready. First startup can take tens of seconds.
