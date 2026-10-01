@@ -16,12 +16,20 @@ if (Number(process.versions.node.split('.')[0]) < 24 || process.arch !== 'arm64'
 const [major, minor] = execFileSync('sw_vers', ['-productVersion'], {encoding:'utf8'}).trim().split('.').map(Number);
 if (major < 13 || (major === 13 && minor < 5)) fail('macOS 13.5 or newer is required.');
 const manifest = JSON.parse(readFileSync('package.json', 'utf8'));
-const displayVersion = readFileSync('version.txt', 'utf8').trim();
-if (manifest.version !== `${displayVersion}.0` && manifest.version !== displayVersion)
-  fail('package.json and version.txt disagree.');
+if (!/^\d+\.\d+\.\d+$/.test(manifest.version)) fail('package.json must contain a dotted package version.');
+const displayVersion = manifest.version.replace(/\.0$/, '');
+const announcementVersion = readFileSync('version.txt', 'utf8').trim();
+if (announcementVersion !== displayVersion && announcementVersion !== manifest.version)
+  fail('version.txt must match package.json.');
 if (!readFileSync('CMakeLists.txt', 'utf8').includes(`project(SessionStream VERSION ${manifest.version})`) ||
     !readFileSync('installer/Distribution.xml', 'utf8').includes(`version="${manifest.version}"`))
   fail('Update CMakeLists.txt and installer/Distribution.xml to match package.json.');
+const currentVersion = readFileSync('plugin/src/UpdateChecker.h', 'utf8').match(/currentVersion\s*=\s*"([^"]+)"/);
+const readme = readFileSync('README.md', 'utf8');
+const readmeBadge = readme.match(/badge\/version-([^-/]+)-/);
+if (currentVersion?.[1] !== displayVersion || readmeBadge?.[1] !== displayVersion ||
+    !readme.includes(`**Current build: ${displayVersion} ·`))
+  fail('Update the plugin currentVersion and README version to match the canonical package release.');
 JS
 cloudflared_binary="${CLOUDFLARED_PATH:-$(command -v cloudflared || true)}"
 [[ -n "$cloudflared_binary" && -x "$cloudflared_binary" ]] || {

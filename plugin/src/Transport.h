@@ -3,6 +3,7 @@
 #include <array>
 #include <atomic>
 #include <cstring>
+#include "WorkerThread.h"
 
 // One producer (DAW), one consumer (network thread). No allocation, locks,
 // sockets, UI, or waiting in the audio callback. Float PCM, little endian.
@@ -11,15 +12,16 @@ struct AudioPacket {
     std::array<std::byte, headerSize + maxFrames * 2 * sizeof(float)> bytes{};
     int size = 0; uint32_t created=0;
 };
-class StreamTransport final : private juce::Thread {
+class StreamTransport final : private WorkerThread {
 public:
-    StreamTransport() : Thread("SessionStream UDP"), sourceId(juce::Random::getSystemRandom().nextInt()) { startThread(); }
-    ~StreamTransport() override { stopThread(2000); }
+    StreamTransport() : WorkerThread("SessionStream UDP"), sourceId(juce::Random::getSystemRandom().nextInt()) { startThread(); }
+    ~StreamTransport() override { stopThread(); }
     std::atomic<bool> enabled{false};
     std::atomic<uint64_t> dropped{0}, sent{0};
     std::atomic<float> leftPeak{0}, rightPeak{0};
     uint32_t getSourceId() const { return sourceId; }
     void resetPending() noexcept { pendingFrames=0; }
+    void wake() { notify(); }
     void push(const float* left, const float* right, int count, uint32_t rate, float firstGain=1.f, float gainStep=0.f) noexcept {
         if(rate!=pendingRate){pendingFrames=0;pendingRate=rate;}
         for(int i=0;i<count;i++) {
@@ -48,7 +50,7 @@ private:
         while (!threadShouldExit()) {
             auto r = readIndex.load(std::memory_order_relaxed);
             const auto w = writeIndex.load(std::memory_order_acquire);
-            if(!enabled.load()){readIndex.store(w,std::memory_order_release);wait(2);continue;}
+            if(!enabled.load()){readIndex.store(w,std::memory_order_release);wait(100);continue;}
             if (r == w) { wait(2); continue; }
             const auto& p = packets[r % slots];
             if (enabled.load(std::memory_order_relaxed) && juce::Time::getMillisecondCounter()-p.created<200) {

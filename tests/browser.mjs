@@ -10,7 +10,7 @@ const contexts=[],errors=[];let tone;let toneOutput="";
 const report={testedAt:new Date().toISOString(),checks:[]};
 try{
   const api=local.replace('/studio','/api/studio');
-  tone=spawn('./build/vst3-probe',[plugin,'180'],{stdio:['pipe','pipe','pipe']});
+  tone=spawn('./build/vst3-probe',[plugin,'600'],{stdio:['pipe','pipe','pipe']});
   tone.stdout.on('data',x=>toneOutput+=x);tone.stderr.on('data',x=>toneOutput+=x);
   let session;
   const deadline=Date.now()+75000;
@@ -21,14 +21,14 @@ try{
   const clientContext=await browser.newContext({viewport:{width:1280,height:850}});contexts.push(clientContext);
   const client=await clientContext.newPage();client.on('pageerror',e=>errors.push(e.message));client.on('console',m=>console.log('CLIENT',m.type(),m.text()));
   await client.goto(invite.replace('/listen#','/listen?audio-test#'));
-  assert.equal(await client.locator('#volume').inputValue(),'1');
-  assert.equal(await client.locator('#volume-label').textContent(),'100%');
+  assert.equal(await client.locator('#volume').inputValue(),'0');
+  assert.equal(await client.locator('#volume-label').textContent(),'0 dB');
   assert.equal(await client.locator('footer').textContent(),'built by loyahdev.');
   assert(!/A seat in|LIVE SESSION|EARLY BUILD|\/ 01/.test(await client.locator('body').innerText()));
   await client.locator('#connect').click();
   await client.waitForFunction(()=>window.__testAudio?.context.state==='running');
   assert.equal(await client.evaluate(()=>window.__testAudio.gain.gain.value),1);
-  report.checks.push({name:'Simplified listener defaults to 100% actual output gain and requested footer',result:'PASS'});
+  report.checks.push({name:'Listener defaults to 0 dB / unity output gain and requested footer',result:'PASS'});
   await client.waitForFunction(()=>window.sessionDiagnostics?.().connections.includes('connected'),null,{timeout:15000});
   await client.waitForFunction(()=>document.querySelector('#transport').textContent.includes('WebRTC'),null,{timeout:5000});
   report.checks.push({name:`Actual ${pluginFormat} → native WebRTC sender → public Cloudflare signaling → listener browser`,result:'PASS',diagnostics:await client.evaluate(()=>window.sessionDiagnostics())});
@@ -41,6 +41,13 @@ try{
     const result=analysers.map(a=>{const b=new Float32Array(a.fftSize);a.getFloatTimeDomainData(b);let total=0;for(const x of b)total+=x*x;return Math.sqrt(total/b.length);});
     gain.disconnect(split);split.disconnect();analysers.forEach(a=>a.disconnect());sink.disconnect();return result;
   });}
+  async function audibleProbe(page){
+    // Receiving the first PCM packet precedes priming its playback buffer.
+    // Wait for rendered stereo rather than treating packet arrival as playback.
+    const deadline=Date.now()+6000;let energy;
+    do{energy=await probe(page);if(energy[0]>.01&&energy[1]>.005)return energy;}while(Date.now()<deadline);
+    throw Error(`Stereo playback did not start: ${energy}; ${JSON.stringify(await page.evaluate(()=>window.sessionDiagnostics()))}`);
+  }
   await client.waitForTimeout(1000);
   const rtcRms=await probe(client);assert(rtcRms[0]>.01&&rtcRms[1]>.005,`Silent RTC audio: ${rtcRms}`);assert(rtcRms[0]>rtcRms[1]*1.3,`Stereo collapsed: ${rtcRms}`);
   report.checks.push({name:'WebRTC actual left/right audio energy',result:'PASS',rms:rtcRms});
@@ -48,12 +55,38 @@ try{
     const state=await page.evaluate(()=>{const elements=[...document.querySelectorAll('audio')];return {count:elements.length,allMuted:elements.every(e=>e.muted&&e.defaultMuted&&e.hasAttribute('muted'))};});
     assert.equal(state.count,1);assert(state.allMuted,'Hidden WebRTC decoder must never play its own audible copy');
     // Force the decoder's volume to full, emulating devices that ignore volume=0.
-    await page.evaluate(()=>{document.querySelector('audio').volume=1;window.__testAudio.gain.gain.value=0;});
+    await page.evaluate(()=>document.querySelector('audio').volume=1);
+    await page.locator('#mute').click();
     await page.waitForTimeout(200);assert((await probe(page)).every(rms=>rms<.0001));
-    await page.evaluate(()=>{window.__testAudio.gain.gain.value=Number(document.querySelector('#volume').value);});
+    await page.locator('#mute').click();await page.waitForTimeout(250);
   }
   await assertSingleOutput(client);
   report.checks.push({name:'WebRTC decoder explicitly muted even at full element volume; listener volume zero silences the sole graph output',result:'PASS'});
+  async function setLevel(db){await client.locator('#volume').evaluate((element,value)=>{element.value=String(value);element.dispatchEvent(new Event('input'));},db);await client.waitForTimeout(250);}
+  async function levelAndMute(mode){
+    const baseline=await probe(client);
+    await setLevel(6);assert.equal(await client.locator('#volume-label').textContent(),'+6 dB');
+    const boosted=await probe(client);assert(boosted[0]/baseline[0]>1.7&&boosted[0]/baseline[0]<2.2);
+    await setLevel(-6);const lowered=await probe(client);assert(lowered[0]/baseline[0]>.4&&lowered[0]/baseline[0]<.6);
+    await setLevel(-60);assert.equal(await client.locator('#volume-label').textContent(),'−∞ dB');assert((await probe(client)).every(x=>x<.0001));
+    await setLevel(0);
+    const incoming=async()=>client.evaluate(async()=>{
+      if(window.sessionDiagnostics().pcm)return window.sessionDiagnostics().lastAudioAgeMs;
+      let count=0;for(const pc of window.__testPeers.values())for(const s of (await pc.getStats()).values())if(s.type==='inbound-rtp'&&s.kind==='audio')count+=s.packetsReceived||0;return count;
+    });
+    const before=await incoming();await client.evaluate(()=>window.__mutedPeers=[...window.__testPeers.values()]);
+    await client.locator('#mute').click();assert.equal(await client.locator('#mute').getAttribute('aria-pressed'),'true');
+    await setLevel(-3);assert.equal(await client.evaluate(()=>window.__testAudio.gain.gain.value),0);
+    assert((await probe(client)).every(x=>x<.0001));
+    assert(await client.evaluate(()=>{const s=window.sessionDiagnostics();return s.running&&s.live&&s.context==='running'&&window.__mutedPeers.every(p=>[...window.__testPeers.values()].includes(p));}));
+    const received=await incoming();assert(mode==='PCM'?received<500:received>before,'Muted listener stopped receiving');
+    assert(await client.evaluate(()=>{const v=new Float32Array(2048);window.__testAudio.analyser.getFloatTimeDomainData(v);return v.some(x=>Math.abs(x)>.005);}),'Muted waveform stopped receiving audio');
+    await client.locator('#mute').click();await client.waitForTimeout(250);const restored=await probe(client);
+    assert.equal(await client.locator('#volume').inputValue(),'-3');assert(restored[0]/baseline[0]>.6&&restored[0]/baseline[0]<.8);
+    await setLevel(0);
+    report.checks.push({name:`${mode}: +6/-6 dB rendered gain, silent minimum, hard mute keeps receiving and preserves slider level`,result:'PASS'});
+  }
+  await levelAndMute('WebRTC');
   await client.screenshot({path:'artifacts/listener-live.png',fullPage:true});
   tone.stdin.write('gain -6\n');await client.waitForTimeout(1400);const quiet=await probe(client);
   assert(quiet[0]/rtcRms[0]>.38&&quiet[0]/rtcRms[0]<.65,`Gain did not reduce stream: ${quiet} / ${rtcRms}`);
@@ -61,11 +94,12 @@ try{
   tone.stdin.write('gain 0\n');await client.waitForTimeout(600);
   await client.locator('#fallback').click();
   await client.waitForFunction(()=>window.sessionDiagnostics?.().pcm&&window.sessionDiagnostics().lastAudioAgeMs<500,null,{timeout:15000});
-  const pcmRms=await probe(client);assert(pcmRms[0]>.01&&pcmRms[1]>.005);assert(pcmRms[0]>pcmRms[1]*1.3);
+  const pcmRms=await audibleProbe(client);assert(pcmRms[0]>pcmRms[1]*1.3);
   report.checks.push({name:'Public Cloudflare WebSocket PCM fallback with separate stereo channels',result:'PASS',rms:pcmRms});
+  await levelAndMute('PCM');
   await clientContext.setOffline(true);await new Promise(r=>setTimeout(r,1200));await clientContext.setOffline(false);
   await client.waitForFunction(()=>window.sessionDiagnostics?.().lastAudioAgeMs<500,null,{timeout:15000});
-  await new Promise(r=>setTimeout(r,300));const recoveredRms=await probe(client);assert(recoveredRms[0]>.01);
+  const recoveredRms=await audibleProbe(client);
   report.checks.push({name:'Listener reconnect after network interruption resumes fresh audio',result:'PASS',rms:recoveredRms});
   await client.locator('#fallback').click();await client.waitForFunction(()=>window.sessionDiagnostics().connections.includes('connected'),null,{timeout:15000});
   await client.waitForTimeout(600);const retriedRms=await probe(client);assert(retriedRms[0]>.01);
@@ -83,11 +117,21 @@ try{
   report.checks.push({name:'Mobile listener layout has no horizontal overflow',result:'PASS'});
   report.engineStats=await fetch(api).then(r=>r.json()).then(s=>s.engine);
   tone.stdin.write('send 0\n');await client.waitForFunction(()=>!window.sessionDiagnostics().live,null,{timeout:5000});
+  const paused=await fetch(api).then(r=>r.json());assert.equal(paused.enginePID,session.enginePID);assert(paused.engineClients>0);
+  assert(await client.evaluate(()=>window.sessionDiagnostics().running&&window.__testAudio.context.state==='running'),'Stopping broadcast must preserve the listener connection');
   await new Promise(r=>setTimeout(r,300));const stoppedRms=await probe(client);assert(stoppedRms[0]<.001);
   report.checks.push({name:'Stop broadcast silences listener',result:'PASS'});
   tone.stdin.write('send 1\n');await client.waitForFunction(()=>window.sessionDiagnostics().live&&window.sessionDiagnostics().connections.includes('connected'),null,{timeout:10000});
   await new Promise(r=>setTimeout(r,800));assert((await probe(client))[0]>.01);
   report.checks.push({name:'Broadcaster stop/start recovers existing listener',result:'PASS'});
+  await client.locator('#mute').click();await setLevel(-6);
+  await client.locator('#fallback').click();await client.waitForFunction(()=>window.sessionDiagnostics().pcm&&window.sessionDiagnostics().lastAudioAgeMs<500);
+  assert.equal(await client.evaluate(()=>window.__testAudio.gain.gain.value),0);assert((await probe(client)).every(x=>x<.0001));
+  await client.locator('#connect').click();await client.waitForFunction(()=>document.querySelector('#connect').textContent.includes('Start listening'));await client.locator('#connect').click();
+  await client.waitForFunction(()=>window.sessionDiagnostics().running&&window.sessionDiagnostics().lastAudioAgeMs<500);
+  assert.equal(await client.evaluate(()=>window.__testAudio.gain.gain.value),0);assert.equal(await client.locator('#volume').inputValue(),'-6');
+  await client.locator('#mute').click();await audibleProbe(client);
+  report.checks.push({name:'Mute and dB level survive transport switches and listener stop/start; unmute resumes fresh audio',result:'PASS'});
   tone.stdin.write('send 0\n');await client.locator('#connect').click();
   report.sender='Native plugin engine (no broadcaster page)';report.browserVersion=browser.version();
   assert.deepEqual(errors,[]);report.checks.push({name:'Browser runtime errors',result:'PASS',errors});

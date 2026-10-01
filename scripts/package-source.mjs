@@ -7,8 +7,10 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const version = (await readFile(path.join(root, 'version.txt'), 'utf8')).trim();
-if (!/^\d+(?:\.\d+){1,2}$/.test(version)) throw new Error('Invalid version.txt');
+const manifest = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
+if (!/^\d+\.\d+\.\d+$/.test(manifest.version)) throw new Error('Invalid package.json version');
+// Source and installer filenames use the manifest display version.
+const version = manifest.version.replace(/\.0$/, '');
 const files = ['.gitignore', '.nvmrc', 'CMakeLists.txt', 'LICENSE', 'README.md', 'package.json', 'package-lock.json', 'version.txt'];
 const directories = ['docs', 'installer', 'plugin', 'scripts', 'server', 'tests', 'web'];
 const scratch = await mkdtemp(path.join(tmpdir(), 'sessionstream-source-'));

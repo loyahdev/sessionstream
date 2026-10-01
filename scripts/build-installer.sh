@@ -2,9 +2,14 @@
 set -eu
 cd "${0:A:h:h}"
 package_version=$(node -p "require('./package.json').version")
-display_version=$(<version.txt)
+[[ "$package_version" == <->.<->.<-> ]] || { echo 'package.json must contain a dotted package version.' >&2; exit 1; }
+# Artifact names use the display version from the package manifest.
+display_version=$(node -p "require('./package.json').version.replace(/\\.0$/, '')")
 installer_output="artifacts/SessionStream-${display_version}-mac-arm64.pkg"
-[[ "$package_version" == "$display_version" || "$package_version" == "${display_version}.0" ]] || { echo 'package.json and version.txt disagree.' >&2; exit 1; }
+announcement_version=$(<version.txt)
+[[ "$announcement_version" == "$display_version" || "$announcement_version" == "$package_version" ]] || {
+  echo 'version.txt must match package.json.' >&2; exit 1;
+}
 /usr/bin/grep -Fq "version=\"${package_version}\"" installer/Distribution.xml || { echo 'Update installer/Distribution.xml to match package.json.' >&2; exit 1; }
 plugin="$PWD/build/SessionStream_artefacts/Release/VST3/SessionStream.vst3"
 audio_unit="$PWD/build/SessionStream_artefacts/Release/AU/SessionStream.component"

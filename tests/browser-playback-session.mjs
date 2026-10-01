@@ -27,9 +27,9 @@ try{
     await page.waitForFunction(()=>document.querySelector('#transport').textContent.includes('WebRTC'));
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
     assert.equal(await page.locator('audio').count(),1);assert(await page.locator('audio').evaluate(e=>e.muted&&e.defaultMuted&&e.hasAttribute('muted')));
-    await page.evaluate(()=>{document.querySelector('audio').volume=1;document.querySelector('#volume').value='0';document.querySelector('#volume').dispatchEvent(new Event('input'));});
+    await page.evaluate(()=>{document.querySelector('audio').volume=1;document.querySelector('#volume').value='-60';document.querySelector('#volume').dispatchEvent(new Event('input'));});
     assert((await rms(page)).every(x=>x<.0001));
-    await page.evaluate(()=>{document.querySelector('#volume').value='1';document.querySelector('#volume').dispatchEvent(new Event('input'));});
+    await page.evaluate(()=>{document.querySelector('#volume').value='0';document.querySelector('#volume').dispatchEvent(new Event('input'));});
     if(policy==='supported'){
       await page.evaluate(async()=>{navigator.audioSession.type='ambient';await window.__testAudio.context.suspend();});
       await page.waitForFunction(()=>document.querySelector('#connect').textContent.includes('Resume'));

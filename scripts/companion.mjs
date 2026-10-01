@@ -5,15 +5,17 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createStreamServer} from '../server/index.mjs';
 import {awaitTunnelReady} from '../server/tunnel-readiness.mjs';
+import {retireLegacyHelper} from '../server/retire-legacy.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const state=process.env.SESSIONSTREAM_STATE_DIR||path.join(homedir(),'Library','Caches','SessionStream');
 await mkdir(state,{recursive:true});
+if(process.argv.includes('--replace-legacy'))await retireLegacyHelper(Number(process.env.STUDIO_PORT||8788));
+const urlFile=path.join(state,'public-url.json'),config=path.join(state,'tunnel.yml');
+let tunnel,stopping=false,retry;
 // Managed helpers keep readiness in memory. A crashed predecessor's URL file
 // cannot advertise a dead tunnel, even during the initial server bind.
-let app;try{app=await createStreamServer({nativeSender:true,managedTunnel:true,runtimeDir:state});}catch(e){console.error(e.message);process.exit(1);}
-const urlFile=path.join(state,'public-url.json'),config=path.join(state,'tunnel.yml');
+let app;try{app=await createStreamServer({nativeSender:true,managedTunnel:true,managedLifetime:true,onNoClients:()=>stop(),tunnelPID:()=>tunnel?.pid,runtimeDir:state});}catch(e){console.error(e.message);process.exit(1);}
 await rm(urlFile,{force:true});await writeFile(config,'{}\n');
-let tunnel,stopping=false,retry;
 function launch(){
   app.setTunnelState('connecting');let carry='',found=false;
   const binary=process.env.CLOUDFLARED_PATH||path.join(root,'bin','cloudflared');
@@ -37,5 +39,16 @@ function launch(){
   tunnel.on('exit',ended);
 }
 launch();
-async function stop(){if(stopping)return;stopping=true;clearTimeout(retry);app.setTunnelState('stopped');tunnel?.kill('SIGTERM');await rm(urlFile,{force:true});await app.close();process.exit(0);}
+process.send?.({ready:true});
+async function stop(){
+  if(stopping)return;stopping=true;clearTimeout(retry);app.setTunnelState('stopped');
+  // Finish the tunnel child before exiting so it cannot survive its helper.
+  const force=setTimeout(()=>{tunnel?.kill('SIGKILL');process.exit(1);},4000);
+  if(tunnel?.pid&&tunnel.exitCode===null&&tunnel.signalCode===null){
+    const exited=new Promise(resolve=>tunnel.once('exit',resolve));
+    const kill=setTimeout(()=>tunnel.kill('SIGKILL'),2000);
+    tunnel.kill('SIGTERM');await exited;clearTimeout(kill);
+  }
+  await rm(urlFile,{force:true});await app.close();clearTimeout(force);process.exit(0);
+}
 process.on('SIGTERM',stop);process.on('SIGINT',stop);

@@ -1,14 +1,22 @@
 #include "Processor.h"
+#include "InviteQR.h"
 StreamProcessor::StreamProcessor(UpdateChecker::Fetch reader) : AudioProcessor(BusesProperties().withInput("Input", juce::AudioChannelSet::stereo(), true).withOutput("Output", juce::AudioChannelSet::stereo(), true)), updates(std::move(reader)) {
     sendParameter=new juce::AudioParameterBool(juce::ParameterID("send",1),"Send audio",false);addParameter(sendParameter);
     gainParameter=new juce::AudioParameterFloat(juce::ParameterID("streamGain",1),"Stream output dB",juce::NormalisableRange<float>(-60.f,12.f,.1f),0.f);addParameter(gainParameter);
-    controller=std::make_unique<StreamController>(transport.getSourceId(),[this]{return isSending();});
+    bypassParameter=new juce::AudioParameterBool(juce::ParameterID("bypass",1),"Bypass",false);addParameter(bypassParameter);
+    controller=std::make_unique<StreamController>(transport.getSourceId(),[this]{return isSending();},"http://127.0.0.1:8788",juce::File{},[this]{
+        const bool active=isHostEnabled();
+        if(!active)transport.enabled=false;
+        return active;
+    });
 }
 bool StreamProcessor::isBusesLayoutSupported(const BusesLayout& l) const {
     return l.getMainInputChannelSet()==l.getMainOutputChannelSet()&&(l.getMainInputChannelSet()==juce::AudioChannelSet::stereo()||l.getMainInputChannelSet()==juce::AudioChannelSet::mono());
 }
 void StreamProcessor::processBlock(juce::AudioBuffer<float>& b, juce::MidiBuffer&) {
-    juce::ScopedNoDenormals guard;transport.enabled.store(isSending()&&!isNonRealtime(),std::memory_order_relaxed);
+    hostActivity.block(bypassParameter->get(),isNonRealtime());
+    if(bypassParameter->get()||isNonRealtime()){transport.enabled=false;transport.resetPending();return;}
+    juce::ScopedNoDenormals guard;transport.enabled.store(isSending()&&!isSuspended(),std::memory_order_relaxed);
     if(b.getNumChannels()<1||b.getNumSamples()<1)return;
     const int r=b.getNumChannels()>1?1:0,n=b.getNumSamples();
     gain.setTargetValue(juce::Decibels::decibelsToGain(gainParameter->get()));
@@ -18,6 +26,9 @@ void StreamProcessor::processBlock(juce::AudioBuffer<float>& b, juce::MidiBuffer
     transport.leftPeak.store(juce::jmax(lPeak,transport.leftPeak.load()));transport.rightPeak.store(juce::jmax(rPeak,transport.rightPeak.load()));
     if(transport.enabled.load())transport.push(b.getReadPointer(0),b.getReadPointer(r),n,currentRate,first,step);else transport.resetPending();
 }
+void StreamProcessor::processBlockBypassed(juce::AudioBuffer<float>&,juce::MidiBuffer&) {
+    hostActivity.block(true,isNonRealtime());transport.enabled=false;transport.resetPending();
+}
 void StreamProcessor::getStateInformation(juce::MemoryBlock& state) {
     juce::MemoryOutputStream stream(state,false);stream.writeFloat(gainDb());
 }
@@ -25,12 +36,29 @@ void StreamProcessor::setStateInformation(const void* data,int size) {
     setSending(false);transport.enabled=false;
     if(size==4){juce::MemoryInputStream stream(data,static_cast<size_t>(size),false);const auto db=stream.readFloat();if(std::isfinite(db))setGainDb(juce::jlimit(-60.f,12.f,db));}
 }
+// Keep QR content owned by the editor, so host removal destroys it together
+// with the plugin rather than leaving a deferred popup callback behind.
+class InviteOverlay final : public juce::Component {
+public:
+    InviteOverlay(){addAndMakeVisible(qr);qr.onClose=[this]{setVisible(false);};setWantsKeyboardFocus(true);}
+    void show(const juce::String& link){qr.setInvite(link);setVisible(true);toFront(true);grabKeyboardFocus();}
+    void refresh(const juce::String& link){if(isVisible()&&qr.getEncodedInvite()!=link)qr.setInvite(link);}
+    void resized() override {qr.setTopLeftPosition((getWidth()-qr.getWidth())/2,(getHeight()-qr.getHeight())/2);}
+    void paint(juce::Graphics& g) override {g.fillAll(juce::Colour(0xe0141917));}
+    bool keyPressed(const juce::KeyPress& key) override {if(key==juce::KeyPress::escapeKey){setVisible(false);return true;}return false;}
+private:
+    InviteQR qr;
+};
 class StreamEditor final : public juce::AudioProcessorEditor,private juce::Timer {
 public:
     explicit StreamEditor(StreamProcessor& processor):AudioProcessorEditor(processor),p(processor){
-        for(auto* b:{&generate,&copy,&toggle,&update,&ignoreUpdate}){addAndMakeVisible(b);b->setColour(juce::TextButton::buttonColourId,juce::Colour(0xff29382d));b->setColour(juce::TextButton::textColourOffId,juce::Colour(0xffd8f8c3));}
+        for(auto* b:{&generate,&copy,&qrButton,&toggle,&update,&ignoreUpdate}){addAndMakeVisible(b);b->setColour(juce::TextButton::buttonColourId,juce::Colour(0xff29382d));b->setColour(juce::TextButton::textColourOffId,juce::Colour(0xffd8f8c3));}
         generate.setButtonText("Generate share link");copy.setButtonText("Copy link");toggle.setButtonText("Start streaming");
-        generate.onClick=[this]{p.setSending(false);p.controller->generate();};
+        qrButton.setButtonText("Generate QR code");qrButton.onClick=[this]{qrOverlay.show(p.controller->status().link);};
+        addAndMakeVisible(usePasscode);usePasscode.setButtonText("Use passcode");usePasscode.setColour(juce::ToggleButton::textColourId,juce::Colour(0xffb3bfb6));
+        addAndMakeVisible(passcode);passcode.setPasswordCharacter(0x2022);passcode.setInputRestrictions(64);passcode.setTextToShowWhenEmpty("Enter a passcode for the next link",juce::Colour(0xff9ba69e));passcode.setFont(juce::FontOptions(12));passcode.setColour(juce::TextEditor::backgroundColourId,juce::Colour(0xff1e2721));passcode.setColour(juce::TextEditor::textColourId,juce::Colour(0xffd8f8c3));passcode.setVisible(false);
+        usePasscode.onClick=[this]{passcode.setVisible(usePasscode.getToggleState());if(usePasscode.getToggleState())passcode.grabKeyboardFocus();else passcode.clear();};
+        generate.onClick=[this]{if(usePasscode.getToggleState()&&passcode.getText().isEmpty()){passcode.grabKeyboardFocus();return;}generate.setEnabled(false);usePasscode.setEnabled(false);passcode.setEnabled(false);p.setSending(false);p.controller->generate(usePasscode.getToggleState()?passcode.getText():juce::String{});};
         copy.onClick=[this]{juce::SystemClipboard::copyTextToClipboard(p.controller->status().link);copy.setButtonText("Copied");copiedTicks=30;};
         toggle.onClick=[this]{p.setSending(!p.isSending());};
         addAndMakeVisible(invite);invite.setReadOnly(true);invite.setFont(juce::FontOptions(12));invite.setColour(juce::TextEditor::backgroundColourId,juce::Colour(0xff1e2721));invite.setColour(juce::TextEditor::textColourId,juce::Colour(0xffb3bfb6));
@@ -40,10 +68,11 @@ public:
         update.onClick=[]{juce::URL(UpdateChecker::releasesURL).launchInDefaultBrowser();};
         ignoreUpdate.onClick=[this]{p.updates.ignoreForSession();refreshUpdate();};
         update.setVisible(false);ignoreUpdate.setVisible(false);
-        p.controller->prepare();p.updates.check();setSize(560,470);startTimerHz(20);
+        addChildComponent(qrOverlay);
+        p.controller->prepare();p.updates.check();setSize(560,508);startTimerHz(20);
     }
     void resized() override {
-        level.setBounds(24,193,512,36);generate.setBounds(28,319,330,38);copy.setBounds(370,319,162,38);invite.setBounds(28,365,504,30);toggle.setBounds(28,411,504,38);update.setBounds(28,514,238,36);ignoreUpdate.setBounds(278,514,254,36);
+        level.setBounds(24,193,512,36);usePasscode.setBounds(28,313,136,30);passcode.setBounds(166,313,366,30);generate.setBounds(28,357,246,38);copy.setBounds(286,357,100,38);qrButton.setBounds(398,357,134,38);invite.setBounds(28,403,504,30);toggle.setBounds(28,449,504,38);update.setBounds(28,552,238,36);ignoreUpdate.setBounds(278,552,254,36);qrOverlay.setBounds(getLocalBounds());
     }
     void paint(juce::Graphics& g) override {
         g.fillAll(juce::Colour(0xff141917));g.setColour(juce::Colour(0xffbaf77a));g.setFont(juce::FontOptions(13));g.drawText(juce::String("SESSION / STREAM  ")+UpdateChecker::currentVersion,28,22,330,24,juce::Justification::left);
@@ -58,21 +87,23 @@ public:
             g.drawText(db<=-60?"-inf dBFS":juce::String(db,1)+" dBFS",440,static_cast<int>(y)-5,92,23,juce::Justification::right);
         }
         g.setColour(juce::Colour(0xff9ba69e));g.setFont(juce::FontOptions(11));for(int i=0;i<=4;i++)g.drawText(juce::String(-60+i*15),44+i*95,282,40,18,juce::Justification::left);
-        g.setColour(s.live?juce::Colour(0xffbaf77a):juce::Colour(0xff9ba69e));g.setFont(juce::FontOptions(12));g.drawText(s.message,28,132,504,22,juce::Justification::left);
+        g.setColour(s.warning?juce::Colour(0xfff1b675):s.live?juce::Colour(0xffbaf77a):juce::Colour(0xff9ba69e));g.setFont(juce::FontOptions(12));g.drawText(s.message,28,132,504,22,juce::Justification::left);
         g.drawText(s.live?juce::String(s.listeners)+" listening":"PRIVATE INVITE",365,23,167,22,juce::Justification::right);
         if(updateVisible){
-            g.setColour(juce::Colour(0xff344139));g.drawHorizontalLine(465,28,532);
+            g.setColour(juce::Colour(0xff344139));g.drawHorizontalLine(503,28,532);
             g.setColour(juce::Colour(0xffbaf77a));g.setFont(juce::FontOptions(14));
-            g.drawText("SessionStream "+latest+" is available.",28,479,504,24,juce::Justification::left);
+            g.drawText("SessionStream "+latest+" is available.",28,517,504,24,juce::Justification::left);
         }
     }
 private:
-    StreamProcessor& p;juce::TextButton generate,copy,toggle,update,ignoreUpdate;juce::Slider level;juce::TextEditor invite;StreamController::Status s;float peaks[2]{};int copiedTicks=0;bool dragging=false,updateVisible=false;juce::String latest;
-    void refreshUpdate(){const auto u=p.updates.status();latest=u.latest;if(u.available!=updateVisible){updateVisible=u.available;update.setVisible(updateVisible);ignoreUpdate.setVisible(updateVisible);setSize(560,updateVisible?570:470);}}
+    StreamProcessor& p;juce::TextButton generate,copy,qrButton,toggle,update,ignoreUpdate;juce::ToggleButton usePasscode;juce::Slider level;juce::TextEditor invite,passcode;InviteOverlay qrOverlay;StreamController::Status s;float peaks[2]{};int copiedTicks=0;bool dragging=false,updateVisible=false;juce::String latest;
+    void refreshUpdate(){const auto u=p.updates.status();latest=u.latest;if(u.available!=updateVisible){updateVisible=u.available;update.setVisible(updateVisible);ignoreUpdate.setVisible(updateVisible);setSize(560,updateVisible?608:508);}}
     void timerCallback() override {
         refreshUpdate();
         s=p.controller->status();if(invite.getText()!=s.link)invite.setText(s.link,false);
-        copy.setEnabled(s.link.isNotEmpty());toggle.setEnabled(s.link.isNotEmpty()||p.isSending());generate.setEnabled(!p.isSending()&&!s.generating);generate.setButtonText(s.generating?"Creating share link...":"Generate share link");
+        const bool canGenerate=p.isHostEnabled()&&!p.isSending()&&!s.generating;
+        copy.setEnabled(s.link.isNotEmpty());qrButton.setEnabled(s.link.isNotEmpty());toggle.setEnabled(p.isHostEnabled()&&(s.link.isNotEmpty()||p.isSending()));generate.setEnabled(canGenerate&&(!usePasscode.getToggleState()||passcode.getText().isNotEmpty()));usePasscode.setEnabled(canGenerate);passcode.setEnabled(canGenerate);generate.setButtonText(s.generating?"Creating share link...":"Generate share link");
+        invite.setTooltip(s.passcodeRequired?"This link requires the passcode used when it was generated.":"Private listener link");qrOverlay.refresh(s.link);
         toggle.setButtonText(p.isSending()?(s.live?"Stop streaming":"Starting... | Stop"):"Start streaming");
         if(copiedTicks>0&&--copiedTicks==0)copy.setButtonText("Copy link");
         if(!dragging)level.setValue(p.gainDb(),juce::dontSendNotification);

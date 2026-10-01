@@ -20,8 +20,14 @@
           <label for="bitrate">Quality</label><select id="bitrate"><option value="320000">High · 320 kbps stereo</option><option value="510000">Maximum · 510 kbps stereo</option><option value="192000">Lean · 192 kbps stereo</option></select>
         </div>
         <button id="connect" class="primary">Start listening <span aria-hidden="true">↗</span></button>
+        <form id="passcode-form" class="passcode-form" hidden>
+          <label for="passcode">Session passcode</label>
+          <input id="passcode" type="password" maxlength="64" autocomplete="off" autocapitalize="none" spellcheck="false" required aria-describedby="passcode-error">
+          <p id="passcode-error" class="passcode-error" role="status"></p>
+          <button id="passcode-submit" class="primary" type="submit">Start listening <span aria-hidden="true">↗</span></button>
+        </form>
         <div id="listener-settings" class="volume-control">
-          <label for="volume">Volume</label><input id="volume" type="range" min="0" max="1" step="0.01" value="1" aria-label="Listening volume"><output id="volume-label">100%</output>
+          <label for="volume">Volume</label><input id="volume" type="range" min="-60" max="6" step="0.5" value="0" aria-label="Listening volume in decibels" aria-valuetext="0 dB"><output id="volume-label" for="volume">0 dB</output><button id="mute" class="mute-button" aria-pressed="false" title="Mute audio while staying connected">Mute</button>
         </div>
         <section class="audio-details" aria-label="Audio details">
           <div class="audio-summary"><span id="quality">STEREO AUDIO</span><span id="source-label">WAITING FOR AUDIO</span></div>

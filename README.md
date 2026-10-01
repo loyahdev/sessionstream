@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.10-baf77a?style=flat-square&amp;labelColor=202a23" alt="Version 0.10">
+  <img src="https://img.shields.io/badge/version-0.20-baf77a?style=flat-square&amp;labelColor=202a23" alt="Version 0.20">
   <img src="https://img.shields.io/badge/macOS-13.5%2B-baf77a?style=flat-square&amp;labelColor=202a23&amp;logo=apple&amp;logoColor=white" alt="macOS 13.5 or newer">
   <img src="https://img.shields.io/badge/Apple_Silicon-VST3_%2B_AU-baf77a?style=flat-square&amp;labelColor=202a23" alt="Apple Silicon · VST3 and AU">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-baf77a?style=flat-square&amp;labelColor=202a23" alt="AGPL-3.0 license"></a>
@@ -32,11 +32,11 @@ SessionStream is a VST3 and Audio Units (AU) plugin for producers who teach, col
     <td width="50%" valign="top">
       <h3>Share from your session</h3>
       <p>Generate an invite, control the outgoing level, and watch your stereo meters. Your DAW level stays unchanged.</p>
-      <a href="docs/images/plugin.png"><img src="docs/images/plugin.png" alt="SessionStream 0.10 plugin showing live streaming, output gain, stereo meters, and share-link controls" width="100%"></a>
+      <a href="docs/images/plugin.png"><img src="docs/images/plugin.png" alt="SessionStream 0.20 plugin showing stereo meters, output gain, passcode and QR share controls" width="100%"></a>
     </td>
     <td width="50%" valign="top">
       <h3>Listen from anywhere</h3>
-      <p>Open the link and press Start listening. A live waveform, volume control, and connection details are right there.</p>
+      <p>Open the link and press Start listening. A live waveform, dB volume control with up to +6 dB boost, mute, and connection details are right there.</p>
       <a href="docs/images/listener.png"><img src="docs/images/listener.png" alt="Browser listener playing stereo Opus audio with a waveform, volume slider, and connection metrics" width="100%"></a>
     </td>
   </tr>
@@ -49,22 +49,26 @@ SessionStream is a VST3 and Audio Units (AU) plugin for producers who teach, col
 | **Live stereo** | Low-delay WebRTC audio with stereo Opus at a requested 320 kbps / 48 kHz. |
 | **Independent stream gain** | Adjust what your listener hears without changing your track or master level. |
 | **Simple invitations** | Share a private link with up to eight listeners. Generate a new invitation to invalidate the previous one. |
-| **Browser playback** | Listeners install nothing. They get a waveform, volume control, and live audio and connection details. |
+| **Browser playback** | Listeners install nothing. They get a waveform, a dB volume control with up to +6 dB boost, mute without disconnecting, and live audio and connection details. |
 | **Compatibility audio** | Automatic PCM fallback through the HTTPS tunnel when a direct WebRTC connection cannot be established. |
 | **Bundled engine** | The streaming engine and tunnel ship with the plugin. No separate Node install, Cloudflare login, or SessionStream subscription. |
 
 ## Quick start
 
-**Current build: 0.11 · Apple Silicon · macOS 13.5+ · VST3 + AU**
+**Current build: 0.10 · Apple Silicon · macOS 13.5+ · VST3 + AU**
 
-Install `SessionStream-0.11-mac-arm64.pkg` and reopen your DAW. See [Releases](https://github.com/loyahdev/sessionstream/releases) for published installers, or [build from source](#build-from-source). Local builds place the installer in `artifacts/`.
+Install `SessionStream-0.10-mac-arm64.pkg` and reopen your DAW. See [Releases](https://github.com/loyahdev/sessionstream/releases) for published installers, or [build from source](#build-from-source). Local builds place the installer in `artifacts/`.
 
 1. **Add the plugin.** Put SessionStream on the track you want to share, or last on your Main/Master bus for the full mix.
 2. **Generate a link.** Click **Generate share link** and wait for it to become ready. First startup can take tens of seconds.
 3. **Start streaming.** Adjust **Stream output**, click **Start streaming**, and share the invite using **Copy link**.
 4. **Let them listen.** Your listener opens the link and presses **Start listening**.
 
-Click **Stop streaming** to silence listeners; the same invite works when you start again. Keep your Mac awake and online. Anyone with the full invite can listen, so share it with your intended listeners.
+Click **Stop streaming** to silence listeners; the same invite works when you start again. Keep your Mac awake and online. Anyone with the full invite and any required passcode can listen, so share them with your intended listeners.
+
+**Optional access controls:** enable **Use passcode** before generating a link. Listeners enter that code before they can receive audio. **Generate QR code** displays the invite inside the plugin; the code is generated locally and contains the link, without the passcode. Normal streaming status stays simple; the plugin shows a warning if a listener reports blocked playback or interrupted audio.
+
+**Turning the plugin off:** disabling/bypassing or removing SessionStream releases its session. When the last enabled instance using the engine is gone, the background engine and tunnel shut down. Re-enable and generate/share a fresh link; cold startup can take tens of seconds again. Closing just the plugin window keeps the session active. See [shutdown behavior](docs/DEVELOPMENT.md#turning-the-plugin-off) for host differences and crash recovery.
 
 ### DAW compatibility
 
@@ -143,7 +147,7 @@ npm run build:plugin
 npm run build:installer
 ```
 
-The first build requires internet access to download JUCE 8.0.12 and the bundled Node v24.3.0 runtime. It verifies those downloads, bundles the native WebRTC addon and your installed cloudflared, then ad-hoc signs VST3, AU, and a development standalone app. The PKG contains VST3 and AU and is written to `artifacts/SessionStream-0.10-mac-arm64.pkg`; checksums are in `artifacts/SHA256SUMS.txt`.
+The first build requires internet access to download JUCE 8.0.12 and the bundled Node v24.3.0 runtime. It verifies those downloads, bundles the native WebRTC addon and your installed cloudflared, then ad-hoc signs VST3, AU, and a development standalone app. The PKG contains VST3 and AU and is written to `artifacts/SessionStream-0.20-mac-arm64.pkg`; checksums are in `artifacts/SHA256SUMS.txt`.
 
 To install your build locally, save and close your DAW, then run `npm run install:plugin` or open the PKG. If cloudflared is outside your `PATH`, set `CLOUDFLARED_PATH` to its full executable path before building.
 

@@ -7,10 +7,12 @@
 
 SessionStream's project source is AGPL-3.0-only. This is not a Waves product and does not use Waves code or branding.
 
-## Bundled native runtime (0.10)
+## Bundled native runtime (0.20)
 
 - Official Node.js v24.3.0 macOS arm64: https://nodejs.org/dist/v24.3.0/ — the complete bundled Node license and third-party notices are in `runtime/bin/NODE-LICENSE`.
 - @roamhq/wrtc 0.10.0: BSD-2-Clause. https://github.com/WonderInventions/node-webrtc — see `NODE-WEBRTC-LICENSE.md`. Its prebuilt macOS arm64 addon embeds WebRTC (BSD-style licensing) and dependencies.
 - domexception: MIT. Its package contains `LICENSE.txt`.
 - webidl-conversions: BSD-2-Clause. Its package contains `LICENSE.md`.
-- cloudflared is bundled in 0.10, rather than required as an external runtime. Apache-2.0: see [CLOUDFLARED-LICENSE.txt](CLOUDFLARED-LICENSE.txt), copied into `runtime/notices/` by the build. The builder's installed cloudflared version is used.
+- cloudflared is bundled in 0.20, rather than required as an external runtime. Apache-2.0: see [CLOUDFLARED-LICENSE.txt](CLOUDFLARED-LICENSE.txt), copied into `runtime/notices/` by the build. The builder's installed cloudflared version is used.
+
+- QR Code generator by Project Nayuki: MIT. The pinned C++ source is under `plugin/third_party/`, with `LICENSE-qrcodegen.txt` copied into the bundled notices. Official source: https://github.com/nayuki/QR-Code-generator/tree/3c6d0b3cefb4e049dc337e82237c9644399716a8/cpp

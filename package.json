@@ -1,6 +1,6 @@
 {
   "name": "sessionstream",
-  "version": "0.10.0",
+  "version": "0.20.0",
   "private": true,
   "license": "AGPL-3.0-only",
   "engines": {
@@ -13,10 +13,12 @@
     "test": "node --expose-gc --test tests/*.test.mjs",
     "build:plugin": "zsh scripts/build-plugin.sh",
     "test:browser": "node tests/browser.mjs",
+    "test:lifecycle": "node tests/runtime-lifecycle.mjs",
     "build:installer": "zsh scripts/build-installer.sh",
     "install:plugin": "zsh scripts/install-plugin.sh",
     "package:source": "node scripts/package-source.mjs",
-    "start:plugin": "node --expose-gc scripts/companion.mjs"
+    "start:plugin": "node --expose-gc scripts/companion.mjs",
+    "test:access": "node --expose-gc tests/access-browser.mjs"
   },
   "dependencies": {
     "@roamhq/wrtc": "^0.10.0",
