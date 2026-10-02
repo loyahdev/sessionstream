@@ -1,12 +1,14 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {mkdtemp,writeFile,readFile,rm} from 'node:fs/promises';
+import {existsSync} from 'node:fs';
+import {mkdtemp,writeFile,readFile,rm,copyFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import net from 'node:net';
 import path from 'node:path';
 
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const windowsBinary=name=>path.resolve(existsSync(`build-windows-x64/${name}.exe`)?`build-windows-x64/${name}.exe`:`build-windows-x64/Release/${name}.exe`);
 const alive=pid=>{try{process.kill(pid,0);return true;}catch{return false;}};
 async function waitFor(read,description,timeout=12000){
   const deadline=Date.now()+timeout;
@@ -17,10 +19,11 @@ async function fixture(t){
   const dir=await mkdtemp(path.join(tmpdir(),'sessionstream-companion-'));
   const socket=net.createServer();await new Promise(resolve=>socket.listen(0,'127.0.0.1',resolve));
   const port=socket.address().port;await new Promise(resolve=>socket.close(resolve));
-  const binary=path.join(dir,'fake-cloudflared'),pidFile=path.join(dir,'tunnel.pid');
+  const binary=path.join(dir,process.platform==='win32'?'fake-cloudflared.exe':'fake-cloudflared'),pidFile=path.join(dir,'tunnel.pid');
   // Real child process, with no public tunnel or account/network dependency.
-  await writeFile(binary,`#!/usr/bin/env node\nimport {writeFileSync} from 'node:fs';\nwriteFileSync(process.env.SESSIONSTREAM_TEST_TUNNEL_PID,String(process.pid));\nsetInterval(()=>{},1000);\nprocess.on('SIGTERM',()=>process.exit(0));\n`,{mode:0o755});
-  const helper=spawn(process.execPath,['--expose-gc','scripts/companion.mjs'],{env:{...process.env,PORT:'0',STUDIO_PORT:String(port),UDP_PORT:'0',CLOUDFLARED_PATH:binary,SESSIONSTREAM_STATE_DIR:dir,SESSIONSTREAM_TEST_TUNNEL_PID:pidFile},stdio:['ignore','pipe','pipe']});
+  if(process.platform==='win32')await copyFile(process.env.SESSIONSTREAM_TEST_TUNNEL_BINARY||windowsBinary('fake-tunnel'),binary);
+  else await writeFile(binary,`#!/usr/bin/env node\nimport {writeFileSync} from 'node:fs';\nwriteFileSync(process.env.SESSIONSTREAM_TEST_TUNNEL_PID,String(process.pid));\nsetInterval(()=>{},1000);\nprocess.on('SIGTERM',()=>process.exit(0));\n`,{mode:0o755});
+  const helper=spawn(process.execPath,['--expose-gc','scripts/companion.mjs'],{env:{...process.env,PORT:'0',STUDIO_PORT:String(port),UDP_PORT:'0',CLOUDFLARED_PATH:binary,SESSIONSTREAM_STATE_DIR:dir,SESSIONSTREAM_TEST_TUNNEL_PID:pidFile,SESSIONSTREAM_SUPERVISOR_PATH:process.env.SESSIONSTREAM_SUPERVISOR_PATH||windowsBinary('windows-tunnel-supervisor')},stdio:['ignore','pipe','pipe']});
   let output='';helper.stdout.on('data',data=>output+=data);helper.stderr.on('data',data=>output+=data);
   const exit=new Promise(resolve=>helper.once('exit',(code,signal)=>resolve({code,signal})));
   t.after(async()=>{

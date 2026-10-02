@@ -1,3 +1,17 @@
+async function within(promise,ms,message){
+  let timer;
+  try{return await Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(message)),ms);})]);}
+  finally{clearTimeout(timer);}
+}
+export async function loadAudioEngine(worklet){
+  if(!worklet)throw Error('Audio playback needs a modern browser and a secure HTTPS link. Open the full invite in your browser.');
+  try{
+    await within((async()=>{
+      try{await worklet.addModule('/pcm-worklet.mjs');}
+      catch{await worklet.addModule('/pcm-worklet.mjs?retry=1');}
+    })(),10000,'The audio engine took too long to load. Check your connection, reload this page and press Start listening.');
+  }catch{throw Error('The audio engine could not load. Check your connection, reload this page and press Start listening. If the link has expired, ask your host for a new one.');}
+}
 export async function createAudio(targetMs=35){
   // iOS Web Audio defaults to ambient audio, which follows the silent switch.
   // Request the media playback category before opening/resuming the device.
@@ -6,12 +20,12 @@ export async function createAudio(targetMs=35){
   const restoreSession=()=>{try{if(session?.type==='playback')session.type=previousType;}catch{}};
   const mediaPlayback=()=>{try{if(session)session.type='playback';}catch{}};
   let context;
-  try{context=new AudioContext({latencyHint:'interactive',sampleRate:48000});}catch(e){restoreSession();throw e;}
+  try{context=new AudioContext({latencyHint:'interactive',sampleRate:48000});}catch{restoreSession();throw Error('Your browser could not open the audio device. Check your output device and try again in a modern browser.');}
   context.addEventListener('statechange',()=>{if(context.state==='closed')restoreSession();});
   if(new URLSearchParams(location.search).has('audio-test'))window.__audioInit=context;
   try {
-    await Promise.race([context.resume(),new Promise((_,reject)=>setTimeout(()=>reject(Error('The browser audio device did not start. Check your output device and try again.')),12000))]);
-    await Promise.race([context.audioWorklet.addModule('/pcm-worklet.mjs'),new Promise((_,reject)=>setTimeout(()=>reject(Error('The browser could not load its audio engine. Reload this page and try again.')),10000))]);
+    await within(context.resume(),12000,'The browser audio device did not start. Check your output device and try again.');
+    await loadAudioEngine(context.audioWorklet);
   } catch(e) { context.close().catch(()=>{}); throw e; }
   const node=new AudioWorkletNode(context,'session-pcm',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[2],processorOptions:{targetMs}});
   node.channelCount=2;node.channelCountMode='explicit';

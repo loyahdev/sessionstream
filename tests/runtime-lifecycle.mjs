@@ -32,6 +32,9 @@ try{
   await sleep(6000);const paused=await state();assert.equal(paused.enginePID,s.enginePID);assert.equal(paused.tunnelPID,s.tunnelPID);assert.equal(paused.listenerURL,first);
   report.checks.push({name:'Stop streaming retains the enabled engine, tunnel and invite beyond the crash lease',result:'PASS'});
   host.stdin.write('send 1\n');s=await running();assert.equal(s.listenerURL,first);
+  host.stdin.write('reset\n');await sleep(1000);
+  const reset=await state();assert.equal(reset.enginePID,s.enginePID);assert.equal(reset.tunnelPID,s.tunnelPID);assert.equal(reset.listenerURL,first);assert(reset.live);
+  report.checks.push({name:'Audio reset/seek preserves helper, tunnel, live stream and invite',result:'PASS'});
   host.stdin.write('bypass 1\n');await stopped(s,'Host bypass stops helper and tunnel');
   host.stdin.write('bypass 0\n');s=await running(s.enginePID);assert.notEqual(s.listenerURL,first);
   report.checks.push({name:'Unbypass restarts with a fresh invite',result:'PASS'});

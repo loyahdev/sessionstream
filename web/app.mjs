@@ -95,7 +95,7 @@ async function onSignal(m){
   if(m.type==='joined'){
     joined=true;awaitingPasscode=false;$('passcode-form').hidden=true;$('connect').hidden=false;$('passcode').value='';$('passcode-error').textContent='';$('passcode').removeAttribute('aria-invalid');resetReception();
     reconnectAttempt=0;iceServers=m.iceServers;peerId=m.id;
-    if(studio){live=true;send({type:'publishing',live:true,title:$('title').value});for(const id of m.peers||[])await offer(id);message('Broadcasting. Press Send audio in the plugin, then play your project.');}
+    if(studio){live=true;send({type:'publishing',live:true,title:$('title').value});for(const id of m.peers||[])await offer(id);message('Broadcasting. Press Start streaming in the plugin, then play your project.');}
     else{send({type:'mode',mode:pcm?'pcm':'webrtc'});send({type:'listener-health',state:'ok'});healthState='ok';scheduleFallback();status('Waiting for host');}
   }else if(m.type==='status'){
     live=m.live;
@@ -215,7 +215,7 @@ async function updateStats(){
       reportHealth(failed?'connection-failed':'audio-stalled');
     }
   }
-  if(studio&&performance.now()-lastBinary>1800&&lastBinary)message('Plugin audio has stopped. Check Send audio and Ableton playback.');
+  if(studio&&performance.now()-lastBinary>1800&&lastBinary)message('Plugin audio has stopped. Check Start streaming and DAW playback.');
 }
 $('connect').onclick=()=>{if(running&&(['suspended','interrupted'].includes(audio?.context.state)||needsResume))Promise.all([audio.resume(),remoteElement?.play()]).then(()=>{needsResume=false;reportHealth('ok');if(!studio){status(live?'Listening':'Waiting for host',live?'live':'');message(live?'':'Audio will start when your host is ready.');}$('connect').innerHTML=studio?'Stop broadcast <span>■</span>':'Stop listening <span aria-hidden="true">■</span>';}).catch(()=>message('Your browser paused audio. Tap Resume audio to try again.',true));else if(running)stop();else start();};
 $('passcode-form').onsubmit=async e=>{
@@ -244,13 +244,13 @@ $('bitrate').onchange=()=>{if(studio&&running)for(const id of peers.keys())offer
 $('copy').onclick=async()=>{try{await navigator.clipboard.writeText($('invite').value);$('copy').textContent='Copied';setTimeout(()=>$('copy').textContent='Copy link',1800);}catch{ $('invite').select();message('Select and copy the invite link.');}};
 $('rotate').onclick=async()=>{const r=await fetch('/api/rotate',{method:'POST',headers:{Authorization:`Bearer ${session.token}`}});if(r.ok){await refreshInvite();message('New invite created. Share this link with your client.');}else message('Could not create a new invite.',true);};
 async function refreshInvite(){try{session=await fetch('/api/studio').then(r=>r.json());$('invite').value=session.listenerURL;
-  $('link-note').textContent=session.listenerURL.includes('127.0.0.1')?'Local link only. Start with npm run start:tunnel to reach clients online.':'Temporary Cloudflare link. Keep this Mac, the broadcaster, and the tunnel running.';
+  $('link-note').textContent=session.listenerURL.includes('127.0.0.1')?'Local link only. Start with npm run start:tunnel to reach clients online.':'Temporary Cloudflare link. Keep this computer, the broadcaster, and the tunnel running.';
 }catch(e){message(`Cannot reach the local bridge: ${e.message}`,true);}}
 if(studio){
-  $('heading').textContent='Broadcast';$('intro-text').textContent='Share your Ableton audio with a listener.';
+  $('heading').textContent='Broadcast';$('intro-text').textContent='Share your DAW audio with a listener.';
   $('studio-settings').hidden=false;$('invite-panel').hidden=false;$('listener-settings').hidden=true;$('fallback').hidden=true;
   $('fourth-label').textContent='LISTENERS';
-  $('connect').innerHTML='Start broadcast <span>↗</span>';message('Start the broadcast, then press Send audio in your Ableton plugin.');
+  $('connect').innerHTML='Start broadcast <span>↗</span>';message('Start the broadcast, then start streaming in SessionStream.');
   await refreshInvite();setInterval(refreshInvite,5000);
 }else if(!/^[a-f0-9]{48}$/.test(room)){message('You need a private invite from your host to join.',true);$('connect').disabled=true;}
 else{

@@ -1,5 +1,28 @@
 #include "Processor.h"
 #include "InviteQR.h"
+juce::String StreamProcessor::diagnostics() const {
+    // Explicit allowlist: exclude invites, passcodes, tokens, paths and
+    // free-form engine errors, which can contain private connection details.
+    const auto state=controller->status();
+    auto* data=new juce::DynamicObject;
+    data->setProperty("version",UpdateChecker::currentVersion);
+    data->setProperty("os",juce::SystemStats::getOperatingSystemName());
+#if JUCE_ARM
+    data->setProperty("pluginArchitecture","ARM64");
+#else
+    data->setProperty("pluginArchitecture","x64");
+#endif
+    data->setProperty("pluginFormat",getWrapperTypeDescription(wrapperType));
+    data->setProperty("hostEnabled",isHostEnabled());
+    data->setProperty("streamingRequested",isSending());
+    data->setProperty("engineAvailable",state.available);
+    data->setProperty("creatingInvite",state.generating);
+    data->setProperty("inviteReady",state.link.isNotEmpty());
+    data->setProperty("live",state.live);
+    data->setProperty("listeners",state.listeners);
+    data->setProperty("playbackWarning",state.warning);
+    return juce::JSON::toString(juce::var(data));
+}
 StreamProcessor::StreamProcessor(UpdateChecker::Fetch reader) : AudioProcessor(BusesProperties().withInput("Input", juce::AudioChannelSet::stereo(), true).withOutput("Output", juce::AudioChannelSet::stereo(), true)), updates(std::move(reader)) {
     sendParameter=new juce::AudioParameterBool(juce::ParameterID("send",1),"Send audio",false);addParameter(sendParameter);
     gainParameter=new juce::AudioParameterFloat(juce::ParameterID("streamGain",1),"Stream output dB",juce::NormalisableRange<float>(-60.f,12.f,.1f),0.f);addParameter(gainParameter);
@@ -69,15 +92,28 @@ public:
         ignoreUpdate.onClick=[this]{p.updates.ignoreForSession();refreshUpdate();};
         update.setVisible(false);ignoreUpdate.setVisible(false);
         addChildComponent(qrOverlay);
+        addAndMakeVisible(more);more.setButtonText("...");more.setTooltip("More options");more.setTitle("More options");
+        more.setColour(juce::TextButton::buttonColourId,juce::Colours::transparentBlack);more.setColour(juce::TextButton::textColourOffId,juce::Colour(0xff9ba69e));
+        more.onClick=[this]{
+            juce::PopupMenu troubleshooting;troubleshooting.addItem(1,"Copy diagnostics");
+            juce::PopupMenu menu;menu.addSubMenu("Troubleshooting",troubleshooting);menu.addItem(2,"Compatibility");
+            const juce::Component::SafePointer<StreamEditor> safe(this);
+            menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&more),[safe](int result){
+                if(!safe)return;
+                if(result==1){juce::SystemClipboard::copyTextToClipboard(safe->p.diagnostics());safe->diagnosticsTicks=60;safe->repaint();}
+                if(result==2)juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon,"SessionStream compatibility","Works with most DAWs that support VST3, and AU hosts on macOS.\n\nmacOS 13.5+: Apple Silicon, VST3 + AU\nWindows 11: Intel/AMD x64 + ARM64, VST3\n\nUse AU in Logic Pro. Pro Tools requires AAX, which is not included. Windows ARM64 uses an x64 streaming helper under emulation. Intel Macs and 32-bit DAWs are not supported.");
+            });
+        };
         p.controller->prepare();p.updates.check();setSize(560,508);startTimerHz(20);
     }
     void resized() override {
+        more.setBounds(506,20,30,28);
         level.setBounds(24,193,512,36);usePasscode.setBounds(28,313,136,30);passcode.setBounds(166,313,366,30);generate.setBounds(28,357,246,38);copy.setBounds(286,357,100,38);qrButton.setBounds(398,357,134,38);invite.setBounds(28,403,504,30);toggle.setBounds(28,449,504,38);update.setBounds(28,552,238,36);ignoreUpdate.setBounds(278,552,254,36);qrOverlay.setBounds(getLocalBounds());
     }
     void paint(juce::Graphics& g) override {
         g.fillAll(juce::Colour(0xff141917));g.setColour(juce::Colour(0xffbaf77a));g.setFont(juce::FontOptions(13));g.drawText(juce::String("SESSION / STREAM  ")+UpdateChecker::currentVersion,28,22,330,24,juce::Justification::left);
         g.setColour(juce::Colours::white);g.setFont(juce::FontOptions(31));g.drawText("Your session. Anywhere.",28,55,504,46,juce::Justification::left);
-        g.setColour(juce::Colour(0xff9ba69e));g.setFont(juce::FontOptions(13));g.drawText("Share this track with a private link. Your client just presses Start listening.",28,106,504,22,juce::Justification::left);
+        g.setColour(juce::Colour(0xff9ba69e));g.setFont(juce::FontOptions(13));g.drawText("Share this track with a private link. Listeners just press Start listening.",28,106,504,22,juce::Justification::left);
         g.drawText("STREAM OUTPUT",28,160,290,25,juce::Justification::left);g.drawText("DAW level stays unchanged",300,160,232,25,juce::Justification::right);
         for(int ch=0;ch<2;ch++){
             const float db=juce::Decibels::gainToDecibels(peaks[ch],-60.f),y=239.f+ch*25;
@@ -88,7 +124,7 @@ public:
         }
         g.setColour(juce::Colour(0xff9ba69e));g.setFont(juce::FontOptions(11));for(int i=0;i<=4;i++)g.drawText(juce::String(-60+i*15),44+i*95,282,40,18,juce::Justification::left);
         g.setColour(s.warning?juce::Colour(0xfff1b675):s.live?juce::Colour(0xffbaf77a):juce::Colour(0xff9ba69e));g.setFont(juce::FontOptions(12));g.drawText(s.message,28,132,504,22,juce::Justification::left);
-        g.drawText(s.live?juce::String(s.listeners)+" listening":"PRIVATE INVITE",365,23,167,22,juce::Justification::right);
+        g.drawText(diagnosticsTicks>0?"Diagnostics copied":s.live?juce::String(s.listeners)+" listening":"PRIVATE INVITE",354,23,142,22,juce::Justification::right);
         if(updateVisible){
             g.setColour(juce::Colour(0xff344139));g.drawHorizontalLine(503,28,532);
             g.setColour(juce::Colour(0xffbaf77a));g.setFont(juce::FontOptions(14));
@@ -96,9 +132,10 @@ public:
         }
     }
 private:
-    StreamProcessor& p;juce::TextButton generate,copy,qrButton,toggle,update,ignoreUpdate;juce::ToggleButton usePasscode;juce::Slider level;juce::TextEditor invite,passcode;InviteOverlay qrOverlay;StreamController::Status s;float peaks[2]{};int copiedTicks=0;bool dragging=false,updateVisible=false;juce::String latest;
+    StreamProcessor& p;juce::TextButton generate,copy,qrButton,toggle,update,ignoreUpdate,more;juce::ToggleButton usePasscode;juce::Slider level;juce::TextEditor invite,passcode;InviteOverlay qrOverlay;StreamController::Status s;float peaks[2]{};int copiedTicks=0,diagnosticsTicks=0;bool dragging=false,updateVisible=false;juce::String latest;
     void refreshUpdate(){const auto u=p.updates.status();latest=u.latest;if(u.available!=updateVisible){updateVisible=u.available;update.setVisible(updateVisible);ignoreUpdate.setVisible(updateVisible);setSize(560,updateVisible?608:508);}}
     void timerCallback() override {
+        if(diagnosticsTicks>0)--diagnosticsTicks;
         refreshUpdate();
         s=p.controller->status();if(invite.getText()!=s.link)invite.setText(s.link,false);
         const bool canGenerate=p.isHostEnabled()&&!p.isSending()&&!s.generating;

@@ -9,6 +9,8 @@ export const needsLegacyUpgrade = status => !!status?.native && !status.live
 // Upgrade old idle helpers that predate lifecycle leases or protected invites. Never retire an
 // active broadcast, an unrelated process, or a process belonging to another user.
 export async function retireLegacyHelper(port) {
+  // Only old macOS releases used this lifecycle protocol and bundle layout.
+  if(process.platform!=='darwin')return;
   const url = `http://127.0.0.1:${port}/api/studio`;
   const read = async () => {
     const response = await fetch(url, {signal:AbortSignal.timeout(1000)});

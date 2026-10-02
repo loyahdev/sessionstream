@@ -1,13 +1,13 @@
 import {spawn} from 'node:child_process';
 import {mkdir,writeFile,rm} from 'node:fs/promises';
-import {homedir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createStreamServer} from '../server/index.mjs';
 import {awaitTunnelReady} from '../server/tunnel-readiness.mjs';
 import {retireLegacyHelper} from '../server/retire-legacy.mjs';
+import {runtimeStateDirectory, executableName} from '../server/platform.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
-const state=process.env.SESSIONSTREAM_STATE_DIR||path.join(homedir(),'Library','Caches','SessionStream');
+const state=runtimeStateDirectory();
 await mkdir(state,{recursive:true});
 if(process.argv.includes('--replace-legacy'))await retireLegacyHelper(Number(process.env.STUDIO_PORT||8788));
 const urlFile=path.join(state,'public-url.json'),config=path.join(state,'tunnel.yml');
@@ -18,8 +18,12 @@ let app;try{app=await createStreamServer({nativeSender:true,managedTunnel:true,m
 await rm(urlFile,{force:true});await writeFile(config,'{}\n');
 function launch(){
   app.setTunnelState('connecting');let carry='',found=false;
-  const binary=process.env.CLOUDFLARED_PATH||path.join(root,'bin','cloudflared');
-  tunnel=spawn(binary,['tunnel','--config',config,'--no-autoupdate','--url',`http://127.0.0.1:${app.publicPort}`],{stdio:['ignore','pipe','pipe']});
+  const binary=process.env.CLOUDFLARED_PATH||path.join(root,'bin',executableName('cloudflared'));
+  const args=['tunnel','--config',config,'--no-autoupdate','--url',`http://127.0.0.1:${app.publicPort}`];
+  const supervisor=process.env.SESSIONSTREAM_SUPERVISOR_PATH||path.join(root,'bin','windows-tunnel-supervisor.exe');
+  tunnel=process.platform==='win32'
+    ?spawn(supervisor,[String(process.pid),binary,...args],{windowsHide:true,stdio:['ignore','pipe','pipe']})
+    :spawn(binary,args,{stdio:['ignore','pipe','pipe']});
   const launched=tunnel;let exited=false;
   const current=()=>!stopping&&!exited&&tunnel===launched;
   async function advertise(url){

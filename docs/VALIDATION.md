@@ -1,5 +1,57 @@
 # Validation notes
 
+## 0.30: matching installers, diagnostics and compatibility wording
+
+Built on October 1, 2026 from the same seek-fixed source for macOS Apple Silicon and Windows x64/ARM64.
+
+- Both Windows VST3 architectures and the macOS VST3, AU and development standalone compiled with version 0.30.0. Windows version resources now regenerate when CMake metadata changes, preventing stale versions on incremental builds.
+- All 38 isolated Node tests passed, including audio-engine retry and useful failure wording. Chrome checks passed actual stereo WebRTC/PCM playback, gain/mute, pause/resume and phone-width layout. Two additional browser checks exercised real missing-module responses: one failed load recovered automatically; persistent failure left a usable Start listening button and reload/connection instructions.
+- Native checks passed audio passthrough, UDP packets, seek reset preservation, host lifecycle, update checking and the diagnostics allowlist. The integrated protected seek regression preserved the engine lease, invite, listener socket and resumed PCM after repeated resets and a brief deactivate/reprepare cycle. Real deactivation and removal still revoked the invite.
+- The 0.30 editor was launched and visually inspected. Copy diagnostics is under **… → Troubleshooting**; Compatibility lists supported systems and DAW formats. Reports omit links, passcodes, tokens, paths and free-form error strings. The README screenshot was refreshed from the 0.30 editor.
+- Both installers were extracted. All 93 Windows payload files and 181 macOS payload files matched the builds byte-for-byte. Extracted VST3/AU bundles passed strict deep signature checks and report 0.30.0. Windows packaging checked PE architectures and plugin/runtime versions. NSIS compiled with warnings treated as errors.
+
+Evidence: `artifacts/tests-0.30.log`, `native-0.30.log`, `browser-playback-session.json`, `browser-startup-0.30.json`, `installer-integrity-0.30.json` and platform build/installer logs.
+
+The user previously confirmed playback and seeking in REAPER on Windows ARM64 in UTM with the seek-fixed 0.20 installer. That is user-reported VM validation; the loaded plugin architecture was not recorded. The 0.30 Windows installer has build/package validation here and has not been retested on physical Windows or in a native ARM64 DAW. Broad DAW compatibility refers to supported VST3/AU formats, not testing every DAW. Physical Windows performance, long sessions and measured end-to-end latency remain unverified. Installers remain unsigned; macOS plugins are ad-hoc signed and not notarized.
+
+## 0.20: Windows seeking hotfix
+
+Built on October 1, 2026 after a user reported REAPER seeking revoked the invite with `Host disabled or removed` while local audio passthrough continued. The plugin's `reset()` incorrectly called `releaseResources()`. JUCE calls that reset for VST3 `setProcessing(false)`, which is distinct from component deactivation. Reset now clears partial audio without deactivating the processor. An existing controller lease also tolerates a brief deactivate/reprepare transition for 500 ms; sustained deactivation still releases it.
+
+- The compiled pre-fix processor/controller with the real isolated local server reproduced the exact WebSocket close code/reason `4003 Host disabled or removed` after reset. The same regression passed after the fix: three resets with an 800 ms rendering pause and a 100 ms deactivate/reprepare cycle preserved Send, the engine lease, protected invite, authenticated listener socket and resumed PCM packets. Real deactivation and removal still revoked the invite; reactivation restored passcode protection.
+- Native audio/UDP checks passed unchanged passthrough, discard of partial pre-seek audio, fresh packet contents after reset, gain and state restore. Host lifecycle and protected controller recovery checks passed. All 35 existing isolated Node tests passed.
+- Both Windows x64 and ARM64 plugin/probe builds succeeded. NSIS built the combined installer without warnings. The updated package remains version 0.20.0. Installer extraction and SHA-256 checks are recorded in `artifacts/windows-port/seek-installer-integrity.json`.
+
+Updated installer: `SessionStream-0.20-windows-x64-arm64-seek-fix.exe` (**45,395,534 bytes**), also available under the original installer filename. SHA-256:
+
+```text
+a88e869fac05f309142fb39e3fcbaed7a973716706d6b85ee395fafa9afd4d5c
+```
+
+Evidence: `artifacts/windows-port/seek-reset-before.log`, `seek-reset-after.log`, `seek-host-lifecycle.log`, `seek-audio-smoke.log`, `seek-protected-recovery.log`, `seek-node-tests.log`, `seek-x64-build.log`, `seek-arm64-build.log`, and `seek-installer-build.log`. Run `node --expose-gc tests/seek-reset.mjs` after building the probe to reproduce the isolated lifecycle check. These native execution checks used macOS; the user subsequently confirmed playback and seeking work in REAPER on Windows ARM64 in UTM. The loaded plugin architecture was not recorded. The earlier browser module-import error may have followed the helper/tunnel shutdown; its exact network failure was not captured.
+
+## 0.20: initial Windows x64 and ARM64 port verification
+
+Built on this Apple Silicon Mac on October 1, 2026 (America/Edmonton). The Windows port is experimental.
+
+- Clang 21.1.8 in MSVC mode, Microsoft SDK/C++ libraries prepared with xwin, and JUCE 8.0.12 compiled native x64 and ARM64 VST3 modules. Both modules export the VST3 factory/initialization functions, contain version 0.20.0 resources, and import Windows system DLLs without a separate Visual C++ runtime requirement.
+- `SessionStream-0.20-windows-x64-arm64.exe` contains both architecture folders and a shared pinned x64 runtime: official Node v24.3.0, @roamhq/wrtc 0.10.0, cloudflared 2026.9.3, and the project tunnel supervisor. Node/cloudflared SHA-256 and all downloaded npm SHA-512 lockfile integrity values were verified. ARM64 Windows needs x64 emulation for the separate streaming helper; the audio plugin itself is native ARM64.
+- NSIS compiled the installer without warnings. All **93 project payload files** extracted from it matched the staged files byte-for-byte. PE machine types, plugin resource versions, runtime version, license notices, and installer SHA-256 were verified. NSIS adds its own UI/System components and uninstaller in addition to those project files.
+- Under an isolated Debian/Wine 8 x64 compatibility environment, the actual x64 VST3 was discovered and loaded by the compiled Windows test host. Stereo passthrough and Send audio automation passed. Compiled Windows host lifecycle and QR probes also passed.
+- The compiled Windows process-tree probe passed: loss of the parent helper and forced supervisor termination both killed the tunnel child, paths containing spaces worked, and a parent outside the tunnel job survived. This checks the Windows job-object cleanup needed because Windows SIGTERM can forcibly terminate a process.
+- The final installer rejected Wine's older Windows 10 profile in silent mode with exit code 1, without a modal prompt. Installation/uninstallation on an actual Windows 11 system remains unverified.
+- All **35 isolated Node regression tests** passed with the existing macOS runtime. Rebuilt Mac audio/UDP, host lifecycle, and QR probes passed. These establish preservation of existing behavior, not Windows media delivery.
+
+The compatibility environment could not run the complete Windows streaming stack. Windows Node 24 hit a V8 virtual-memory allocation failure under Wine 8; Wine 11 hit an emulator page-alignment assertion, and Wine 10 initialization did not complete within the test window. The Windows UDP smoke probe also hit a CPU-emulator signal assertion. These runs are recorded as inconclusive, not passing Windows tests and not proof of a native Windows bug. Full Windows WebRTC/PCM playback, DAW install/rescan/bypass/removal behavior, Windows firewall behavior, and ARM64 execution remain unverified.
+
+Initial installer size: **45,410,497 bytes**. Its historical SHA-256 (superseded by the seeking hotfix above):
+
+```text
+a3b1778bab5e50166954b428cf0194c405c1584511cd0e90f3527d1a9cab6302
+```
+
+Evidence: `artifacts/windows-port/installer-integrity-report.json`, `build-x64-final.log`, `build-arm64-final.log`, `build-installer-final.log`, `windows-vst3-probe.log`, `windows-native-probes.log`, `windows-process-tree.log`, `installer-os-gate-test.log`, and `tests-macos-final.log`. The payload manifest is `artifacts/SessionStream-0.20-windows-payload.sha256`. See [Windows installation/build instructions](WINDOWS.md).
+
 ## 0.20: protected invites, local QR codes and listener errors
 
 Verified on this Apple Silicon Mac on September 30, 2026 (America/Edmonton):

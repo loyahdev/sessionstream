@@ -21,6 +21,21 @@ int main() {
         float l, r; std::memcpy(&l, packet.data() + 24, 4); std::memcpy(&r, packet.data() + 28, 4);
         if (l != original.getSample(0, n * 256) || r != original.getSample(1, n * 256)) return 5;
     }
+    // A seek must discard a partial pre-seek packet without deactivating Send.
+    juce::AudioBuffer<float> partial(2,128);
+    for(int i=0;i<128;i++){partial.setSample(0,i,.25f);partial.setSample(1,i,-.25f);}
+    p.processBlock(partial,midi);p.reset();
+    if(!p.isHostEnabled()||!p.isSending())return 15;
+    for(int i=0;i<128;i++){partial.setSample(0,i,.5f);partial.setSample(1,i,-.5f);}
+    p.processBlock(partial,midi);
+    if(receiver.waitUntilReady(true,100)>0)return 16;
+    p.processBlock(partial,midi);
+    if(receiver.waitUntilReady(true,1000)<=0)return 17;
+    if(receiver.read(packet.data(),int(packet.size()),false)!=2072)return 18;
+    for(int i=0;i<256;i++){
+        float l,r;std::memcpy(&l,packet.data()+24+i*8,4);std::memcpy(&r,packet.data()+28+i*8,4);
+        if(l!=.5f||r!=-.5f)return 19;
+    }
     p.setSending(false); p.processBlock(b, midi);
     if (receiver.waitUntilReady(true, 100) > 0) return 6;
     // Stream gain changes the transmitted copy only and persists safely.
@@ -41,5 +56,5 @@ int main() {
     StreamTransport burst;burst.enabled=true;juce::AudioBuffer<float> large(2,8192);large.clear();burst.push(large.getReadPointer(0),large.getReadPointer(1),8192,48000);
     for(int n=0;n<32;n++){if(receiver.waitUntilReady(true,1000)<=0)return 12;if(receiver.read(packet.data(),int(packet.size()),false)!=2072)return 13;}
     if(burst.dropped.load()!=0)return 14;
-    std::cout << "PASS: unchanged stereo passthrough, UDP PCM packets, stream gain, safe restore, complete 8192-frame burst\n";
+    std::cout << "PASS: unchanged stereo passthrough, UDP PCM packets, seek packet reset, stream gain, safe restore, complete 8192-frame burst\n";
 }

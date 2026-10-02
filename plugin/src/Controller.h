@@ -1,6 +1,8 @@
 #pragma once
 #include <juce_core/juce_core.h>
+#if !JUCE_WINDOWS
 #include <dlfcn.h>
+#endif
 #include <atomic>
 #include "WorkerThread.h"
 
@@ -18,13 +20,29 @@ private:
     uint32_t source;std::function<bool()> wantsAudio,hostEnabled;juce::String base;juce::File runtimeOverride;
     std::atomic<bool> generateRequested{false},prepared{false};juce::CriticalSection lock;Status current;juce::String pendingPasscode;
     juce::ChildProcess child;juce::String token;bool owned=false,lifetimeSupported=false;uint32_t nextLaunch=0;
+    static const char* nodeName(){
+       #if JUCE_WINDOWS
+        return "bin/node.exe";
+       #else
+        return "bin/node";
+       #endif
+    }
     juce::File runtime(){
         if(runtimeOverride.exists())return runtimeOverride;
+       #if JUCE_WINDOWS
+        // JUCE returns this module (the VST3 DLL), rather than the DAW EXE.
+        const auto module=juce::File::getSpecialLocation(juce::File::currentExecutableFile);
+        for(const auto& parent:{module.getParentDirectory().getParentDirectory(),module.getParentDirectory()}){
+            const auto dir=parent.getChildFile("Resources/runtime");
+            if(dir.getChildFile(nodeName()).existsAsFile())return dir;
+        }
+       #else
         Dl_info info{};
         if(dladdr(reinterpret_cast<const void*>(&locateRuntime),&info)&&info.dli_fname){
             const auto f=juce::File(juce::String::fromUTF8(info.dli_fname)).getParentDirectory().getParentDirectory().getChildFile("Resources/runtime");
-            if(f.getChildFile("bin/node").existsAsFile())return f;
+            if(f.getChildFile(nodeName()).existsAsFile())return f;
         }
+       #endif
         return {};
     }
     static void locateRuntime(){}
@@ -58,19 +76,26 @@ private:
         if(child.isRunning()||(nextLaunch!=0&&static_cast<int32_t>(now-nextLaunch)<0))return false;
         const auto dir=runtime();nextLaunch=now+2000;
         if(!dir.exists())return false;
-        juce::StringArray args{dir.getChildFile("bin/node").getFullPathName(),dir.getChildFile("scripts/launch-engine.mjs").getFullPathName()};
+        juce::StringArray args{dir.getChildFile(nodeName()).getFullPathName(),dir.getChildFile("scripts/launch-engine.mjs").getFullPathName()};
         if(replaceLegacy)args.add("--replace-legacy");
         return child.start(args,0);
     }
     void run() override{
-        bool generating=false,acknowledged=false;int unavailableReads=0;juce::String requestId,requestPasscode,sessionPasscode;
+        bool generating=false,acknowledged=false,disabling=false;uint32_t disabledSince=0;int unavailableReads=0;juce::String requestId,requestPasscode,sessionPasscode;
         while(!threadShouldExit()){
             (void)child.isRunning(); // Reap the short-lived launcher, including while bypassed.
             if(!hostEnabled()){
+                // Some hosts also deactivate/reprepare the component while
+                // flushing audio. Stop transmitting immediately, but allow a
+                // brief active-session transition before revoking its invite.
+                const auto now=juce::Time::getMillisecondCounter();
+                if(!disabling){disabling=true;disabledSince=now;}
+                if(token.isNotEmpty()&&now-disabledSince<500){wait(25);continue;}
                 detach();prepared=false;generateRequested=false;generating=false;acknowledged=false;unavailableReads=0;nextLaunch=0;
                 Status next;next.message="Disabled in DAW. Enable this plugin to share audio.";
                 {const juce::ScopedLock l(lock);pendingPasscode.clear();current=next;}requestPasscode.clear();wait(250);continue;
             }
+            disabling=false;
             if(generateRequested.exchange(false)&&!generating){generating=true;acknowledged=false;requestId=juce::Uuid().toString();const juce::ScopedLock l(lock);requestPasscode=pendingPasscode;pendingPasscode.clear();}
             const bool desired=wantsAudio();
             // Host automation can start audio without opening the editor.

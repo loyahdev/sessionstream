@@ -17,7 +17,7 @@ public:
     void shutdown() override{stopTimer();window.reset();processor.reset();}
 private:
     struct Window : juce::DocumentWindow {
-        Window():DocumentWindow("SessionStream 0.20 invite verification",juce::Colours::black,DocumentWindow::closeButton){setUsingNativeTitleBar(true);}
+        Window():DocumentWindow("SessionStream 0.30 invite verification",juce::Colours::black,DocumentWindow::closeButton){setUsingNativeTitleBar(true);}
         void closeButtonPressed() override{juce::JUCEApplication::getInstance()->systemRequestedQuit();}
     };
     std::unique_ptr<StreamProcessor> processor;std::unique_ptr<Window> window;

@@ -1,10 +1,12 @@
 # SessionStream — installation and development notes
 
-A macOS Apple Silicon VST3 and Audio Units (AU) audio effect with native stereo streaming. The sender controls everything inside the plugin. Listeners open a private HTTPS invite and press **Start listening**; they install nothing.
+A VST3 audio effect for macOS Apple Silicon and Windows 11 x64/ARM64, with AU also included on macOS. The sender controls everything inside the plugin. Listeners open a private HTTPS invite and press **Start listening**; they install nothing.
 
 ## Install
 
-Open `SessionStream-0.20-mac-arm64.pkg` and complete the macOS Installer. It installs VST3 into `~/Library/Audio/Plug-Ins/VST3/SessionStream.vst3` and AU into `~/Library/Audio/Plug-Ins/Components/SessionStream.component`, each with its bundled runtime; it does not install a separate app. Requires Apple Silicon and macOS 13.5 or newer. Save and close your DAW before installing an update, then reopen it and rescan plugins if needed.
+Supported systems: macOS 13.5+ on Apple Silicon (VST3 + AU), and Windows 11 on Intel/AMD x64 or ARM64 (VST3). Most DAWs supporting these formats are compatible; use AU in Logic Pro. AAX, Intel Macs and 32-bit DAWs are not included. For Windows installation, see [WINDOWS.md](WINDOWS.md).
+
+Open `SessionStream-0.30-mac-arm64.pkg` and complete the macOS Installer. It installs VST3 into `~/Library/Audio/Plug-Ins/VST3/SessionStream.vst3` and AU into `~/Library/Audio/Plug-Ins/Components/SessionStream.component`, each with its bundled runtime; it does not install a separate app. Requires Apple Silicon and macOS 13.5 or newer. Save and close your DAW before installing an update, then reopen it and rescan plugins if needed.
 
 This build is ad-hoc signed. The installer is unsigned and not notarized because no Developer ID certificate is configured. Downloaded copies may require approval under macOS System Settings → Privacy & Security → Open Anyway. A notarized release needs Developer ID signing.
 
@@ -20,7 +22,7 @@ Use AU in Logic Pro; VST3 or AU in Ableton Live and FL Studio. These are format-
 
 The stream gain changes only the outgoing copy. Your DAW track passes through unchanged. Gain is saved with the project, and streaming stays off when a saved project opens. Offline exports are never transmitted. One plugin owns an active session at a time, with up to eight listeners.
 
-No sender browser, terminal, login, separately installed Node, or separate cloudflared installation is needed for the bundled plugin. The background engine runs while an enabled plugin uses it. Keep your Mac awake and connected to the internet.
+No sender browser, terminal, login, separately installed Node, or separate cloudflared installation is needed for the bundled plugin. The background engine runs while an enabled plugin uses it. Keep your computer awake and connected to the internet.
 
 ### Turning the plugin off
 
@@ -30,7 +32,7 @@ Explicit bypass and host deactivation normally close the backend within about a 
 
 If the DAW crashes or a controller disappears without releasing its session, its heartbeat expires after five seconds; the helper checks every 250 ms and shuts down once no enabled clients remain. A helper abandoned during startup exits after eight seconds without any attached controller. The helper waits for its tunnel child to exit and forces termination if graceful shutdown fails. Re-enabling can create a fresh temporary hostname/invite and requires cold startup again; share the new link.
 
-An old, idle SessionStream helper from 0.10 or 0.11 is retired automatically when 0.20 starts its engine. An active old broadcast is preserved; stop it first to allow the engine upgrade.
+An old, idle SessionStream helper from 0.10 or 0.11 is retired automatically when 0.30 starts its engine. An active old broadcast is preserved; stop it first to allow the engine upgrade.
 
 After updating the plugin, restart your DAW when convenient so it loads the new binary. Save your project first. Existing loaded instances can retain the previous version until the host restarts.
 
@@ -48,7 +50,7 @@ On browsers exposing the AudioSession API (iOS 17+), listening requests the medi
 
 ## Updates
 
-The plugin checks `https://raw.githubusercontent.com/loyahdev/sessionstream/refs/heads/main/version.txt` in the background when an instance is added and when its window opens. The current display version is **0.20** (bundle/package version **0.20.0**). Put a plain dotted version such as `0.21` in that file to announce a newer release. `0.20` and `0.20.0` compare equal; `0.11` is older. Already-installed 0.11 plugins use the same integer comparison and can discover 0.20 without a special compatibility alias.
+The plugin checks `https://raw.githubusercontent.com/loyahdev/sessionstream/refs/heads/main/version.txt` in the background when an instance is added and when its window opens. The current display version is **0.30** (bundle/package version **0.30.0**). Put a plain dotted version such as `0.31` in that file to announce a newer release. `0.30` and `0.30.0` compare equal; `0.11` is older. Already-installed 0.11 plugins use the same integer comparison and can discover 0.30 without a special compatibility alias.
 
 A newer version reveals **Get update** and **Ignore for this session** inside the plugin. Get update opens `https://github.com/loyahdev/sessionstream/releases/latest`; publish the new installer there before changing `version.txt`. Ignore hides update notices for plugin instances in the current DAW process; restarting the DAW allows notices again. Failed/offline/malformed checks stay quiet and do not interfere with streaming. The checker sends no session links or credentials, only an HTTPS request for the version file.
 
@@ -58,7 +60,7 @@ The default connection uses stereo Opus at a requested 320 kbps / 48 kHz with We
 
 WebRTC attempts a direct connection. If the listener's network prevents that, it automatically switches to PCM over the public HTTPS/WebSocket tunnel. The client can also select **Use compatibility audio**. Compatibility mode uses substantially more bandwidth and usually adds delay, but does not require inbound ports or a listener download.
 
-Invites use a temporary Cloudflare Quick Tunnel hostname. They work over the public internet while this Mac and its tunnel are online. Restarting the background engine or Mac can change the hostname. This prototype does not yet provide permanent domains, an uptime guarantee, globally tested latency, or a managed TURN service. TURN credentials can be supplied through `TURN_URLS` and `TURN_SECRET` (coturn REST), or `TURN_URLS`, `TURN_USERNAME`, `TURN_PASSWORD` in the helper's environment.
+Invites use a temporary Cloudflare Quick Tunnel hostname. They work over the public internet while this computer and its tunnel are online. Restarting the background engine or computer can change the hostname. This prototype does not yet provide permanent domains, an uptime guarantee, globally tested latency, or a managed TURN service. TURN credentials can be supplied through `TURN_URLS` and `TURN_SECRET` (coturn REST), or `TURN_URLS`, `TURN_USERNAME`, `TURN_PASSWORD` in the helper's environment.
 
 ## Build and install
 
@@ -88,7 +90,7 @@ Save and close your DAW before installing. `npm run install:plugin` installs bot
 - Plugin: `build/SessionStream_artefacts/Release/VST3/SessionStream.vst3`
 - Audio Unit: `build/SessionStream_artefacts/Release/AU/SessionStream.component`
 - Installed: `~/Library/Audio/Plug-Ins/VST3/SessionStream.vst3` and `~/Library/Audio/Plug-Ins/Components/SessionStream.component`
-- Installer: `artifacts/SessionStream-0.20-mac-arm64.pkg`
+- Installer: `artifacts/SessionStream-0.30-mac-arm64.pkg`
 - Plugin archive: `artifacts/SessionStream-mac-arm64.vst3.zip`
 - Checksums: `artifacts/SHA256SUMS.txt`
 
@@ -116,8 +118,14 @@ npm run test:access      # local protected/unprotected browser audio + listener 
 npm run package:source
 ```
 
-This produces `artifacts/SessionStream-0.20-source.zip` and a separate `.sha256` file. Extract it and upload the contents of its `SessionStream` folder to the repository. It includes the plugin, server, listener, tests, installer resources, documentation, lockfile and license. The exporter excludes dependencies, compiled products, local runtime state, environment files and logs; `.gitignore` also excludes them during normal Git use. Local build products remain on your machine.
+This produces `artifacts/SessionStream-0.30-source.zip` and a separate `.sha256` file. Extract it and upload the contents of its `SessionStream` folder to the repository. It includes the plugin, server, listener, tests, installer resources, documentation, lockfile and license. The exporter excludes dependencies, compiled products, local runtime state, environment files and logs; `.gitignore` also excludes them during normal Git use. Local build products remain on your machine.
 
 Upload the PKG, VST3 ZIP and `SHA256SUMS.txt` as GitHub Release assets, rather than adding them to the source repository. The AU is included in the PKG; the standalone app is for development. Historical validation notes refer to local artifacts which are not part of a source checkout. Publish a new release before updating `version.txt`, and keep the version in `package.json`, `CMakeLists.txt`, `installer/Distribution.xml`, plugin UI/update checker and installer text consistent.
 
 SessionStream's source is AGPL-3.0-only. See `LICENSE` and `docs/THIRD_PARTY.md` for dependencies and notices.
+
+## Troubleshooting menu
+
+Open **… → Troubleshooting → Copy diagnostics** in the plugin. The copied report includes version, OS, plugin architecture/format and connection state. Private invites, passcodes, tokens and free-form engine errors are excluded. The **Compatibility** menu item lists supported operating systems and DAW formats.
+
+The browser retries a failed audio-engine module load once. If it still fails, it gives instructions to reload, check the connection or obtain a fresh invite.

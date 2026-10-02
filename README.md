@@ -10,9 +10,10 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.20-baf77a?style=flat-square&amp;labelColor=202a23" alt="Version 0.20">
+  <img src="https://img.shields.io/badge/version-0.30-baf77a?style=flat-square&amp;labelColor=202a23" alt="Version 0.30">
   <img src="https://img.shields.io/badge/macOS-13.5%2B-baf77a?style=flat-square&amp;labelColor=202a23&amp;logo=apple&amp;logoColor=white" alt="macOS 13.5 or newer">
   <img src="https://img.shields.io/badge/Apple_Silicon-VST3_%2B_AU-baf77a?style=flat-square&amp;labelColor=202a23" alt="Apple Silicon · VST3 and AU">
+  <img src="https://img.shields.io/badge/Windows_11-x64_%2B_ARM64-baf77a?style=flat-square&amp;labelColor=202a23" alt="Windows 11 · Intel/AMD x64 and ARM64">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-baf77a?style=flat-square&amp;labelColor=202a23" alt="AGPL-3.0 license"></a>
 </p>
 
@@ -32,7 +33,7 @@ SessionStream is a VST3 and Audio Units (AU) plugin for producers who teach, col
     <td width="50%" valign="top">
       <h3>Share from your session</h3>
       <p>Generate an invite, control the outgoing level, and watch your stereo meters. Your DAW level stays unchanged.</p>
-      <a href="docs/images/plugin.png"><img src="docs/images/plugin.png" alt="SessionStream 0.20 plugin showing stereo meters, output gain, passcode and QR share controls" width="100%"></a>
+      <a href="docs/images/plugin.png"><img src="docs/images/plugin.png" alt="SessionStream 0.30 plugin showing stereo meters, output gain, passcode and QR share controls" width="100%"></a>
     </td>
     <td width="50%" valign="top">
       <h3>Listen from anywhere</h3>
@@ -55,16 +56,23 @@ SessionStream is a VST3 and Audio Units (AU) plugin for producers who teach, col
 
 ## Quick start
 
-**Current build: 0.20 · Apple Silicon · macOS 13.5+ · VST3 + AU**
+**Current build: 0.30 · macOS Apple Silicon + Windows 11 x64 / ARM64**
 
-Install `SessionStream-0.20-mac-arm64.pkg` and reopen your DAW. See [Releases](https://github.com/loyahdev/sessionstream/releases) for published installers, or [build from source](#build-from-source). Local builds place the installer in `artifacts/`.
+| Operating system | Architecture | Plugin formats | Installer |
+| :--- | :--- | :--- | :--- |
+| macOS 13.5+ | Apple Silicon | VST3 + AU | `SessionStream-0.30-mac-arm64.pkg` |
+| Windows 11 | Intel/AMD x64 + ARM64 | VST3 | `SessionStream-0.30-windows-x64-arm64.exe` |
+
+The Windows installer includes both plugin architectures. Windows ARM64 uses an x64 streaming helper under emulation. Intel Macs, Windows 10 and 32-bit x86 DAWs are not supported.
+
+Save and close your DAW, install the package for your system, then reopen your DAW. See [Releases](https://github.com/loyahdev/sessionstream/releases) for published installers, or [build from source](#build-from-source). Local installers are in `artifacts/`.
 
 1. **Add the plugin.** Put SessionStream on the track you want to share, or last on your Main/Master bus for the full mix.
 2. **Generate a link.** Click **Generate share link** and wait for it to become ready. First startup can take tens of seconds.
 3. **Start streaming.** Adjust **Stream output**, click **Start streaming**, and share the invite using **Copy link**.
 4. **Let them listen.** Your listener opens the link and presses **Start listening**.
 
-Click **Stop streaming** to silence listeners; the same invite works when you start again. Keep your Mac awake and online. Anyone with the full invite and any required passcode can listen, so share them with your intended listeners.
+Click **Stop streaming** to silence listeners; the same invite works when you start again. Keep your computer awake and online. Anyone with the full invite and any required passcode can listen, so share them with your intended listeners.
 
 **Optional access controls:** enable **Use passcode** before generating a link. Listeners enter that code before they can receive audio. **Generate QR code** displays the invite inside the plugin; the code is generated locally and contains the link, without the passcode. Normal streaming status stays simple; the plugin shows a warning if a listener reports blocked playback or interrupted audio.
 
@@ -72,24 +80,25 @@ Click **Stop streaming** to silence listeners; the same invite works when you st
 
 ### DAW compatibility
 
-| DAW | Plugin format |
-| :--- | :--- |
-| Ableton Live | VST3 or AU |
-| Logic Pro | AU |
-| FL Studio | VST3 or AU |
-| Other compatible hosts | VST3 or AU |
+Works with **most DAWs that support VST3**, plus **AU hosts on macOS**. Examples include Ableton Live, REAPER, FL Studio, Cubase and Studio One. Logic Pro uses AU. Pro Tools requires AAX, which is not included.
 
-Run your DAW natively on Apple Silicon. These are format-compatible hosts; host-specific testing is documented in [validation results](docs/VALIDATION.md).
+Use a native Apple Silicon DAW on macOS. On Windows, the plugin architecture must match the DAW: x64 hosts use the x64 binary, while native ARM64 hosts use the ARM64 binary.
+
+Windows ARM64 in UTM with REAPER was tested successfully by the user, including playback and seeking after the fix. This confirms that VM setup; the loaded plugin architecture was not recorded. Other compatible DAWs, native ARM64 hosts and physical Windows performance have separate validation limits in the [validation results](docs/VALIDATION.md).
+
+**Troubleshooting:** open the plugin's **… → Troubleshooting → Copy diagnostics** menu. It copies version, OS, plugin architecture/format and connection state, without private links, passcodes or tokens. **… → Compatibility** shows the supported systems and formats.
 
 <details>
-<summary><strong>Installation and macOS approval</strong></summary>
+<summary><strong>Installation and system approval</strong></summary>
 
-Save and close your DAW before installing or updating. The installer places the plugins and their bundled runtime in:
+Save and close your DAW before installing or updating. The macOS installer places the plugins and their bundled runtime in:
 
 - VST3: `~/Library/Audio/Plug-Ins/VST3/SessionStream.vst3`
 - AU: `~/Library/Audio/Plug-Ins/Components/SessionStream.component`
 
-Reopen your DAW and rescan plugins if needed. This build is ad-hoc signed; the installer is unsigned and not notarized. Downloaded copies may require **System Settings → Privacy & Security → Open Anyway**.
+Windows installs VST3 into `C:\Program Files\Common Files\VST3\SessionStream.vst3`; see the [Windows guide](docs/WINDOWS.md).
+
+Reopen your DAW and rescan plugins if needed. This macOS build is ad-hoc signed; the installer is unsigned and not notarized. Downloaded copies may require **System Settings → Privacy & Security → Open Anyway**.
 
 See the [installation guide](docs/DEVELOPMENT.md#install) for details.
 
@@ -129,6 +138,8 @@ TryCloudflare use is governed by [Cloudflare's Website and Online Services Terms
 
 ## Build from source
 
+Windows x64 and ARM64 port, installer, build instructions, and validation limits: [Windows guide](docs/WINDOWS.md).
+
 Build on an **Apple Silicon Mac running macOS 13.5+**, with native **Node.js 24+ / npm**, **CMake 3.22+**, **Xcode Command Line Tools**, and **cloudflared**. These are developer prerequisites; people installing the PKG need none of them.
 
 If needed, install Command Line Tools with `xcode-select --install`. With [Homebrew](https://brew.sh/) installed, set up the remaining tools:
@@ -147,7 +158,7 @@ npm run build:plugin
 npm run build:installer
 ```
 
-The first build requires internet access to download JUCE 8.0.12 and the bundled Node v24.3.0 runtime. It verifies those downloads, bundles the native WebRTC addon and your installed cloudflared, then ad-hoc signs VST3, AU, and a development standalone app. The PKG contains VST3 and AU and is written to `artifacts/SessionStream-0.20-mac-arm64.pkg`; checksums are in `artifacts/SHA256SUMS.txt`.
+The first build requires internet access to download JUCE 8.0.12 and the bundled Node v24.3.0 runtime. It verifies those downloads, bundles the native WebRTC addon and your installed cloudflared, then ad-hoc signs VST3, AU, and a development standalone app. The PKG contains VST3 and AU and is written to `artifacts/SessionStream-0.30-mac-arm64.pkg`; checksums are in `artifacts/SHA256SUMS.txt`.
 
 To install your build locally, save and close your DAW, then run `npm run install:plugin` or open the PKG. If cloudflared is outside your `PATH`, set `CLOUDFLARED_PATH` to its full executable path before building.
 

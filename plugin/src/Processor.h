@@ -9,8 +9,10 @@ public:
     explicit StreamProcessor(UpdateChecker::Fetch reader={});
     ~StreamProcessor() override { releaseResources(); controller.reset(); }
     void prepareToPlay(double rate, int) override { currentRate = static_cast<uint32_t>(rate); gain.reset(rate,.02); gain.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(gainParameter->get())); hostActivity.prepare(); }
-    void releaseResources() override { hostActivity.deactivate(); transport.enabled=false; if(controller)controller->wake(); }
-    void reset() override { releaseResources(); }
+    void releaseResources() override { hostActivity.deactivate(); transport.enabled=false; transport.resetPending(); if(controller)controller->wake(); }
+    // VST3 setProcessing(false) calls reset when a host flushes audio (e.g.
+    // seeking). The component is still active; keep its lease and invite.
+    void reset() override { transport.resetPending(); }
     bool isBusesLayoutSupported(const BusesLayout&) const override;
     void processBlock(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
     void processBlockBypassed(juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
@@ -36,6 +38,7 @@ public:
     UpdateChecker updates;
     float gainDb() const { return gainParameter->get(); }
     void setGainDb(float db) { gainParameter->setValueNotifyingHost(gainParameter->convertTo0to1(db)); }
+    juce::String diagnostics() const;
 private:
     HostActivity hostActivity;
     juce::SmoothedValue<float> gain{1.f};

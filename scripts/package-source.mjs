@@ -12,11 +12,12 @@ if (!/^\d+\.\d+\.\d+$/.test(manifest.version)) throw new Error('Invalid package.
 // Source and installer filenames use the manifest display version.
 const version = manifest.version.replace(/\.0$/, '');
 const files = ['.gitignore', '.nvmrc', 'CMakeLists.txt', 'LICENSE', 'README.md', 'package.json', 'package-lock.json', 'version.txt'];
-const directories = ['docs', 'installer', 'plugin', 'scripts', 'server', 'tests', 'web'];
+const directories = ['cmake', 'docs', 'installer', 'plugin', 'scripts', 'server', 'tests', 'web'];
 const scratch = await mkdtemp(path.join(tmpdir(), 'sessionstream-source-'));
 const destination = path.join(scratch, 'SessionStream');
 const artifacts = path.join(root, 'artifacts');
-const archive = path.join(artifacts, `SessionStream-${version}-source.zip`);
+const variant = process.argv.includes('--windows') ? '-windows' : '';
+const archive = path.join(artifacts, `SessionStream-${version}${variant}-source.zip`);
 const excluded = name => name === '.DS_Store' || name.startsWith('._') || name === '__MACOSX' ||
   name === 'node_modules' || name === '.env' || (name.startsWith('.env.') && name !== '.env.example') ||
   /\.(log|swp|swo|tgz)$/.test(name);
@@ -43,7 +44,8 @@ try {
   try { await lstat(path.join(root, '.github')); await copy('.github'); }
   catch (error) { if (error.code !== 'ENOENT') throw error; }
   await mkdir(artifacts, {recursive:true});
-  execFileSync('/usr/bin/ditto', ['-c', '-k', '--norsrc', '--noextattr', '--keepParent', destination, archive]);
+  if(process.platform==='win32')execFileSync('tar',['-a','-cf',archive,'-C',scratch,'SessionStream']);
+  else execFileSync('/usr/bin/ditto', ['-c', '-k', '--norsrc', '--noextattr', '--keepParent', destination, archive]);
   const digest = createHash('sha256').update(await readFile(archive)).digest('hex');
   await writeFile(`${archive}.sha256`, `${digest}  ${path.basename(archive)}\n`);
   console.log(`Source archive: ${archive}`);
