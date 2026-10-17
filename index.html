@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>SessionStream — Your session. Anywhere.</title>
+<meta name="description" content="A free, open-source VST3 and AU plugin for sharing live stereo audio from your DAW to a browser. Built by loyahdev.">
+<link rel="icon" href="websrc/logo.svg">
+<link rel="stylesheet" href="websrc/styles.css">
+</head>
+<body>
+<nav><a class="brand" href="#" aria-label="SessionStream home">SESSION<img src="websrc/logo.svg" alt="">STREAM</a>
+<div class="navlinks"><a href="#downloads">Downloads</a><a href="https://github.com/loyahdev/sessionstream/blob/main/docs/DEVELOPMENT.md">Docs</a><a href="https://github.com/loyahdev/sessionstream/issues">Issues</a>
+</div>
+<div class="navend"><a href="https://github.com/loyahdev/sessionstream">GitHub</a><a class="navget" href="#downloads">Download v0.30 <span>↓</span></a>
+</div>
+</nav>
+<main>
+<section class="hero">
+<div class="intro">
+<div class="kicker"><a href="https://github.com/loyahdev/sessionstream">loyahdev / sessionstream</a><span class="tag">v0.30</span><span class="free-badge">Free &amp; open source</span>
+</div>
+<h1>Live audio sharing<br><span>from your DAW.</span>
+</h1>
+<p>SessionStream sends stereo audio from your DAW to a browser.<br>Use it for mix feedback, remote lessons, or listening on another device.</p>
+</div>
+<div class="stage" role="img" aria-label="Illustration of audio travelling from the SessionStream plugin through its three-wave logo to a browser listener"><canvas id="scene" aria-hidden="true"></canvas>
+<div class="fallback"><img src="websrc/plugin.png" alt="SessionStream plugin"><img src="websrc/logo.svg" alt="SessionStream"><img src="websrc/listener.png" alt="Browser listener">
+</div>
+<div class="scene-labels">
+<div class="endpoint left"><b>Your session</b>VST3 + AU</div>
+<div class="endpoint center"><b>SESSION<img src="websrc/logo.svg" alt="">STREAM</b>Free software · AGPL-3.0</div>
+<div class="endpoint right"><b>Their browser</b>NO INSTALLATION NEEDED</div>
+</div>
+<div class="telemetry">Plugin → browser<br><span>Animated illustration</span>
+</div>
+<div class="scene-control"><span id="motion-status">Animation playing</span><button id="motion" aria-label="Pause animation" aria-pressed="false">Ⅱ</button>
+</div>
+<div class="stage-foot">
+</div>
+</div>
+<div class="actions"><a class="primary" href="#downloads">Download v0.30 <span>↓</span></a><a class="secondary" href="https://github.com/loyahdev/sessionstream">View source on GitHub <span>↗</span></a>
+</div>
+<p class="free-note">Free to download and use. No subscription.</p>
+<p class="undercta">macOS 13.5+ (Apple Silicon) · Windows 11 (x64 / ARM64)</p>
+<div class="strip">
+<div class="benefits"><a href="https://github.com/loyahdev/sessionstream/blob/main/LICENSE">AGPL-3.0 licensed ↗</a><span>No listener downloads</span><span>No listener accounts</span>
+</div><a class="release-link" href="https://github.com/loyahdev/sessionstream/releases/tag/0.30">v0.30 release notes ↗</a>
+</div>
+</section>
+<section class="workflow" id="workflow">
+<h2>How to share<br><span>your session audio.</span>
+</h2>
+<div class="steps">
+<div class="step"><small>01</small>
+<h3>Choose your audio.</h3>
+<p>Add the plugin to a track or your master bus.</p>
+</div>
+<div class="step"><small>02</small>
+<h3>Generate a link.</h3>
+<p>Generate a share link, start streaming, and send the invite.</p>
+</div>
+<div class="step"><small>03</small>
+<h3>Start listening.</h3>
+<p>Your listener opens the link and presses Start listening.</p>
+</div>
+</div>
+</section>
+<section class="capabilities">
+<div class="capabilities-intro"><span class="section-label">Audio and sharing</span>
+<h2>What SessionStream does</h2>
+<p>Add the plugin to a single track or your master bus. It streams a copy of the audio without changing your DAW output.</p>
+<ul class="use-list">
+<li><strong>Mix reviews</strong><span>Share playback and let collaborators hear your changes.</span>
+</li>
+<li><strong>Remote lessons</strong><span>Send session audio to a student’s browser.</span>
+</li>
+<li><strong>Another listening device</strong><span>Open the invite on a second device to check your mix.</span>
+</li>
+</ul>
+</div>
+<dl class="feature-list">
+<div>
+<dt>Live stereo</dt>
+<dd>WebRTC audio using Opus at 48 kHz, with a requested bitrate of 320 kbps.</dd>
+</div>
+<div>
+<dt>Browser listening</dt>
+<dd>Listeners open a link and press Start listening. No listener account, plugin, or download.</dd>
+</div>
+<div>
+<dt>Up to eight listeners</dt>
+<dd>Share an invite with optional passcode protection. A new invite invalidates the previous one.</dd>
+</div>
+<div>
+<dt>Separate stream level</dt>
+<dd>Adjust the outgoing audio level without changing your track or master level.</dd>
+</div>
+</dl>
+</section>
+<section class="project-section" id="downloads">
+<div class="section-heading">
+<div><span class="section-label">Downloads</span>
+<h2>SessionStream 0.30 <span class="download-price">Free</span>
+</h2>
+<p>Released October 2, 2026 · <a href="https://github.com/loyahdev/sessionstream/releases/tag/0.30">Release notes ↗</a>
+</p>
+</div><a class="quiet-link" href="https://github.com/loyahdev/sessionstream/releases">All releases ↗</a>
+</div>
+<div class="download-list"><a href="https://github.com/loyahdev/sessionstream/releases/download/0.30/SessionStream-0.30-mac-arm64.pkg"><span class="platform">macOS<span>13.5+ · Apple Silicon · VST3 + AU</span></span><span class="file-type">.pkg <b>↓</b></span></a><a href="https://github.com/loyahdev/sessionstream/releases/download/0.30/SessionStream-0.30-windows-x64-arm64.exe"><span class="platform">Windows<span>Windows 11 · x64 + ARM64 · VST3</span></span><span class="file-type">.exe <b>↓</b></span></a>
+</div>
+<p class="install-note">Close your DAW before installing, then reopen it. Installers are unsigned. <a href="https://github.com/loyahdev/sessionstream/blob/main/docs/DEVELOPMENT.md#install">Installation instructions ↗</a>
+</p>
+<details class="status-note">
+<summary><span class="status-dot"></span>Experimental release <span class="expand">+</span>
+</summary>
+<p>Session links use temporary Cloudflare Quick Tunnels, with no uptime guarantee. Latency and reliability depend on the connection; testing is still in progress. <a href="https://github.com/loyahdev/sessionstream/blob/main/docs/VALIDATION.md">Read the validation notes ↗</a>
+</p>
+</details>
+</section>
+<section class="open-project">
+<div><span class="section-label">The project</span>
+<h2>Built by <a href="https://github.com/loyahdev">loyahdev ↗</a>
+</h2>
+<p>SessionStream is an independent project. The plugin, streaming engine, and browser listener are all in the repository under AGPL-3.0.</p>
+<p>Found a bug or tried it in your DAW? Open an issue with your setup and what happened.</p>
+</div>
+<div class="project-links"><a href="https://github.com/loyahdev/sessionstream">Browse the source <span>↗</span></a><a href="https://github.com/loyahdev/sessionstream/issues">Report a bug <span>↗</span></a><a href="https://github.com/loyahdev/sessionstream#build-from-source">Build it yourself <span>↗</span></a><a href="https://github.com/loyahdev/sessionstream/blob/main/LICENSE">Read the license <span>↗</span></a>
+</div>
+</section>
+</main>
+<footer><span>SessionStream · Free software for sharing audio</span><span><a href="https://github.com/loyahdev/sessionstream/blob/main/LICENSE">AGPL-3.0</a> · <a href="https://github.com/loyahdev/sessionstream">GitHub ↗</a></span>
+</footer>
+<script type="module" src="websrc/app.js">
+</script>
+</body>
+</html>
+
