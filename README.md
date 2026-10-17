@@ -20,7 +20,7 @@
 <p align="center">
   <a href="#quick-start"><strong>Get started</strong></a> ·
   <a href="docs/DEVELOPMENT.md">Installation &amp; development</a> ·
-  <a href="docs/VALIDATION.md">Validation</a> ·
+  <a href="https://loyahdev.github.io/sessionstream">Website</a> ·
   <a href="https://github.com/loyahdev/sessionstream/releases">Releases</a>
 </p>
 
