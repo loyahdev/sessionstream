@@ -18,3 +18,11 @@ The Windows installer uses NSIS 3.11 (https://nsis.sourceforge.io/). Its install
 - cloudflared ships with the plugin; no separate runtime installation is required. Apache-2.0: see [CLOUDFLARED-LICENSE.txt](CLOUDFLARED-LICENSE.txt), copied into `runtime/notices/` by the build. The macOS builder's installed version is used; Windows uses pinned cloudflared 2026.9.3 for x64 with SHA-256 verification.
 
 - QR Code generator by Project Nayuki: MIT. The pinned C++ source is under `plugin/third_party/`, with `LICENSE-qrcodegen.txt` copied into the bundled notices. Official source: https://github.com/nayuki/QR-Code-generator/tree/3c6d0b3cefb4e049dc337e82237c9644399716a8/cpp
+
+## JIVE UI modules
+
+JIVE 1.2.0, commit 89d5787a762e674ee8b7141031a99e6743948f05, by James Johnson. MIT license. Source and license: vendor/JIVE/. https://github.com/ImJimmi/JIVE
+
+## Inter typeface
+
+Inter by Rasmus Andersson, SIL Open Font License 1.1. Embedded unmodified from the official repository. License: plugin/assets/Inter-LICENSE.txt. https://github.com/rsms/inter

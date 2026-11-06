@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.30-baf77a?style=flat-square&amp;labelColor=202a23" alt="Version 0.30">
+  <img src="https://img.shields.io/badge/version-1.0-baf77a?style=flat-square&amp;labelColor=202a23" alt="Version 1.0">
   <img src="https://img.shields.io/badge/macOS-13.5%2B-baf77a?style=flat-square&amp;labelColor=202a23&amp;logo=apple&amp;logoColor=white" alt="macOS 13.5 or newer">
   <img src="https://img.shields.io/badge/Apple_Silicon-VST3_%2B_AU-baf77a?style=flat-square&amp;labelColor=202a23" alt="Apple Silicon · VST3 and AU">
   <img src="https://img.shields.io/badge/Windows_11-x64_%2B_ARM64-baf77a?style=flat-square&amp;labelColor=202a23" alt="Windows 11 · Intel/AMD x64 and ARM64">
@@ -33,7 +33,7 @@ SessionStream is a VST3 and Audio Units (AU) plugin for producers who teach, col
     <td width="50%" valign="top">
       <h3>Share from your session</h3>
       <p>Generate an invite, control the outgoing level, and watch your stereo meters. Your DAW level stays unchanged.</p>
-      <a href="docs/images/plugin.png"><img src="docs/images/plugin.png" alt="SessionStream 0.30 plugin showing stereo meters, output gain, passcode and QR share controls" width="100%"></a>
+      <a href="docs/images/plugin.png"><img src="docs/images/plugin.png" alt="SessionStream 1.0 plugin showing stereo meters, output gain, passcode and QR share controls" width="100%"></a>
     </td>
     <td width="50%" valign="top">
       <h3>Listen from anywhere</h3>
@@ -47,34 +47,36 @@ SessionStream is a VST3 and Audio Units (AU) plugin for producers who teach, col
 
 | | What you get |
 | :--- | :--- |
-| **Live stereo** | Low-delay WebRTC audio with stereo Opus at a requested 320 kbps / 48 kHz. |
+| **Live stereo** | Low-delay WebRTC audio with stereo Opus at a requested 510 kbps / 48 kHz. |
 | **Independent stream gain** | Adjust what your listener hears without changing your track or master level. |
 | **Simple invitations** | Share a private link with up to eight listeners. Generate a new invitation to invalidate the previous one. |
 | **Browser playback** | Listeners install nothing. They get a waveform, a dB volume control with up to +6 dB boost, mute without disconnecting, and live audio and connection details. |
-| **Compatibility audio** | Automatic PCM fallback through the HTTPS tunnel when a direct WebRTC connection cannot be established. |
+| **Buffered audio** | Automatic PCM fallback through the HTTPS tunnel when a direct WebRTC connection cannot be established. |
 | **Bundled engine** | The streaming engine and tunnel ship with the plugin. No separate Node install, Cloudflare login, or SessionStream subscription. |
 
 ## Quick start
 
-**Current build: 0.30 · macOS Apple Silicon + Windows 11 x64 / ARM64**
+**Current build: 1.0 · macOS Apple Silicon + Windows 11 x64 / ARM64**
 
 | Operating system | Architecture | Plugin formats | Installer |
 | :--- | :--- | :--- | :--- |
-| macOS 13.5+ | Apple Silicon | VST3 + AU | `SessionStream-0.30-mac-arm64.pkg` |
-| Windows 11 | Intel/AMD x64 + ARM64 | VST3 | `SessionStream-0.30-windows-x64-arm64.exe` |
+| macOS 13.5+ | Apple Silicon | VST3 + AU | `SessionStream-1.0-mac-arm64.pkg` |
+| Windows 11 | Intel/AMD x64 + ARM64 | VST3 | `SessionStream-1.0-windows-x64-arm64.exe` |
 
 The Windows installer includes both plugin architectures. Windows ARM64 uses an x64 streaming helper under emulation. Intel Macs, Windows 10 and 32-bit x86 DAWs are not supported.
 
 Save and close your DAW, install the package for your system, then reopen your DAW. See [Releases](https://github.com/loyahdev/sessionstream/releases) for published installers, or [build from source](#build-from-source). Local installers are in `artifacts/`.
 
 1. **Add the plugin.** Put SessionStream on the track you want to share, or last on your Main/Master bus for the full mix.
-2. **Generate a link.** Click **Generate share link** and wait for it to become ready. First startup can take tens of seconds.
-3. **Start streaming.** Adjust **Stream output**, click **Start streaming**, and share the invite using **Copy link**.
+2. **Start streaming.** Wait for the connection to finish loading, then click **Start streaming**. Your first link is created automatically. First startup can take tens of seconds.
+3. **Share your link.** Click **Copy link** and send it to your listener. Adjust **Stream output** if needed.
 4. **Let them listen.** Your listener opens the link and presses **Start listening**.
 
 Click **Stop streaming** to silence listeners; the same invite works when you start again. Keep your computer awake and online. Anyone with the full invite and any required passcode can listen, so share them with your intended listeners.
 
-**Optional access controls:** enable **Use passcode** before generating a link. Listeners enter that code before they can receive audio. **Generate QR code** displays the invite inside the plugin; the code is generated locally and contains the link, without the passcode. Normal streaming status stays simple; the plugin shows a warning if a listener reports blocked playback or interrupted audio.
+**Optional access controls:** enable **Use passcode** before generating a link. Listeners enter that code before they can receive audio. **Show QR code** displays the invite inside the plugin; the code is generated locally and contains the link, without the passcode. Normal streaming status stays simple; the plugin shows a warning if a listener reports blocked playback or interrupted audio.
+
+Listeners can leave **Live audio** selected for high-quality stereo with less delay. Choose **Buffered audio** if the sound will not connect or keeps cutting out; it uses more data and adds delay. A failed direct connection switches automatically. Connection statistics are tucked under **Connection details**.
 
 **Turning the plugin off:** disabling/bypassing or removing SessionStream releases its session. When the last enabled instance using the engine is gone, the background engine and tunnel shut down. Re-enable and generate/share a fresh link; cold startup can take tens of seconds again. Closing just the plugin window keeps the session active. See [shutdown behavior](docs/DEVELOPMENT.md#turning-the-plugin-off) for host differences and crash recovery.
 
@@ -86,7 +88,7 @@ Use a native Apple Silicon DAW on macOS. On Windows, the plugin architecture mus
 
 Windows ARM64 in UTM with REAPER was tested successfully by the user, including playback and seeking after the fix. This confirms that VM setup; the loaded plugin architecture was not recorded. Other compatible DAWs, native ARM64 hosts and physical Windows performance have separate validation limits in the [validation results](docs/VALIDATION.md).
 
-**Troubleshooting:** open the plugin's **… → Troubleshooting → Copy diagnostics** menu. It copies version, OS, plugin architecture/format and connection state, without private links, passcodes or tokens. **… → Compatibility** shows the supported systems and formats.
+**Troubleshooting:** open **… → Troubleshooting → Export diagnostics and logs…** to save a JSON report, or **Copy diagnostics** to copy the same information. Both include system and connection state, audio lifecycle counters, controller events, and all retained engine, launcher and Cloudflare logs. Logs redact URLs and credentials and retain three files of up to 256 KiB each per runtime process. **… → Compatibility** shows the supported systems and formats.
 
 <details>
 <summary><strong>Installation and system approval</strong></summary>
@@ -112,14 +114,14 @@ Your DAW → SessionStream → WebRTC stereo audio → Their browser
                 └── Temporary HTTPS invite via Cloudflare Quick Tunnel
 ```
 
-The plugin sends a copy of your audio while your DAW signal passes through unchanged. WebRTC attempts direct audio delivery; compatibility mode sends PCM through the tunnel when needed. Streaming starts off when a saved project opens, and offline exports are never transmitted.
+The plugin sends a copy of your audio while your DAW signal passes through unchanged. WebRTC attempts direct audio delivery; Buffered audio sends PCM through the tunnel when needed. Streaming starts off when a saved project opens. Offline bouncing, consolidation, exports and audio reconfiguration preserve the session and invite; outgoing audio pauses during offline rendering and resumes with realtime playback.
 
 <details>
 <summary><strong>Audio quality and connection limits</strong></summary>
 
 The default Opus stream is high-quality compressed audio. Supported DAW source rates are 44.1, 48, 88.2, 96, 176.4, and 192 kHz; WebRTC audio uses 48 kHz. Latency depends on sender buffering, both connections, and listener buffering.
 
-Compatibility mode uses more bandwidth and usually adds delay. One plugin owns an active session at a time. End-to-end latency, long sessions, physical Safari/iOS playback, and real client WAN WebRTC connections remain unverified; see the [recorded validation](docs/VALIDATION.md).
+Buffered audio uses more bandwidth and usually adds delay. One plugin owns an active session at a time. End-to-end latency, long sessions, physical Safari/iOS playback, and real client WAN WebRTC connections remain unverified; see the [recorded validation](docs/VALIDATION.md).
 
 See [quality and connections](docs/DEVELOPMENT.md#quality-and-connections) for technical details and optional TURN configuration.
 
@@ -158,7 +160,7 @@ npm run build:plugin
 npm run build:installer
 ```
 
-The first build requires internet access to download JUCE 8.0.12 and the bundled Node v24.3.0 runtime. It verifies those downloads, bundles the native WebRTC addon and your installed cloudflared, then ad-hoc signs VST3, AU, and a development standalone app. The PKG contains VST3 and AU and is written to `artifacts/SessionStream-0.30-mac-arm64.pkg`; checksums are in `artifacts/SHA256SUMS.txt`.
+The first build requires internet access to download JUCE 8.0.12 and the bundled Node v24.3.0 runtime. It verifies those downloads, bundles the native WebRTC addon and your installed cloudflared, then ad-hoc signs VST3, AU, and a development standalone app. The PKG contains VST3 and AU and is written to `artifacts/SessionStream-1.0-mac-arm64.pkg`; checksums are in `artifacts/SHA256SUMS.txt`.
 
 To install your build locally, save and close your DAW, then run `npm run install:plugin` or open the PKG. If cloudflared is outside your `PATH`, set `CLOUDFLARED_PATH` to its full executable path before building.
 
@@ -180,3 +182,7 @@ For build details, tests, and troubleshooting, see [development notes](docs/DEVE
   Built by <a href="https://github.com/loyahdev"><strong>loyahdev</strong></a> · <a href="LICENSE">AGPL-3.0</a><br>
   <sub>An independent project, unaffiliated with Waves, Audiomovers, or Cloudflare.</sub>
 </p>
+
+## Managed tunnels
+
+The plugin helper supports owner-managed Cloudflare tunnels with temporary six-digit links at `sessionstream.app/123456`, without a Cloudflare login for users. It falls back to TryCloudflare when managed service is unavailable. The domain service and its dedicated API token must be configured before managed links can go live. See [managed tunnel setup](docs/MANAGED-TUNNELS.md).

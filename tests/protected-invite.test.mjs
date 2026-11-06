@@ -42,7 +42,7 @@ test('protected invites authenticate before signaling or audio and preserve gene
     assert.equal((await control({action: 'generate', requestId, passcode})).status, 200);
     return {...await status(), requestId};
   };
-  assert.equal(initial.controlProtocol, 3); assert.equal(initial.passcodeRequired, false);
+  assert.equal(initial.controlProtocol, 6); assert.equal(initial.passcodeRequired, false);
   const protectedInvite = await generate('mix 123 🎧');
   assert(protectedInvite.passcodeRequired); assert.equal(protectedInvite.listenerIssue, null);
   assert(!JSON.stringify(protectedInvite).includes('mix 123 🎧'));

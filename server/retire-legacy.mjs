@@ -4,7 +4,7 @@ const exec = promisify(execFile);
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 export const needsLegacyUpgrade = status => !!status?.native && !status.live
-  && (!status.engineProtocol || !(status.controlProtocol >= 3));
+  && (!status.engineProtocol || !(status.controlProtocol >= 6));
 
 // Upgrade old idle helpers that predate lifecycle leases or protected invites. Never retire an
 // active broadcast, an unrelated process, or a process belonging to another user.

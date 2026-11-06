@@ -23,7 +23,7 @@ for(const [arch,folder,expected] of architectures){
   await cp(path.join(contents,folder),path.join(bundle,'Contents',folder),{recursive:true});
 }
 const runtime=path.join(root,'vendor','windows-runtime-x64');
-for(const relative of ['bin/node.exe','bin/cloudflared.exe','bin/windows-tunnel-supervisor.exe','node_modules/@roamhq/wrtc-win32-x64/wrtc.node']){
+for(const relative of ['bin/account-credentials.exe','bin/node.exe','bin/cloudflared.exe','bin/windows-tunnel-supervisor.exe','node_modules/@roamhq/wrtc-win32-x64/wrtc.node']){
   if(machine(await readFile(path.join(runtime,relative)))!==0x8664)throw Error(`Wrong helper architecture: ${relative}`);
 }
 const runtimeManifest=JSON.parse(await readFile(path.join(runtime,'runtime-manifest.json'),'utf8'));

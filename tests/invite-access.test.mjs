@@ -54,6 +54,7 @@ test('legacy replacement accepts old idle helpers and preserves active broadcast
   assert(!needsLegacyUpgrade({native: true, live: true, engineProtocol: 1, controlProtocol: 2}));
   assert(!needsLegacyUpgrade({native: true, live: true}));
   assert(!needsLegacyUpgrade({native: false, live: false}));
-  assert(!needsLegacyUpgrade({native: true, live: false, engineProtocol: 1, controlProtocol: 3}));
-  assert(!needsLegacyUpgrade({native: true, live: false, engineProtocol: 1, controlProtocol: 4}));
+  assert(needsLegacyUpgrade({native: true, live: false, engineProtocol: 1, controlProtocol: 3}));
+  assert(needsLegacyUpgrade({native: true, live: false, engineProtocol: 1, controlProtocol: 4}));
+  assert(!needsLegacyUpgrade({native: true, live: false, engineProtocol: 1, controlProtocol: 6}));
 });

@@ -33,16 +33,17 @@ async function energy(page){return page.evaluate(async()=>{
 async function audible(page){const until=Date.now()+6000;do{if(await energy(page)>.005)return;await new Promise(r=>setTimeout(r,100));}while(Date.now()<until);assert.fail(`No rendered audio: ${JSON.stringify(await page.evaluate(()=>window.sessionDiagnostics()))}`);}
 async function pageFor(room,options={}){
   const context=await browser.newContext({viewport:options.mobile?{width:390,height:844}:{width:1280,height:850}});
-  await context.addInitScript(()=>{
-    window.__sockets=[];window.__signalTypes=[];window.__dropPCM=false;
+  await context.addInitScript(forceBuffered=>{
+    window.__sockets=[];window.__signalTypes=[];window.__offers=[];window.__dropPCM=false;
+    if(forceBuffered){const NativePeer=RTCPeerConnection;window.RTCPeerConnection=class extends NativePeer{constructor(config){super({...config,iceTransportPolicy:"relay",iceServers:[]});}};}
     const NativeSocket=WebSocket;
     window.WebSocket=class extends NativeSocket{
-      constructor(...args){super(...args);window.__sockets.push(this);this.addEventListener('message',event=>{if(typeof event.data==='string')try{window.__signalTypes.push(JSON.parse(event.data).type);}catch{}});}
+      constructor(...args){super(...args);window.__sockets.push(this);this.addEventListener('message',event=>{if(typeof event.data==='string')try{const signal=JSON.parse(event.data);window.__signalTypes.push(signal.type);if(signal.type==="offer")window.__offers.push(signal.sdp.sdp);}catch{}});}
       set onmessage(handler){this.__handler=handler;super.onmessage=event=>{if(window.__dropPCM&&typeof event.data!=='string')return;handler?.(event);};}
       get onmessage(){return this.__handler;}
     };
     const NativeContext=AudioContext;window.AudioContext=class extends NativeContext{constructor(...args){window.__audioCreatedWithGesture=navigator.userActivation.isActive;super(...args);}};
-  });
+  },!!options.forceBuffered);
   const page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));
   if(options.hidePreflight)await page.route('**/api/invite',route=>route.fulfill({status:200,contentType:'application/json',body:'{"passcodeRequired":false}'}));
   await page.goto(`${publicBase}/listen?audio-test#${room}`);
@@ -52,8 +53,11 @@ try{
   await control('start');
   const plain=await pageFor((await getSession()).room);
   assert(await plain.page.locator('#passcode-form').isHidden());assert(await plain.page.locator('#connect').isVisible());
+  assert(await plain.page.locator('#mode-live').isChecked());assert(await plain.page.locator('.metrics').isHidden());
+  assert((await plain.page.locator('#mode-help').textContent()).includes('less delay'));
   assert.equal(await plain.page.locator('#volume').inputValue(),'0');assert.equal(await plain.page.locator('#volume').getAttribute('max'),'6');
   await plain.page.locator('#connect').click();await plain.page.waitForFunction(()=>window.sessionDiagnostics().connections.includes('connected'),null,{timeout:15000});await audible(plain.page);
+  assert(await plain.page.evaluate(()=>window.__offers.some(sdp=>sdp.includes("maxaveragebitrate=510000"))));
   assert.equal(await plain.page.evaluate(()=>window.__audioCreatedWithGesture),true);
   await plain.page.locator('#mute').click();await plain.page.waitForTimeout(2500);
   assert((await energy(plain.page))<.0001);assert.equal(await plain.page.evaluate(()=>window.sessionDiagnostics().listenerHealth),'ok');await waitIssue(null);
@@ -62,7 +66,7 @@ try{
   await plain.page.waitForFunction(()=>window.sessionDiagnostics().listenerHealth==='audio-blocked');await waitIssue('enable audio playback');
   await plain.page.locator('#connect').click();await plain.page.waitForFunction(()=>window.sessionDiagnostics().listenerHealth==='ok');await audible(plain.page);await waitIssue(null);
   report.checks.push({name:'Browser-paused audio produces actionable listener/producer error; Resume clears it',result:'PASS'});
-  await plain.page.locator('#fallback').click();await plain.page.waitForFunction(()=>window.sessionDiagnostics().pcm&&window.sessionDiagnostics().lastAudioAgeMs<500);await audible(plain.page);
+  await plain.page.locator('#mode-buffered').check();await plain.page.waitForFunction(()=>window.sessionDiagnostics().pcm&&window.sessionDiagnostics().lastAudioAgeMs<500);await audible(plain.page);
   await plain.page.waitForTimeout(6500);await plain.page.evaluate(()=>window.__dropPCM=true);
   await plain.page.waitForFunction(()=>window.sessionDiagnostics().listenerHealth==='audio-stalled',null,{timeout:8000});await waitIssue('stopped reaching');
   await plain.page.evaluate(()=>window.__dropPCM=false);await plain.page.waitForFunction(()=>window.sessionDiagnostics().listenerHealth==='ok');await audible(plain.page);await waitIssue(null);
@@ -71,6 +75,14 @@ try{
   assert.equal(await plain.page.evaluate(()=>window.sessionDiagnostics().listenerHealth),'ok');await waitIssue(null);
   report.checks.push({name:'Host stop is expected waiting, without a false listener error',result:'PASS'});
   await plain.context.close();
+  const automatic=await pageFor((await getSession()).room,{mobile:true,forceBuffered:true});
+  await control('start');await automatic.page.locator('#connect').click();
+  await automatic.page.waitForFunction(()=>window.sessionDiagnostics().pcm&&window.sessionDiagnostics().lastAudioAgeMs<500,null,{timeout:40000});
+  await audible(automatic.page);assert(await automatic.page.locator('#mode-buffered').isChecked());
+  assert((await automatic.page.locator('#mode-help').textContent()).includes('automatically'));
+  assert.equal(await automatic.page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+  await automatic.context.close();
+  report.checks.push({name:'Live audio requests 510 kbps stereo; blocked direct audio automatically selects and explains Buffered audio with actual rendered playback',result:'PASS'});
   const passcode='Studio session 12';await control('generate',{passcode});await control('start');const protectedRoom=(await getSession()).room;
   const missing=await pageFor(protectedRoom,{hidePreflight:true});await missing.page.locator('#connect').click();
   await missing.page.waitForFunction(()=>!document.querySelector('#passcode-form').hidden);
@@ -94,7 +106,7 @@ try{
   assert(await page.evaluate(secret=>!location.href.includes(secret)&&localStorage.length===0&&sessionStorage.length===0&&!JSON.stringify(window.sessionDiagnostics()).includes(secret),passcode));
   report.checks.push({name:'Protected mobile page prompts before audio, wrong code has no peer, correct retry joins on same WS and receives actual audio; secrets absent from URL/storage/diagnostics',result:'PASS'});
   await mkdir('artifacts',{recursive:true});await page.screenshot({path:'artifacts/listener-protected-live.png',fullPage:true});
-  await page.locator('#fallback').click();await page.waitForFunction(()=>window.sessionDiagnostics().pcm&&window.sessionDiagnostics().lastAudioAgeMs<500);await audible(page);
+  await page.locator('#mode-buffered').check();await page.waitForFunction(()=>window.sessionDiagnostics().pcm&&window.sessionDiagnostics().lastAudioAgeMs<500);await audible(page);
   await page.evaluate(()=>window.__sockets.at(-1).close());
   await page.waitForFunction(()=>window.__sockets.length>1&&window.sessionDiagnostics().lastAudioAgeMs<500,null,{timeout:10000});await audible(page);
   assert(await page.locator('#passcode-form').isHidden());await waitIssue(null);

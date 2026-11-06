@@ -1,26 +1,5 @@
-# SessionStream website
+# SessionStream product website
 
-`index.html` is the entry point. All CSS, JavaScript, Three.js and image assets are in `websrc/`.
+The product page is at the repository root. Public scripts, styles and images live in `websrc/`; the account dashboard source is in `websrc/dashboard/`. The app's browser listener stays separate in `web/`.
 
-## Preview locally
-
-From the directory containing index.html, run:
-
-```sh
-python3 -m http.server 8080
-```
-
-Open http://localhost:8080. Use a web server rather than double-clicking the file because the animation uses JavaScript modules. No npm install or build step is required.
-
-## Hosting
-
-Upload index.html and the complete websrc directory to any static host. Paths are relative, so the site also works in a subdirectory. Google Fonts load over the internet; system font fallbacks are included.
-
-## Editing
-
-- index.html: content and page structure
-- websrc/styles.css: appearance and responsive layouts
-- websrc/app.js: Three.js scene and animation
-- websrc/three.module.js: Three.js r170 (MIT; see THREE-LICENSE.txt)
-
-The screenshots and logo come from loyahdev/sessionstream. Product links point to that repository and its v0.30 release. This is a website mockup, not the SessionStream audio plugin or streaming service.
+`npm run build:site` creates the allowlisted `site-dist/` deployment. The existing Cloudflare tunnel Worker serves the website, protects account APIs, preserves all listener routes, and hosts the Clerk OAuth/Stripe account service. Follow `docs/WEBSITE-ACCOUNTS-STRIPE.md` to configure the Clerk callback and Stripe secrets.

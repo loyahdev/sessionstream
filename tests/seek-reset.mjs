@@ -10,7 +10,7 @@ import {tonePacket} from '../server/protocol.mjs';
 
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const app=await createStreamServer({nativeSender:true,publicPort:0,studioPort:0,udpPort:0,ignoreStoredURL:true,managedTunnel:true,managedLifetime:true});
-app.setTunnelState('ready','https://seek-test.invalid');
+app.setTunnelState('verifying');
 const local=`http://127.0.0.1:${app.studioPort}`,publicURL=`http://127.0.0.1:${app.publicPort}`;
 const state=()=>fetch(local+'/api/studio').then(r=>r.json());
 const defaultProbe=process.platform==='win32'
@@ -56,10 +56,12 @@ async function receive(ws,source){
   assert.deepEqual(ws.messages.filter(m=>m.type==='binary').at(-1).data,packet);
 }
 try{
-  await waitFor(()=>output.includes('READY'),'native protected stream');
+  await waitFor(()=>output.includes('LOADING_CONTROLS_OK'),'disabled startup controls');
+  await sleep(1800);app.setTunnelState('ready','https://seek-test.invalid');
+  await waitFor(()=>output.split(/\r?\n/).includes('READY'),'native protected stream');
   const initial=await state();assert(initial.live&&initial.passcodeRequired);assert.equal(initial.engineClients,1);
   const ws=await listener(initial.room);await receive(ws,initial.owner);
-  for(const [value,marker] of [['reset','RESET_OK'],['reset','RESET_OK'],['reset','RESET_OK'],['reconfigure','RECONFIGURE_OK']]){
+  for(const [value,marker] of [['reset','RESET_OK'],['reset','RESET_OK'],['reset','RESET_OK'],['reconfigure','RECONFIGURE_OK'],['offline','OFFLINE_OK'],['offline','OFFLINE_OK'],['deactivate','AUDIO_RELEASED'],['activate','AUDIO_RESTORED']]){
     await command(value,marker);
     const after=await state();
     assert.equal(ws.readyState,WebSocket.OPEN,'Seeking disconnected the authenticated listener');
@@ -67,19 +69,19 @@ try{
     assert.equal(after.owner,initial.owner);assert.equal(after.engineClients,1);
     assert(after.live&&after.passcodeRequired);await receive(ws,after.owner);
   }
-  console.log('PASS: repeated resets and transient reprepare preserve host activation, Send, engine lease, protected invite, listener socket and resumed PCM');
-  await command('deactivate','DEACTIVATED');
-  await waitFor(()=>ws.closeReason,'listener closure on real deactivation');
+  console.log('PASS: repeated resets and long reprepare, repeated offline renders and host state restoration preserve host activation, Send, engine lease, protected invite, listener socket and resumed PCM');
+  await command('bypass','DEACTIVATED');
+  await waitFor(()=>ws.closeReason,'listener closure on explicit bypass');
   assert.deepEqual(ws.closeReason,{code:4003,reason:'Host disabled or removed'});
   const disabled=await state();assert.equal(disabled.engineClients,0);assert(!disabled.live);assert.notEqual(disabled.room,initial.room);
-  await command('activate','REACTIVATED');
+  await command('unbypass','REACTIVATED');
   const active=await state();assert(active.live&&active.passcodeRequired);assert.notEqual(active.room,initial.room);
   const next=await listener(active.room);await receive(next,active.owner);
   await command('remove','REMOVED');assert.equal((await exit).code,0,output);
   // Destruction detaches synchronously before the probe exits.
   const removed=await state();assert.equal(removed.engineClients,0);assert(!removed.live);
   await sleep(50);assert.deepEqual(next.closeReason,{code:4003,reason:'Host disabled or removed'});
-  console.log('PASS: real deactivation and plugin removal still revoke the invite; reactivation restores protection');
+  console.log('PASS: explicit bypass and plugin removal still revoke the invite; reactivation restores protection');
 }finally{
   if(!ended){child.kill('SIGTERM');await Promise.race([exit,sleep(2000)]);}
   for(const ws of sockets)ws.terminate();udp.close();await app.close();

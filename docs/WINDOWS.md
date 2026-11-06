@@ -1,4 +1,4 @@
-# SessionStream 0.30 for Windows
+# SessionStream 1.0 for Windows
 
 The Windows installer contains a VST3 bundle with native **Intel/AMD x64** and **ARM64** plugin binaries. It requires **Windows 11** and a matching 64-bit DAW. A native ARM64 DAW loads the ARM64 binary; an x64 DAW, including one running under emulation on ARM, loads the x64 binary. 32-bit x86 DAWs are not supported.
 
@@ -6,13 +6,13 @@ The streaming engine is a separate process connected to the plugin over local HT
 
 ## Install
 
-Save and close your DAW. Run `SessionStream-0.30-windows-x64-arm64.exe`, approve the administrator prompt, and reopen your DAW. The plugin is installed into `C:\Program Files\Common Files\VST3\SessionStream.vst3`. Rescan VST3 plugins if needed. AU is a macOS format and is not included.
+Save and close your DAW. Run `SessionStream-1.0-windows-x64-arm64.exe`, approve the administrator prompt, and reopen your DAW. The plugin is installed into `C:\Program Files\Common Files\VST3\SessionStream.vst3`. Rescan VST3 plugins if needed. AU is a macOS format and is not included.
 
 No separate Node.js, npm, or Cloudflare installation is needed. The installer is unsigned and may show a Windows reputation warning. The streaming helper writes its cache into `%LOCALAPPDATA%\SessionStream\Cache`, not the protected plugin directory. Uninstall through Windows Settings > Apps. Close your DAW before updates or uninstalling.
 
 The Windows tunnel supervisor places cloudflared into a job object that kills its process tree when the supervisor exits. It also watches the Node helper. This handles Windows forced termination, where a SIGTERM handler cannot reliably perform cleanup.
 
-The 0.30 release keeps the invite and listener connection during an audio reset. Brief component deactivation/repreparation has a 500 ms grace period before releasing an existing engine lease; audio transmission stops immediately while the component is inactive. Sustained bypass/deactivation and plugin removal still invalidate the invite and release the engine. Seeking no longer releases an active invite.
+Version 1.0 preserves the invite and listener connection during seeking, offline rendering, audio release/reprepare and same-instance state restoration. Audio transmission pauses during offline rendering or while audio resources are released. Explicit bypass and removal still release the session. Start streaming creates the first invitation automatically; Copy link shares it.
 
 ## Build on Windows
 

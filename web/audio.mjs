@@ -7,8 +7,8 @@ export async function loadAudioEngine(worklet){
   if(!worklet)throw Error('Audio playback needs a modern browser and a secure HTTPS link. Open the full invite in your browser.');
   try{
     await within((async()=>{
-      try{await worklet.addModule('/pcm-worklet.mjs');}
-      catch{await worklet.addModule('/pcm-worklet.mjs?retry=1');}
+      try{await worklet.addModule(new URL('./pcm-worklet.mjs',import.meta.url).href);}
+      catch{await worklet.addModule(new URL('./pcm-worklet.mjs?retry=1',import.meta.url).href);}
     })(),10000,'The audio engine took too long to load. Check your connection, reload this page and press Start listening.');
   }catch{throw Error('The audio engine could not load. Check your connection, reload this page and press Start listening. If the link has expired, ask your host for a new one.');}
 }
@@ -31,9 +31,11 @@ export async function createAudio(targetMs=35){
   node.channelCount=2;node.channelCountMode='explicit';
   const analyser=new AnalyserNode(context,{fftSize:2048,smoothingTimeConstant:.7});
   const gain=new GainNode(context,{gain:1});
+  const output=new AudioWorkletNode(context,'session-safety',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[2],channelCount:2,channelCountMode:'explicit'});
+  gain.connect(output);
   node.connect(analyser);analyser.connect(gain);
   let pcmConnected=true;
-  return {context,node,analyser,gain,resume(){mediaPlayback();return context.resume();},usePCM(enabled){
+  return {context,node,analyser,gain,output,resume(){mediaPlayback();return context.resume();},usePCM(enabled){
     if(enabled===pcmConnected)return;
     if(enabled)node.connect(analyser);else node.disconnect(analyser);
     pcmConnected=enabled;

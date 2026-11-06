@@ -14,7 +14,7 @@ struct AudioPacket {
 };
 class StreamTransport final : private WorkerThread {
 public:
-    StreamTransport() : WorkerThread("SessionStream UDP"), sourceId(juce::Random::getSystemRandom().nextInt()) { startThread(); }
+    explicit StreamTransport(int port=49300) : WorkerThread("SessionStream UDP"), destinationPort(port), sourceId(juce::Random::getSystemRandom().nextInt()) { startThread(); }
     ~StreamTransport() override { stopThread(); }
     std::atomic<bool> enabled{false};
     std::atomic<uint64_t> dropped{0}, sent{0};
@@ -41,6 +41,7 @@ private:
     static constexpr uint64_t slots = 128;
     std::array<AudioPacket, slots> packets;
     std::atomic<uint64_t> writeIndex{0}, readIndex{0};
+    const int destinationPort;
     uint32_t sequence = 0, sourceId;
     AudioPacket pending; int pendingFrames=0; uint32_t pendingRate=48000;
     static void put32(std::byte* p, uint32_t v) noexcept { for (int i = 0; i < 4; ++i) p[i] = std::byte((v >> (8 * i)) & 255); }
@@ -54,7 +55,7 @@ private:
             if (r == w) { wait(2); continue; }
             const auto& p = packets[r % slots];
             if (enabled.load(std::memory_order_relaxed) && juce::Time::getMillisecondCounter()-p.created<200) {
-                if (socket.write("127.0.0.1", 49300, p.bytes.data(), p.size) == p.size) ++sent;
+                if (socket.write("127.0.0.1", destinationPort, p.bytes.data(), p.size) == p.size) ++sent;
                 else ++dropped;
             }
             readIndex.store(r + 1, std::memory_order_release);

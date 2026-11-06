@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import os from 'node:os';import path from 'node:path';
 import {createStreamServer} from '../server/index.mjs';
-import {awaitTunnelReady,resolveFreshTunnel} from '../server/tunnel-readiness.mjs';
+import {awaitTunnelReady,awaitManagedTunnelReady,resolveFreshTunnel} from '../server/tunnel-readiness.mjs';
 
 test('managed helper never exposes a cached predecessor URL; readiness follows current tunnel',async t=>{
   const dir=await mkdtemp(path.join(os.tmpdir(),'sessionstream-cold-'));t.after(()=>rm(dir,{recursive:true,force:true}));
@@ -25,8 +25,10 @@ test('generate request retries acknowledge one invitation instead of invalidatin
   assert.equal((await post('1123456789abcdef0123456789abcdef')).status,200);assert.notEqual((await get()).room,first.room);
 });
 test('tunnel readiness retries pending probes and requires two consecutive current-origin successes',async()=>{
-  let calls=0;const outcomes=[false,false,true,false,true,true];
-  assert(await awaitTunnelReady({url:'https://test.trycloudflare.com',instance:'ours',current:()=>true,probe:async()=>outcomes[calls++],browserProbe:async()=>true,sleep:async()=>{},attempts:10}));assert.equal(calls,6);
+  let calls=0;const outcomes=[false,false,true,false,true,true],progress=[];
+  assert(await awaitTunnelReady({url:'https://test.trycloudflare.com',instance:'ours',current:()=>true,probe:async()=>outcomes[calls++],browserProbe:async()=>true,sleep:async()=>{},attempts:10,onProgress:event=>progress.push(event)}));assert.equal(calls,6);
+  assert.deepEqual(progress[0],{attempt:1,stage:'direct-health',ok:false,consecutive:0});
+  assert.deepEqual(progress.at(-1),{attempt:6,stage:'system-dns-health',ok:true});
 });
 test('browser resolver is checked only after the new tunnel responds twice, and failed resolution keeps the link pending',async()=>{
   let direct=0,browser=0;
@@ -45,4 +47,12 @@ test('fresh tunnel lookup falls back to HTTPS if external UDP DNS is blocked',as
 test('exited/replaced tunnel cannot publish a late successful probe',async()=>{
   let active=true;
   assert.equal(await awaitTunnelReady({url:'https://old.trycloudflare.com',instance:'ours',current:()=>active,probe:async()=>{active=false;return true;},sleep:async()=>{}}),false);
+});
+
+
+test('managed readiness verifies the current browser route once without the Quick Tunnel DNS gate',async()=>{
+  let calls=0;const events=[];
+  assert(await awaitManagedTunnelReady({url:'https://sessionstream.app/123456',instance:'current',current:()=>true,probe:async()=>{calls++;return true;},sleep:async()=>{throw Error('Unnecessary wait');},onProgress:event=>events.push(event)}));
+  assert.equal(calls,1);assert.equal(events[0].consecutive,1);
+  let active=true;assert.equal(await awaitManagedTunnelReady({url:'https://sessionstream.app/123456',instance:'current',current:()=>active,probe:async()=>{active=false;return true;}}),false);
 });

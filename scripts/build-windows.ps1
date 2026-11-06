@@ -15,7 +15,7 @@ if(!(Test-Path vendor/JUCE/CMakeLists.txt)){
 }
 Invoke-Checked node @('scripts/bundle-windows-runtime.mjs','--prepare')
 Invoke-Checked cmake @('-S','.','-B','build-windows-x64','-G','Visual Studio 17 2022','-A','x64','-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded')
-Invoke-Checked cmake @('--build','build-windows-x64','--config','Release','--target','windows-tunnel-supervisor','--parallel','4')
+Invoke-Checked cmake @('--build','build-windows-x64','--config','Release','--target','windows-tunnel-supervisor','account-credentials','--parallel','4')
 $targets=if($Architecture -eq 'all'){@('x64','arm64')}else{@($Architecture)}
 foreach($arch in $targets){
     $cmakeArch=if($arch -eq 'arm64'){'ARM64'}else{'x64'}

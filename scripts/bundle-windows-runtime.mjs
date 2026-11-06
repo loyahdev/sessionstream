@@ -43,6 +43,12 @@ for(const candidate of ['build-windows-x64/windows-tunnel-supervisor.exe','build
 }
 if(supervisor)await cp(supervisor,path.join(cache,'bin','windows-tunnel-supervisor.exe'));
 else if(!process.argv.includes('--prepare'))throw Error('Build the Windows x64 tunnel supervisor first');
+let credentials;
+for(const candidate of ['build-windows-x64/account-credentials.exe','build-windows-x64/Release/account-credentials.exe']){
+  try{await stat(path.join(root,candidate));credentials=path.join(root,candidate);break;}catch(error){if(error.code!=='ENOENT')throw error;}
+}
+if(credentials)await cp(credentials,path.join(cache,'bin','account-credentials.exe'));
+else if(!process.argv.includes('--prepare'))throw Error('Build the Windows x64 credential helper first');
 for(const module of modules){
   const entry=lock.packages[`node_modules/${module}`];
   if(!entry?.integrity?.startsWith('sha512-'))throw Error(`Missing SHA-512 lockfile integrity: ${module}`);
@@ -56,6 +62,8 @@ for(const file of ['companion.mjs','launch-engine.mjs'])await cp(path.join(root,
 for(const file of ['THIRD_PARTY.md','NODE-WEBRTC-LICENSE.md','CLOUDFLARED-LICENSE.txt','NSIS-LICENSE.txt'])await cp(path.join(root,'docs',file),path.join(cache,'notices',file));
 await cp(path.join(root,'plugin','third_party','LICENSE-qrcodegen.txt'),path.join(cache,'notices','LICENSE-qrcodegen.txt'));
 await cp(path.join(root,'vendor','JUCE','LICENSE.md'),path.join(cache,'notices','JUCE-LICENSE.md'));
+await cp(path.join(root,'vendor','JIVE','LICENSE.md'),path.join(cache,'notices','JIVE-LICENSE.md'));
+await cp(path.join(root,'plugin','assets','Inter-LICENSE.txt'),path.join(cache,'notices','Inter-LICENSE.txt'));
 for(const file of ['LICENSE','README.md'])await cp(path.join(root,file),path.join(cache,'notices',file));
 await writeFile(path.join(cache,'package.json'),JSON.stringify({name:'sessionstream-runtime',version:manifest.version,private:true,type:'module'},null,2)+'\n');
 await writeFile(path.join(cache,'runtime-manifest.json'),JSON.stringify({version:manifest.version,platform:'win32',runtimeArch:'x64',pluginArchitectures:['x64','arm64'],minimumOS:'Windows 11',arm64Note:'Native ARM64 plugin; separate x64 Node/WebRTC/cloudflared helper uses Windows 11 x64 emulation.',node:{version:nodeVersion,sha256:nodeHash},cloudflared:{version:cloudflaredVersion,sha256:cloudflaredHash},modules:modules.map(name=>({name,version:lock.packages[`node_modules/${name}`].version,integrity:lock.packages[`node_modules/${name}`].integrity}))},null,2)+'\n');

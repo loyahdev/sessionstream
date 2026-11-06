@@ -6,7 +6,14 @@ int runProbe(int argc,char** argv){
     const auto start=std::chrono::steady_clock::now();
     StreamController controller(101,[]{return false;},argv[2],juce::File(argv[1]));
     const auto passcode=juce::SystemStats::getEnvironmentVariable("SESSIONSTREAM_TEST_PASSCODE",{});
-    controller.prepare();juce::Thread::sleep(500);controller.generate(passcode);
+    controller.prepare();
+    if(juce::SystemStats::getEnvironmentVariable("SESSIONSTREAM_TEST_WAIT_LOCAL_READY",{})=="1"){
+        bool localReady=false;
+        for(int i=0;i<100;i++){const auto status=controller.status();if(status.available&&status.ready&&!status.generating){localReady=true;break;}juce::Thread::sleep(10);}
+        if(!localReady){std::cerr<<"Local controls waited for the public tunnel\n";return 7;}
+        std::cout<<"PASS: local controls ready before public verification\n";
+    }
+    controller.generate(passcode);
     juce::String previous;
     for(int i=0;i<400;i++){
         const auto status=controller.status();if(status.message!=previous){std::cout<<status.message<<std::endl;previous=status.message;}
@@ -19,6 +26,7 @@ int runProbe(int argc,char** argv){
                 if(verified!="verified")return 4;
             }
             if(passcode.isNotEmpty()&&!status.passcodeRequired)return 5;
+            if(!status.ready)return 6;
             const auto old=status.link;controller.generate(passcode);const auto warm=std::chrono::steady_clock::now();
             for(int j=0;j<40;j++){juce::Thread::sleep(100);const auto next=controller.status();if(!next.generating&&next.link.isNotEmpty()&&next.link!=old){std::cout<<"PASS: warm Generate in "<<std::chrono::duration<double>(std::chrono::steady_clock::now()-warm).count()<<" seconds\n";return 0;}}
             std::cerr<<"Warm Generate failed\n";return 3;

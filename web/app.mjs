@@ -2,15 +2,17 @@ import {createAudio,musicSDP} from './audio.mjs';
 const $=id=>document.getElementById(id),studio=document.documentElement.dataset.mode==='studio';
 let audio=null,ws=null,running=false,reconnectTimer=null,reconnectAttempt=0,session=null,iceServers=[],peerId=null;
 let pcm=false,live=false,lastBinary=0,statsTimer=null,fallbackTimer=null,pingTimer=null,rtcSource=null,remoteElement=null,needsResume=false;
-let muted=false;
+let muted=false,connectionRetried=false;
+let bufferStats=null;
 let passcode='',awaitingPasscode=false,joined=false,sourceAvailable=false,healthState='ok',healthSentAt=0;
 let receptionGraceUntil=0,lastProgress=0,receivedPackets=null;
 const peers=new Map(),pendingCandidates=new Map(),makingOffer=new Set();
-const room=location.hash.slice(1);
+const pathPrefix=document.documentElement.dataset.sharePrefix||location.pathname.match(/^\/\d{6}(?=\/|$)/)?.[0]||'';
+const room=location.hash.slice(1)||document.documentElement.dataset.room||'';
 function message(text,error=false){$('message').textContent=text;$('message').classList.toggle('error',error);}
-function status(text,kind=''){ $('status-label').textContent=text.toUpperCase();$('status-dot').className=`dot ${kind}`;if(!studio)$('heading').textContent=kind==='live'?'Listening':'Listen in'; }
+function status(text,kind=''){ $('status-label').textContent=text.toUpperCase();$('status-dot').className=`dot ${kind}`;if(!studio)$('heading').textContent=kind==='live'?'Listening':'Listen'; }
 function send(m){if(!studio&&!joined&&m.type!=='join')return;if(ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify(m));}
-function joinListener(){send({type:'join',role:'listener',room,...(passcode?{passcode}:{})});}
+function joinListener(){send({type:'join',role:'listener',mode:pcm?'pcm':'webrtc',room,...(passcode?{passcode}:{})});}
 function passcodePrompt(invalid=false){
   awaitingPasscode=true;$('passcode-form').hidden=false;$('connect').hidden=true;
   $('passcode-error').textContent=invalid?'Incorrect passcode. Please try again.':'';
@@ -22,7 +24,7 @@ function resetReception(){receptionGraceUntil=performance.now()+6000;lastProgres
 const healthMessages={
   'audio-blocked':'Your browser paused audio. Tap Resume audio.',
   'connection-failed':'The audio connection failed. Trying to reconnect…',
-  'audio-stalled':'Audio has stopped reaching this device. Try compatibility audio or check your connection.'
+  'audio-stalled':'Audio has stopped reaching this device. Try Buffered audio or check your connection.'
 };
 function reportHealth(next,showMessage=true){
   if(studio)return;
@@ -36,18 +38,36 @@ function reportHealth(next,showMessage=true){
 }
 function disposePeer(id){const p=peers.get(id);if(p){p.onconnectionstatechange=null;p.close();peers.delete(id);}pendingCandidates.delete(id);}
 function closePeers(){for(const id of peers.keys())disposePeer(id);rtcSource?.disconnect();rtcSource=null;if(remoteElement){remoteElement.pause();remoteElement.srcObject=null;remoteElement.remove();remoteElement=null;}needsResume=false;}
-function setMode(value){
-  pcm=value;resetReception();clearTimeout(fallbackTimer);closePeers();audio?.reset();audio?.usePCM(pcm);send({type:'mode',mode:pcm?'pcm':'webrtc'});
-  $('fallback').textContent=pcm?'Try low-delay audio':'Use compatibility audio';
-  $('transport').textContent=pcm?'PCM / tunnel':'Connecting…';
-  $('quality').textContent=pcm?'PCM · STEREO':'OPUS · STEREO';
-  $('fourth-label').textContent=pcm?'BUFFER RESETS':'PACKET LOSS';$('fourth-value').textContent='—';
-  if(pcm)message('Compatibility audio uses more bandwidth. Playback will resume with fresh audio.');
-  else{send({type:'renegotiate'});scheduleFallback();}
+function updateModeControls(automatic=false){
+  $('mode-live').checked=!pcm;$('mode-buffered').checked=pcm;
+  $('mode-help').textContent=pcm
+    ?(automatic?'Live audio could not connect. Switched to Buffered audio automatically. ':'')+'More latency and data use.'
+    :'Live audio uses less delay. Switch to Buffered if the connection is unstable.';
+  $('quality').textContent='STEREO';
 }
-function scheduleFallback(){clearTimeout(fallbackTimer);if(!studio&&!pcm&&running)fallbackTimer=setTimeout(()=>{
-  if(![...peers.values()].some(p=>p.connectionState==='connected'))setMode(true);
-},12000);}
+function setMode(value,automatic=false){
+  pcm=value;connectionRetried=false;resetReception();clearTimeout(fallbackTimer);closePeers();audio?.reset();audio?.usePCM(pcm);send({type:'mode',mode:pcm?'pcm':'webrtc'});
+  updateModeControls(automatic);
+  $('transport').textContent=pcm?'PCM / tunnel':'Connecting…';
+  $('fourth-label').textContent=pcm?'BUFFER RESETS':'PACKET LOSS';$('fourth-value').textContent='—';
+  if(pcm)message(automatic?'Switched to Buffered audio. Reconnecting…':'Switching to Buffered audio…');
+  else{scheduleFallback();}
+}
+function retryLiveAudio(){
+  if(connectionRetried){send({type:'listener-connection',event:'fallback-after-retry'});setMode(true,true);return;}
+  connectionRetried=true;send({type:'listener-connection',event:'retry-requested'});send({type:'renegotiate'});
+  message('Retrying Live audio…');scheduleFallback();
+}
+function scheduleFallback(){
+  clearTimeout(fallbackTimer);
+  if(studio||pcm||!running)return;
+  fallbackTimer=setTimeout(()=>{
+    if([...peers.values()].some(p=>p.connectionState==='connected'))return;
+    // Waiting for the host is not a failed connection attempt.
+    if(!live||!sourceAvailable){scheduleFallback();return;}
+    retryLiveAudio();
+  },15000);
+}
 function connection(id,generation=crypto.randomUUID()){
   if(!studio)resetReception();
   const candidates=pendingCandidates.get(id);disposePeer(id);if(candidates)pendingCandidates.set(id,candidates);const pc=new RTCPeerConnection({iceServers});pc.generation=generation;peers.set(id,pc);
@@ -55,9 +75,9 @@ function connection(id,generation=crypto.randomUUID()){
   pc.onconnectionstatechange=()=>{
     if(new URLSearchParams(location.search).has('audio-test'))console.debug('peer',id,pc.connectionState,pc.iceConnectionState,pc.signalingState);
     if(pc.connectionState==='connected'){
-      if(!studio){clearTimeout(fallbackTimer);status(live?'Listening':'Waiting for host',live?'live':'');if(healthState==='ok')message('');}
+      if(!studio){connectionRetried=false;clearTimeout(fallbackTimer);status(live?'Listening':'Waiting for host',live?'live':'');if(healthState==='ok')message('');}
     }else if(pc.connectionState==='failed'){
-      if(studio)offer(id,true).catch(e=>message(e.message,true));else if(!pcm){if(live&&sourceAvailable)reportHealth('connection-failed');setMode(true);}
+      if(studio)offer(id,true).catch(e=>message(e.message,true));else if(!pcm){if(live&&sourceAvailable)reportHealth('connection-failed');retryLiveAudio();}
     }else if(pc.connectionState==='disconnected'&&!studio){status('Recovering connection');scheduleFallback();}
   };
   if(!studio){
@@ -93,7 +113,7 @@ async function onSignal(m){
   if(new URLSearchParams(location.search).has('audio-test')&&m.type!=='status')console.debug('signal',studio?'host':'client',m.type,m.from||m.id||'');
   if(m.type==='passcode-required'&&!studio){passcodePrompt(!!m.invalid);return;}
   if(m.type==='joined'){
-    joined=true;awaitingPasscode=false;$('passcode-form').hidden=true;$('connect').hidden=false;$('passcode').value='';$('passcode-error').textContent='';$('passcode').removeAttribute('aria-invalid');resetReception();
+    joined=true;connectionRetried=false;awaitingPasscode=false;$('passcode-form').hidden=true;$('connect').hidden=false;$('passcode').value='';$('passcode-error').textContent='';$('passcode').removeAttribute('aria-invalid');resetReception();
     reconnectAttempt=0;iceServers=m.iceServers;peerId=m.id;
     if(studio){live=true;send({type:'publishing',live:true,title:$('title').value});for(const id of m.peers||[])await offer(id);message('Broadcasting. Press Start streaming in the plugin, then play your project.');}
     else{send({type:'mode',mode:pcm?'pcm':'webrtc'});send({type:'listener-health',state:'ok'});healthState='ok';scheduleFallback();status('Waiting for host');}
@@ -107,7 +127,7 @@ async function onSignal(m){
     else $('source-label').textContent='WAITING FOR PLUGIN AUDIO';
     if(studio){status(live&&m.audio?'Broadcasting live':live?'Waiting for plugin':'Sharing paused',live&&m.audio?'live':'');}
     else if(!live){status('Waiting for host');message('Audio will start when your host is ready.');}
-    else if(pcm){status(m.audio?'Listening · compatibility':'Waiting for audio',m.audio?'live':'');if(m.audio&&healthState==='ok')message('');}
+    else if(pcm){status(m.audio?'Listening':'Waiting for audio',m.audio?'live':'');if(m.audio&&healthState==='ok')message('');}
     else if([...peers.values()].some(p=>p.connectionState==='connected')){status('Listening', 'live');}
 
   }else if(m.type==='peer-joined'||m.type==='renegotiate')await offer(m.id||m.from,m.type==='renegotiate');
@@ -128,7 +148,7 @@ async function onSignal(m){
 }
 function connectSocket(){
   if(!running)return;
-  const socket=new WebSocket(`${location.protocol==='https:'?'wss:':'ws:'}//${location.host}/signal`);ws=socket;socket.binaryType='arraybuffer';
+  const socket=new WebSocket(`${location.protocol==='https:'?'wss:':'ws:'}//${location.host}${pathPrefix}/signal`);ws=socket;socket.binaryType='arraybuffer';
   socket.onopen=()=>{if(studio)send({type:'join',role:'publisher',token:session.token});else joinListener();};
   let chain=Promise.resolve();
   socket.onmessage=({data})=>{
@@ -139,7 +159,8 @@ function connectSocket(){
   socket.onclose=async e=>{
     if(ws!==socket||!running)return;
     joined=false;
-    if([4003,4009].includes(e.code)){message(e.reason||'This invite is no longer available.',true);stop(false);return;}
+    if(e.code===4011){await stop(false);status('Invite expired');message('This invite has expired. Ask the host for a new link.',true);$('connect').disabled=true;return;}
+    if([4003,4009,4012].includes(e.code)){message(e.reason||'This invite is no longer available.',true);stop(false);return;}
     if(e.code===4008&&awaitingPasscode){await stop(false);passcodePrompt();message('Too many passcode attempts. Wait a moment, then try again.',true);return;}
     audio?.reset();closePeers();live=false;status('Reconnecting');
     message('Connection interrupted. Rejoining at the live audio.');
@@ -151,14 +172,15 @@ async function start(){
   $('connect').disabled=true;
   try{
     message('Starting audio…');
-    if(studio&&!session)session=await fetch('/api/studio').then(r=>{if(!r.ok)throw Error('Local broadcaster is unavailable');return r.json();});
+    if(studio&&!session)session=await fetch(`${pathPrefix}/api/studio`).then(r=>{if(!r.ok)throw Error('Local broadcaster is unavailable');return r.json();});
     audio=await createAudio(studio?35:90);
     if(studio){audio.destination=audio.context.createMediaStreamDestination();audio.destination.channelCount=2;audio.analyser.connect(audio.destination);}
-    else{audio.usePCM(pcm);audio.gain.gain.value=listenerGain();audio.gain.connect(audio.context.destination);}
+    else{audio.usePCM(pcm);audio.gain.gain.value=listenerGain();audio.output.connect(audio.context.destination);}
     audio.node.port.onmessage=({data})=>{
       if(data.type==='stats'&&(studio||pcm)){
+        bufferStats={bufferMs:data.bufferMs,targetMs:data.targetMs,underruns:data.underruns,trims:data.trimmed};
         $('buffer').textContent=`${Math.round(data.bufferMs)} ms`;
-        if(!studio){$('fourth-value').textContent=String(data.trimmed+data.underruns);$('quality').textContent=`PCM · ${(data.rate/1000).toFixed(1)} kHz`;}
+        if(!studio){$('fourth-value').textContent=String(data.trimmed+data.underruns);$('quality').textContent='UNCOMPRESSED STEREO';}
       }
     };
     // Expose audio only when an explicit local test opt-in is present.
@@ -196,7 +218,7 @@ async function updateStats(){
           $('buffer').textContent=`${Math.round(1000*(s.jitterBufferDelay-lastReceived.delay)/(s.jitterBufferEmittedCount-lastReceived.count))} ms`;
         }
         lastReceived={count:s.jitterBufferEmittedCount,delay:s.jitterBufferDelay};
-        const codec=stats.get(s.codecId);if(codec)$('quality').textContent='OPUS · STEREO';
+        const codec=stats.get(s.codecId);if(codec)$('quality').textContent='HIGH-QUALITY STEREO';
       }
     }
   }
@@ -224,7 +246,7 @@ $('passcode-form').onsubmit=async e=>{
   catch{message('Could not start audio. Try again.',true);}
   finally{$('passcode-submit').disabled=false;}
 };
-function listenerGain(){const db=Number($('volume').value);return muted||db<=-60?0:10**(db/20);}
+function listenerGain(){const value=Number($('volume').value),db=Number.isFinite(value)?Math.max(-60,Math.min(6,value)):-60;return muted||db<=-60?0:10**(db/20);}
 function applyListenerVolume(){
   if(!audio||studio)return;
   const gain=audio.gain.gain,time=audio.context.currentTime,value=listenerGain();
@@ -238,17 +260,18 @@ $('volume').oninput=()=>{
   $('volume-label').textContent=label;$('volume').setAttribute('aria-valuetext',label);applyListenerVolume();
 };
 $('mute').onclick=()=>{muted=!muted;$('mute').setAttribute('aria-pressed',String(muted));$('mute').textContent=muted?'Unmute':'Mute';applyListenerVolume();};
-$('fallback').onclick=()=>{if(!running){pcm=!pcm;$('fallback').textContent=pcm?'Try low-delay audio':'Use compatibility audio';message(pcm?'Compatibility audio selected.':'Low-delay audio selected.');}else setMode(!pcm);};
+for(const [id,value] of [['mode-live',false],['mode-buffered',true]])$(id).onchange=()=>{if(pcm===value)return;if(running)setMode(value);else{pcm=value;updateModeControls();}};
+updateModeControls();
 $('title').onchange=()=>{if(studio&&running)send({type:'publishing',live,title:$('title').value});};
 $('bitrate').onchange=()=>{if(studio&&running)for(const id of peers.keys())offer(id,true).catch(e=>message(e.message,true));};
 $('copy').onclick=async()=>{try{await navigator.clipboard.writeText($('invite').value);$('copy').textContent='Copied';setTimeout(()=>$('copy').textContent='Copy link',1800);}catch{ $('invite').select();message('Select and copy the invite link.');}};
-$('rotate').onclick=async()=>{const r=await fetch('/api/rotate',{method:'POST',headers:{Authorization:`Bearer ${session.token}`}});if(r.ok){await refreshInvite();message('New invite created. Share this link with your client.');}else message('Could not create a new invite.',true);};
-async function refreshInvite(){try{session=await fetch('/api/studio').then(r=>r.json());$('invite').value=session.listenerURL;
+$('rotate').onclick=async()=>{const r=await fetch(`${pathPrefix}/api/rotate`,{method:'POST',headers:{Authorization:`Bearer ${session.token}`}});if(r.ok){await refreshInvite();message('New invite created. Share this link with your client.');}else message('Could not create a new invite.',true);};
+async function refreshInvite(){try{session=await fetch(`${pathPrefix}/api/studio`).then(r=>r.json());$('invite').value=session.listenerURL;
   $('link-note').textContent=session.listenerURL.includes('127.0.0.1')?'Local link only. Start with npm run start:tunnel to reach clients online.':'Temporary Cloudflare link. Keep this computer, the broadcaster, and the tunnel running.';
 }catch(e){message(`Cannot reach the local bridge: ${e.message}`,true);}}
 if(studio){
-  $('heading').textContent='Broadcast';$('intro-text').textContent='Share your DAW audio with a listener.';
-  $('studio-settings').hidden=false;$('invite-panel').hidden=false;$('listener-settings').hidden=true;$('fallback').hidden=true;
+  $('heading').textContent='Broadcast';
+  $('studio-settings').hidden=false;$('invite-panel').hidden=false;$('listener-settings').hidden=true;$('audio-mode').hidden=true;
   $('fourth-label').textContent='LISTENERS';
   $('connect').innerHTML='Start broadcast <span>↗</span>';message('Start the broadcast, then start streaming in SessionStream.');
   await refreshInvite();setInterval(refreshInvite,5000);
@@ -257,8 +280,8 @@ else{
   // The invite stays in the fragment; no passcode is placed in a URL or stored.
   // Preflight never starts audio. The listener's click remains the user gesture
   // that opens/resumes Web Audio on phones, including protected sessions.
-  fetch('/api/invite',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({room})})
-    .then(r=>r.ok?r.json():null).then(info=>{if(info?.passcodeRequired&&!joined)passcodePrompt();}).catch(()=>{});
+  fetch(`${pathPrefix}/api/invite`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({room})})
+    .then(r=>{if(r.status===410){status('Invite expired');message('This invite has expired. Ask the host for a new link.',true);$('connect').disabled=true;return null;}return r.ok?r.json():null;}).then(info=>{if(info?.passcodeRequired&&!joined)passcodePrompt();}).catch(()=>{});
 }
 const canvas=$('scope'),ctx=canvas.getContext('2d'),values=new Float32Array(2048);
 function draw(){
@@ -275,4 +298,4 @@ function draw(){
 }
 draw();
 // Diagnostics are read-only and contain no session credentials.
-window.sessionDiagnostics=()=>({running,pcm,live,muted,volumeDb:Number($('volume').value),context:audio?.context.state,connections:[...peers.values()].map(p=>p.connectionState),lastAudioAgeMs:lastBinary?performance.now()-lastBinary:null,listenerHealth:healthState});
+window.sessionDiagnostics=()=>({running,pcm,live,muted,volumeDb:Number($('volume').value),context:audio?.context.state,connections:[...peers.values()].map(p=>p.connectionState),lastAudioAgeMs:lastBinary?performance.now()-lastBinary:null,listenerHealth:healthState,buffer:bufferStats,relayConfigured:iceServers.some(s=>[s.urls].flat().some(url=>/^turns?:/.test(url))),safety:{ceilingDbFS:-1,maxGainDb:6,lookaheadMs:5}});

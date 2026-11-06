@@ -1,7 +1,9 @@
 # Downloaded dependencies, compiled products, and local streaming state
 node_modules/
-/vendor/
+/vendor/*
+!/vendor/JIVE/
 /build/
+/build-windows-*/
 /.runtime/
 /artifacts/
 
@@ -20,3 +22,11 @@ __MACOSX/
 *.swo
 .idea/
 .vscode/
+
+# Cloudflare local credentials and deployment state
+.dev.vars
+.dev.vars.*
+.wrangler/
+
+# Generated public product-site assets
+/site-dist/

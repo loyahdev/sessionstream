@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {loadAudioEngine} from '../web/audio.mjs';
 test('audio engine retries once with a fresh module URL',async()=>{
  const urls=[];await loadAudioEngine({async addModule(url){urls.push(url);if(urls.length===1)throw Error('Importing a module script failed');}});
- assert.deepEqual(urls,['/pcm-worklet.mjs','/pcm-worklet.mjs?retry=1']);
+ assert.deepEqual(urls,[new URL('../web/pcm-worklet.mjs',import.meta.url).href,new URL('../web/pcm-worklet.mjs?retry=1',import.meta.url).href]);
 });
 test('persistent failure gives useful wording and bounded retries',async()=>{
  let attempts=0;await assert.rejects(loadAudioEngine({async addModule(){attempts++;throw Error('private-host-token');}}),e=>e.message.includes('reload this page')&&!e.message.includes('private-host-token'));

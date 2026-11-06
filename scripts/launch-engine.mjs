@@ -2,13 +2,15 @@
 // The brief launcher remains the DAW's child only until the local API is ready.
 import {spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
+import {installRuntimeLogging} from '../server/diagnostics.mjs';
+const log=installRuntimeLogging('launcher');
 const helper=spawn(process.execPath,['--expose-gc',fileURLToPath(new URL('./companion.mjs',import.meta.url)),...process.argv.slice(2)],{
   detached:true,windowsHide:true,stdio:['ignore','ignore','ignore','ipc']
 });
-const timeout=setTimeout(()=>{helper.kill('SIGTERM');process.exit(1);},8000);
-helper.on('error',()=>process.exit(1));
-helper.on('exit',code=>process.exit(code||1));
+const timeout=setTimeout(()=>{log('error','Helper startup timed out');helper.kill('SIGTERM');process.exit(1);},8000);
+helper.on('error',error=>{log('error',error);process.exit(1);});
+helper.on('exit',(code,signal)=>{log('exit',`helper code=${code} signal=${signal}`);process.exit(code||1);});
 helper.on('message',message=>{
   if(!message?.ready)return;
-  clearTimeout(timeout);helper.disconnect();helper.unref();process.exit(0);
+  clearTimeout(timeout);log('lifecycle','Helper API ready');helper.disconnect();helper.unref();process.exit(0);
 });

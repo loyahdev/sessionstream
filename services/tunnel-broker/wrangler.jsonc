@@ -1,0 +1,94 @@
+{
+  "name": "sessionstream-tunnels",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-07-01",
+  "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "sessionstream.app",
+      "custom_domain": true
+    }
+  ],
+  "vars": {
+    "CF_ACCOUNT_ID": "2e5bd4af7066cf3d7403f1e8bbac127c",
+    "CF_ZONE_ID": "15db274865105aacd443cf8157146efb",
+    "PUBLIC_ORIGIN": "https://sessionstream.app",
+    "TUNNEL_DOMAIN": "sessionstream.app",
+    "MAX_LEASES": "900",
+    "ALLOCATIONS_PER_HOUR": "20",
+    "WARM_POOL_SIZE": "5",
+    "CLERK_ISSUER": "https://clerk.sessionstream.app",
+    "CLERK_CLIENT_ID": "pc8es4va5qJsFDVW",
+    "PRO_LISTENER_LIMIT": "8",
+    "MAC_DOWNLOAD_URL": "https://github.com/loyahdev/sessionstream/releases/download/0.30/SessionStream-0.30-mac-arm64.pkg",
+    "WINDOWS_DOWNLOAD_URL": "https://github.com/loyahdev/sessionstream/releases/download/0.30/SessionStream-0.30-windows-x64-arm64.exe",
+    "BILLING_PROVIDER": "clerk",
+    "CLERK_PRO_PLAN_ID": "cplan_3LfuHOHrgi4rz3CLjd1z9VFXZRR"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "BROKER",
+        "class_name": "TunnelBroker"
+      },
+      {
+        "name": "ACCOUNTS",
+        "class_name": "AccountHub"
+      },
+      {
+        "name": "ACCOUNT_STATE",
+        "class_name": "AccountState"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "TunnelBroker"
+      ]
+    },
+    {
+      "tag": "v2-accounts",
+      "new_sqlite_classes": [
+        "AccountHub"
+      ]
+    },
+    {
+      "tag": "v3-account-databases",
+      "new_sqlite_classes": [
+        "AccountState"
+      ]
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "LINK_LIMITER",
+      "namespace_id": "79261029",
+      "simple": {
+        "limit": 120,
+        "period": 60
+      }
+    },
+    {
+      "name": "ACCOUNT_LIMITER",
+      "namespace_id": "79261030",
+      "simple": {
+        "limit": 120,
+        "period": 60
+      }
+    }
+  ],
+  "account_id": "2e5bd4af7066cf3d7403f1e8bbac127c",
+  "triggers": {
+    "crons": [
+      "* * * * *"
+    ]
+  },
+  "assets": {
+    "directory": "../../site-dist",
+    "binding": "ASSETS",
+    "run_worker_first": true,
+    "not_found_handling": "none"
+  }
+}
