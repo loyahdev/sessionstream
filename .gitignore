@@ -20,3 +20,11 @@ __MACOSX/
 *.swo
 .idea/
 .vscode/
+
+# Cloudflare local credentials and deployment state
+.dev.vars
+.dev.vars.*
+.wrangler/
+
+# Generated public product-site assets
+/site-dist/

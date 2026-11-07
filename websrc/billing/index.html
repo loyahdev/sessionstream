@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>Checkout | SessionStream</title><script src="/websrc/theme-init.js"></script><link rel="icon" href="/websrc/assets/logo.svg"><link rel="preconnect" href="https://clerk.sessionstream.app"><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400..700&family=Manrope:wght@400..800&display=swap" rel="stylesheet"><link rel="stylesheet" href="/websrc/billing/billing.css"><script type="module" src="/websrc/billing/billing.js"></script><link rel="stylesheet" href="/websrc/navigation.css"></head>
+<body><a class="skip" href="#billing-main">Skip to checkout</a><div class="billing-shell"><header><a class="brand" href="/" aria-label="SessionStream home"><img src="/websrc/assets/logo.svg" width="25" height="29" alt="">sessionstream</a><a href="/dashboard/" class="back-link"><span class="back-arrow" aria-hidden="true"><svg class="icon" aria-hidden="true" focusable="false"
+  
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <path d="M5 12h14" />
+  <path d="m12 5 7 7-7 7" />
+</svg></span> Back to dashboard</a></header>
+<main id="billing-main"><div id="profile-heading" class="billing-heading" hidden><h1>Account settings</h1><p>Manage your profile, security, and subscription.</p></div>
+<div class="checkout-layout" id="checkout-layout"><section class="order-summary" aria-labelledby="checkout-title"><div class="plan-mark"><img src="/websrc/assets/logo.svg" width="28" height="32" alt=""><span>Monthly subscription</span></div><h1 id="checkout-title">SessionStream Pro</h1><p class="plan-intro">Stream to up to 8 listeners locally or 30 in the cloud, and receive audio directly in your DAW.</p><div class="order-price"><strong>$5</strong><span>USD / month</span></div><details class="plan-inclusions" open><summary>Everything in Free, plus <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary><ul class="checkout-benefits"><li><span aria-hidden="true"><svg class="icon" aria-hidden="true" focusable="false"
+  
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <path d="m16 9-5.5 5.5L8 12" />
+</svg></span><div><strong>Up to 8 listeners per local session</strong><p>Share your audio with more collaborators while streaming from your computer.</p></div></li><li><span aria-hidden="true"><svg class="icon" aria-hidden="true" focusable="false"
+  
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <path d="m16 9-5.5 5.5L8 12" />
+</svg></span><div><strong>Receive and record in your DAW</strong><p>Capture a collaborator’s audio directly in your project.</p></div></li><li><span aria-hidden="true"><svg class="icon" aria-hidden="true" focusable="false"
+  
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <path d="m16 9-5.5 5.5L8 12" />
+</svg></span><div><strong>One link to keep using</strong><p>Reusable listening links for ongoing sessions.</p></div></li><li><span aria-hidden="true"><svg class="icon" aria-hidden="true" focusable="false"
+  
+  xmlns="http://www.w3.org/2000/svg"
+  width="24"
+  height="24"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  stroke-width="2"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+>
+  <circle cx="12" cy="12" r="10" />
+  <path d="m16 9-5.5 5.5L8 12" />
+</svg></span><div><strong>Quality presets</strong><p>Choose Studio, Balanced, or Phone for your connection.</p></div></li></ul></details><p class="plan-cancel">Cancel future renewals whenever you need.</p></section>
+<section class="payment-panel" aria-labelledby="payment-title"><div class="payment-heading"><h2 id="payment-title">Complete your upgrade</h2><span class="secure-label"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V6a4 4 0 0 1 8 0v4"/></svg> Secure checkout</span></div><div class="billing-identity" id="billing-identity" hidden><span>Account email</span><strong id="billing-email"></strong><a href="/dashboard/account/">Edit in account settings</a></div><div id="checkout-mount"><p class="payment-loading" role="status">Verifying your account…</p></div><p class="payment-security">Your subscription and receipts use this SessionStream account.</p></section></div>
+<div id="billing-loading" class="profile-loading" role="status" hidden><div class="profile-loading-label"><span class="payment-spinner" aria-hidden="true"></span><span>Loading account settings…</span></div><div class="profile-skeleton" aria-hidden="true"><div class="profile-skeleton-nav"></div><div class="profile-skeleton-content"><i></i><i></i><i></i></div></div></div><div id="billing-error" role="alert" hidden><h2>We couldn’t load your account</h2><p></p><button type="button" id="billing-retry">Try again</button><a href="/dashboard/account/">Account settings</a></div><div id="clerk-profile"></div><p class="billing-support">Have a question? <a href="mailto:support@sessionstream.app">support@sessionstream.app</a></p></main>
+<footer><span>© 2026 SessionStream</span><nav aria-label="Legal"><a href="/terms/">Terms</a><a href="/privacy/">Privacy</a></nav></footer></div></body></html>
