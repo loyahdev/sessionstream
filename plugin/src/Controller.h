@@ -23,7 +23,7 @@ public:
     bool prefersCustomLink()const{return customLinkPreference.load();}
     void wake(){notify();}
     void prepare(){prepared=true;notify();}
-    void generate(juce::String passcode={},int quality=0,int hours=0){{const juce::ScopedLock l(lock);if(current.generating||generateRequested.load())return;memoryPasscode=passcode;pendingPasscode=std::move(passcode);sessionQuality.store(quality);sessionHours.store(hours);generateRequested=true;current.generating=true;current.link.clear();current.warning=false;current.message="Creating link...";}prepared=true;notify();}
+    void generate(juce::String passcode={},int quality=1,int hours=0){{const juce::ScopedLock l(lock);if(current.generating||generateRequested.load())return;memoryPasscode=passcode;pendingPasscode=std::move(passcode);sessionQuality.store(quality);sessionHours.store(hours);generateRequested=true;current.generating=true;current.link.clear();current.warning=false;current.message="Creating link...";}prepared=true;notify();}
     void endSession(){const juce::ScopedLock l(lock);endRequested=true;generateRequested=false;handoffRequested=false;current.ending=true;current.link.clear();current.ready=false;pendingPasscode.clear();memoryPasscode.clear();prepared=true;notify();}
     void handoff(){handoffRequested=true;prepared=true;notify();}
     juce::String activePasscode()const{const juce::ScopedLock l(lock);return memoryPasscode;}
@@ -38,7 +38,7 @@ public:
     juce::StringArray logs(){const juce::ScopedLock l(lock);return events;}
 private:
     uint32_t source;std::function<bool()> wantsAudio,hostEnabled;std::function<void()> onExpired,onYielded;juce::String base;juce::File runtimeOverride;
-    std::atomic<int> accountRequested{0},sessionQuality{0},sessionHours{0};
+    std::atomic<int> accountRequested{0},sessionQuality{1},sessionHours{0};
     std::atomic<bool> showHostName{false},passcodePreference{false},customLinkPreference{false};
     std::atomic<int> listenerPreferenceBits{0};
     std::atomic<bool> generateRequested{false},endRequested{false},handoffRequested{false},prepared{false};juce::CriticalSection lock;Status current;juce::String linkAction,linkValue,lastLinkAuthorization,receiveError;juce::String pendingPasscode,memoryPasscode,receiveTarget,receivePasscode;bool receiveDesired=false,receiveLowLatency=false;int receivePort=0;uint64_t receiveRevision=0;
@@ -107,7 +107,7 @@ private:
         }
         if(command=="generate"){
             object->setProperty("passcode",passcode);
-            const auto quality=pro?sessionQuality.load():0;
+            const auto quality=pro?sessionQuality.load():1;
             object->setProperty("quality",quality==1?"balanced":quality==2?"phone":"studio");
             object->setProperty("expiresInHours",sessionHours.load());
         }
@@ -236,14 +236,14 @@ private:
                     // Recover a protected session without silently opening an
                     // unprotected invite after a helper restart or host bypass.
                     // This code lives only in this processor's memory.
-                    if(desired&&!owned&&!generating&&!generateRequested.load()){
+                    const bool pro=next.planKnown&&next.plan=="pro"&&next.accountPhase=="signed-in";
+                    if(desired&&(!owned||(!pro&&data["quality"].toString()!="balanced"))&&!generating&&!generateRequested.load()){
                         generating=true;acknowledged=false;requestId=juce::Uuid().toString();requestPasscode=sessionPasscode;
                     }
                     // A lost POST response is harmless: the same request ID is
                     // acknowledged by GET and repeated requests never rotate twice.
                     if(generating&&modern&&owned&&data["inviteRequest"].toString()==requestId)acknowledged=true;
-                    const bool pro=next.planKnown&&next.plan=="pro"&&next.accountPhase=="signed-in";
-                    const bool needsPlan=listenerPreferences()!=0||prefersCustomLink()||sessionQuality.load()!=0;
+                    const bool needsPlan=listenerPreferences()!=0||prefersCustomLink()||sessionQuality.load()!=1;
                     const bool planReady=!needsPlan||next.planKnown||next.accountPhase=="signed-out";
                     if(generating&&!acknowledged&&planReady)acknowledged=action("generate",requestId,requestPasscode,pro);
                     if(generating&&acknowledged){const auto refreshed=request("/api/studio");if(refreshed.isObject()){data=refreshed;link=data["listenerURL"].toString();}}

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.1-baf77a?style=flat-square&amp;labelColor=202a23" alt="Version 1.0.1">
+  <img src="https://img.shields.io/badge/version-1.0.2-baf77a?style=flat-square&amp;labelColor=202a23" alt="Version 1.0.2">
   <img src="https://img.shields.io/badge/macOS-13.5%2B-baf77a?style=flat-square&amp;labelColor=202a23&amp;logo=apple&amp;logoColor=white" alt="macOS 13.5 or newer">
   <img src="https://img.shields.io/badge/Apple_Silicon-VST3_%2B_AU-baf77a?style=flat-square&amp;labelColor=202a23" alt="Apple Silicon · VST3 and AU">
   <img src="https://img.shields.io/badge/Windows_11-x64_%2B_ARM64-baf77a?style=flat-square&amp;labelColor=202a23" alt="Windows 11 · Intel/AMD x64 and ARM64">
@@ -56,11 +56,12 @@ SessionStream is a VST3 and Audio Units (AU) plugin for producers who teach, col
 
 ## Quick start
 
-**Current build: 1.0.1 · macOS Apple Silicon + Windows 11 x64 / ARM64**
+**Current build: 1.0.2 · macOS Apple Silicon + Windows 11 x64 / ARM64**
+
 
 | Operating system | Architecture | Plugin formats | Installer |
 | :--- | :--- | :--- | :--- |
-| macOS 13.5+ | Apple Silicon | VST3 + AU | `SessionStream-mac-arm64.pkg` |
+| macOS 13.5+ | Apple Silicon | VST3 + AU | `SessionStream-mac-arm64.dmg` |
 | Windows 11 | Intel/AMD x64 + ARM64 | VST3 | `SessionStream-windows-x64-arm64.exe` |
 
 The Windows installer includes both plugin architectures. Windows ARM64 uses an x64 streaming helper under emulation. Intel Macs, Windows 10 and 32-bit x86 DAWs are not supported.
@@ -160,7 +161,7 @@ npm run build:plugin
 npm run build:installer
 ```
 
-The first build requires internet access to download JUCE 8.0.12 and the bundled Node v24.3.0 runtime. It verifies those downloads, bundles the native WebRTC addon and your installed cloudflared, then ad-hoc signs VST3, AU, and a development standalone app. The PKG contains VST3 and AU and is written to `artifacts/SessionStream-mac-arm64.pkg`; checksums are in `artifacts/SHA256SUMS.txt`.
+The first build requires internet access to download JUCE 8.0.12 and the bundled Node v24.3.0 runtime. It verifies those downloads, bundles the native WebRTC addon and your installed cloudflared, then ad-hoc signs VST3, AU, and a development standalone app. The intermediate PKG contains VST3 and AU. Run `npm run build:setup` to create the designed DMG and Windows setup with uninstallers in `artifacts/setup/`.
 
 To install your build locally, save and close your DAW, then run `npm run install:plugin` or open the PKG. If cloudflared is outside your `PATH`, set `CLOUDFLARED_PATH` to its full executable path before building.
 

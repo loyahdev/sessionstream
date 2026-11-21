@@ -19,7 +19,15 @@ Unicode true
   !error "Pass DISPLAY_VERSION"
 !endif
 
-Name "SessionStream ${DISPLAY_VERSION}"
+!ifdef SESSIONSTREAM_SETUP
+  !include "nsDialogs.nsh"
+  !addplugindir /x86-unicode "${SETUP_PLUGINS}"
+  !define MUI_CUSTOMFUNCTION_GUIINIT SetupFrame
+  !define MUI_CUSTOMFUNCTION_UNGUIINIT un.SetupFrame
+  Name "SessionStream Setup"
+!else
+  Name "SessionStream ${DISPLAY_VERSION}"
+!endif
 OutFile "${OUTPUT_FILE}"
 InstallDir "$COMMONFILES64\VST3\SessionStream.vst3"
 RequestExecutionLevel admin
@@ -34,15 +42,36 @@ VIAddVersionKey "FileDescription" "SessionStream Windows x64 and ARM64 VST3 inst
 VIAddVersionKey "LegalCopyright" "SessionStream contributors"
 
 !define MUI_ABORTWARNING
+!ifdef SESSIONSTREAM_SETUP
+  Page custom SetupReview
+  !define MUI_PAGE_CUSTOMFUNCTION_SHOW SetupShowLicense
+  !define MUI_LICENSEPAGE_BUTTON "Agree and Install"
+  !define MUI_LICENSEPAGE_TEXT_BOTTOM "Select Agree and Install to accept the license and install SessionStream."
+  !insertmacro MUI_PAGE_LICENSE "${PROJECT_DIR}/LICENSE"
+  !define MUI_PAGE_CUSTOMFUNCTION_SHOW SetupShowProgress
+  !insertmacro MUI_PAGE_INSTFILES
+  Page custom SetupFinish
+!else
 !define MUI_WELCOMEPAGE_TEXT "Install SessionStream ${DISPLAY_VERSION} for Windows 11 on Intel/AMD x64 or ARM64.$\r$\n$\r$\nSave and close your DAW before installing or updating.$\r$\n$\r$\nIncludes native x64 and ARM64 VST3 plugins and the streaming runtime. On ARM64, the separate x64 streaming helper uses Windows 11 emulation. No separate Node.js or Cloudflare installation is needed."
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_LICENSE "${PROJECT_DIR}/LICENSE"
 !insertmacro MUI_PAGE_INSTFILES
 !define MUI_FINISHPAGE_TEXT "SessionStream is installed.$\r$\n$\r$\nReopen your DAW, rescan VST3 plugins if needed, and add SessionStream to the track or master bus you want to share.$\r$\n$\r$\nUse a 64-bit x64 DAW or a native ARM64 DAW. Both plugin architectures are included. Works with most DAWs supporting VST3, including REAPER, Ableton Live, FL Studio, Cubase and Studio One."
 !insertmacro MUI_PAGE_FINISH
+!endif
 !insertmacro MUI_UNPAGE_CONFIRM
+!ifdef SESSIONSTREAM_SETUP
+  !define MUI_PAGE_CUSTOMFUNCTION_SHOW un.SetupRemovalProgress
+!endif
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
+
+!ifdef SESSIONSTREAM_SETUP
+  ChangeUI IDD_INST "${SETUP_DIALOGS}"
+  ChangeUI IDD_LICENSE "${SETUP_DIALOGS}"
+  ChangeUI IDD_INSTFILES "${SETUP_DIALOGS}"
+  !include "${PROJECT_DIR}/installer/setup/WindowsSetup.nsh"
+!endif
 
 Function .onInit
   ${IfNot} ${RunningX64}
@@ -67,6 +96,7 @@ FunctionEnd
 Section "SessionStream VST3" SEC_PLUGIN
   SetShellVarContext all
   SetOutPath "$INSTDIR"
+  DetailPrint "Installing SessionStream VST3 and bundled streaming runtime"
   ; File replacement fails visibly if a DAW/helper still has a binary open.
   ; Do not terminate the user's DAW or other processes during an upgrade.
   ClearErrors
@@ -86,6 +116,7 @@ Section "SessionStream VST3" SEC_PLUGIN
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\SessionStream" "QuietUninstallString" '"$PROGRAMFILES64\SessionStream\Uninstall.exe" /S'
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\SessionStream" "NoModify" 1
   WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\SessionStream" "NoRepair" 1
+  CreateShortcut "$SMPROGRAMS\Uninstall SessionStream.lnk" "$PROGRAMFILES64\SessionStream\Uninstall.exe"
 SectionEnd
 
 Section "Uninstall"
@@ -104,6 +135,7 @@ Section "Uninstall"
     Abort
   ${EndIf}
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\SessionStream"
+  Delete "$SMPROGRAMS\Uninstall SessionStream.lnk"
   Delete "$PROGRAMFILES64\SessionStream\Uninstall.exe"
   RMDir "$PROGRAMFILES64\SessionStream"
 SectionEnd

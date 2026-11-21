@@ -246,7 +246,7 @@ async function onSignal(m){
     if(!running||ws!==socket)return;
     waitingForApproval=false;
     if(!studio)$('connect').innerHTML='Stop listening <span aria-hidden="true">■</span>';
-    joined=true;if(!studio&&$('note-form'))$('note-form').hidden=false;connectionRetried=false;awaitingPasscode=false;$('passcode-form').hidden=true;$('connect').hidden=false;$('passcode').value='';$('passcode-error').textContent='';$('passcode').removeAttribute('aria-invalid');resetReception();
+    joined=true;if(!studio)$('listener-identity').hidden=true;if(!studio&&$('note-form'))$('note-form').hidden=false;connectionRetried=false;awaitingPasscode=false;$('passcode-form').hidden=true;$('connect').hidden=false;$('passcode').value='';$('passcode-error').textContent='';$('passcode').removeAttribute('aria-invalid');resetReception();
     reconnectAttempt=0;iceServers=m.iceServers;peerId=m.id;
     if(studio){live=true;send({type:'publishing',live:true,title:$('title').value});for(const id of m.peers||[])await offer(id);message('Broadcasting. Press Start streaming in the plugin, then play your project.');}
     else{send({type:'mode',mode:pcm?'pcm':'webrtc'});send({type:'listener-health',state:'ok'});healthState='ok';scheduleFallback();status('Waiting for host');}
@@ -357,6 +357,7 @@ async function prepareAudio(attempt){
 async function stop(showMessage=true){
   ++audioAttempt;waitingForApproval=false;checkingSignIn=false;awaitingPasscode=false;
   if($('note-form'))$('note-form').hidden=true;
+  if(!studio)$('listener-identity').hidden=accessDenied||(!approvalRequired&&!accountRequired);
   reportHealth('ok',false);running=false;live=false;joined=false;sourceAvailable=false;clearTimeout(reconnectTimer);clearTimeout(fallbackTimer);clearInterval(statsTimer);clearInterval(pingTimer);
   if(studio)send({type:'publishing',live:false});ws?.close();ws=null;closePeers();
   const closing=audio;
@@ -456,6 +457,8 @@ if($('dim'))$('dim').onclick=()=>{dimmed=!dimmed;$('dim').setAttribute('aria-pre
 for(const [id,mode] of [['scope-wave','wave'],['scope-fft','fft']]){
   if($(id))$(id).onclick=()=>{
     scopeMode=mode;
+    $('scope').dataset.display=mode;
+    $('scope').setAttribute('aria-label',mode==='fft'?'Live audio frequency spectrum':'Live left and right audio waveforms');
     for(const [other,m] of [['scope-wave','wave'],['scope-fft','fft']]){
       const active=m===scopeMode;
       $(other)?.classList.toggle('active',active);
@@ -551,7 +554,7 @@ function draw(){
   const plotLine=light?'rgba(44,102,33,.12)':'rgba(186,247,122,.08)';
   const midLine=light?'#cbd7cc':'#2a352d';
   const plotL=light?'#2c6621':'#baf77a';
-  const plotR=light?'#2b7c66':'#74d8a1';
+  const plotR=light?'#74638f':'#baa7d7';
   const plotIdle=light?'#829285':'#56665a';
   const dpr=Math.min(devicePixelRatio||1,2),w=canvas.clientWidth,h=canvas.clientHeight;
   if(w>0&&h>0&&(canvas.width!==Math.round(w*dpr)||canvas.height!==Math.round(h*dpr))){
@@ -598,7 +601,7 @@ function draw(){
     }
     const amp=h*.20;
     drawCurve(valuesL,w,topY,amp,running?plotL:plotIdle,running?(light?'rgba(44,102,33,.10)':'rgba(186,247,122,.10)'):null);
-    drawCurve(valuesR,w,botY,amp,running?plotR:plotIdle,running?(light?'rgba(43,124,102,.10)':'rgba(116,216,161,.09)'):null);
+    drawCurve(valuesR,w,botY,amp,running?plotR:plotIdle,running?(light?'rgba(116,99,143,.10)':'rgba(186,167,215,.09)'):null);
 
     ctx.font='600 9px "DM Sans", sans-serif';
     ctx.fillStyle=light?'rgba(23,33,26,.48)':'rgba(242,243,236,.42)';

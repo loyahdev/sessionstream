@@ -17,8 +17,9 @@ inline void syncToggleState(juce::Button& button,bool value){
 // paint above its background canvas, using the shared embedded typeface.
 class ModernButton final : public juce::TextButton {
 public:
-    enum class Icon {none,copy,qr,link,play,account,settings,speaker,more,swap};
-    ModernButton(){refreshStyle();}
+    enum class Icon {none,copy,qr,link,play,account,settings,speaker,more,swap,users,stop};
+    ModernButton(){setMouseClickGrabsKeyboardFocus(false);refreshStyle();}
+    void setIconOnly(bool value){if(iconOnly!=value){iconOnly=value;repaint();}}
     void setIcon(Icon value){if(icon!=value){icon=value;repaint();}}
     void setBadge(juce::String value,bool highlight=false){
         if(badgeText!=value||badgeHighlight!=highlight){badgeText=std::move(value);badgeHighlight=highlight;repaint();}
@@ -30,24 +31,24 @@ public:
         const auto key=role+(filled?"-filled":"-outlined")+(getToggleState()?"-on":"-off");
         if(key!=styleKey||skin==nullptr){
             styleKey=key;
-            const bool quiet=role=="quiet",tab=role=="tab",segment=role=="segment",notice=role=="notice",accountPill=role=="account";
-            const auto bg=filled?accent
+            const bool quiet=role=="quiet",nav=role=="nav"||role=="mode",tab=role=="tab"||nav,segment=role=="segment",notice=role=="notice",accountPill=role=="account";
+            const auto bg=role=="nav"?juce::Colours::transparentBlack:filled?accent
                 :quiet?juce::Colours::transparentBlack
                 :(tab||segment)?(getToggleState()?juce::Colour(0xff232f27):juce::Colours::transparentBlack)
                 :accountPill?juce::Colour(0xff161e19)
                 :notice?juce::Colour(0xff202824)
                 :getToggleState()?juce::Colour(0xff2a382d):juce::Colour(0xff222c25);
-            const auto fg=role=="danger"?warm:filled?background:(tab||segment)?(getToggleState()?accent:muted):studio::text;
-            const auto borderCol=filled?accent:(tab||segment)?(getToggleState()?juce::Colour(0xff394b3e):juce::Colours::transparentBlack):line;
+            const auto fg=role=="nav"?(getToggleState()?studio::text:muted):role=="danger"?warm:filled?background:(tab||segment)?(getToggleState()?accent:muted):studio::text;
+            const auto borderCol=role=="danger"?warm:filled?accent:(tab||segment)?(getToggleState()?juce::Colour(0xff394b3e):juce::Colours::transparentBlack):line;
             auto colour=[](juce::Colour c){return c.isTransparent()?juce::String("rgba(0,0,0,0)"):"#"+c.toDisplayString(false);};
-            state.setProperty("border-width",quiet?0:((tab||segment)&&!getToggleState())?0:1,nullptr);
+            state.setProperty("border-width",quiet||nav?0:((tab||segment)&&!getToggleState())?0:1,nullptr);
             state.setProperty("style",new jive::Object{
                 {"background",colour(bg)},{"foreground",colour(fg)},
-                {"border",colour(borderCol)},{"border-radius",notice?12:accountPill?6:5},
-                {"hover",new jive::Object{{"background",colour(filled?accent.brighter(.07f):quiet?juce::Colour(0xff222d25):(tab||segment)?(getToggleState()?juce::Colour(0xff29382e):juce::Colour(0xff1a231d)):juce::Colour(0xff2b382f))},{"border",colour(filled?accent:juce::Colour(0xff485a4c))}}},
-                {"active",new jive::Object{{"background",colour(filled?accent.darker(.12f):juce::Colour(0xff19231c))}}},
-                {"focus",new jive::Object{{"border",colour(accent)},{"background",colour(filled?accent:juce::Colour(0xff26332a))}}},
-                {"checked",new jive::Object{{"background",colour(juce::Colour(0xff253329))},{"foreground",colour(accent)}}},
+                {"border",colour(borderCol)},{"border-radius",nav?0:notice?12:accountPill?6:4},
+                {"hover",new jive::Object{{"background",colour(role=="nav"?juce::Colours::transparentBlack:filled?accent.brighter(.07f):quiet?juce::Colour(0xff222d25):(tab||segment)?(getToggleState()?juce::Colour(0xff29382e):juce::Colour(0xff1a231d)):juce::Colour(0xff2b382f))},{"border",colour(filled?accent:juce::Colour(0xff485a4c))}}},
+                {"active",new jive::Object{{"background",colour(role=="nav"?juce::Colours::transparentBlack:filled?accent.darker(.12f):juce::Colour(0xff19231c))}}},
+                {"focus",new jive::Object{{"border",colour(accountPill?line:accent)},{"background",colour(role=="nav"?juce::Colours::transparentBlack:filled?accent:juce::Colour(0xff26332a))}}},
+                {"checked",new jive::Object{{"background",colour(role=="nav"?juce::Colours::transparentBlack:juce::Colour(0xff253329))},{"foreground",colour(role=="nav"?studio::text:accent)}}},
                 {"disabled",new jive::Object{{"background",colour(quiet||tab||segment?juce::Colours::transparentBlack:juce::Colour(0xff1c241e))},{"foreground",colour(juce::Colour(0xff5f6e62))},{"border",colour(quiet||tab||segment?juce::Colours::transparentBlack:juce::Colour(0xff273029))}}}
             },nullptr);
             if(skin==nullptr)skin=jive::StyleSheet::create(*this,state);
@@ -60,8 +61,10 @@ public:
         const auto ink=skin->getForeground().getColour().value_or(studio::text);
         const auto type=font(role=="primary"?12.5f:(role=="tab"||role=="segment")?11.5f:12.f,true);
         g.setColour(ink);g.setFont(type);
-        auto bounds=getLocalBounds().toFloat().reduced(role=="tab"||role=="segment"?6.f:9.f,2.f);
-        if(icon!=Icon::none&&getButtonText().isEmpty()&&badgeText.isEmpty()&&countBadge<=0){
+        if(role=="account"&&keyboardFocus&&hasKeyboardFocus(false)){g.setColour(violet);g.fillRect(9,getHeight()-3,getWidth()-18,1);g.setColour(ink);}
+        if((role=="nav"||role=="mode")&&getToggleState()){g.setColour(role=="mode"?accent:violet);g.fillRect(0,getHeight()-2,getWidth(),2);g.setColour(ink);}
+        auto bounds=getLocalBounds().toFloat().reduced(role=="nav"&&icon==Icon::none?0.f:role=="tab"||role=="segment"?6.f:9.f,2.f);
+        if(icon!=Icon::none&&(iconOnly||getButtonText().isEmpty())&&badgeText.isEmpty()&&countBadge<=0){
             paintIcon(g,{bounds.getCentreX()-7.5f,bounds.getCentreY()-7.5f,15.f,15.f});
             return;
         }
@@ -71,11 +74,11 @@ public:
             const float bw=juce::jmax(28.f,std::ceil(bglyph.getBoundingBox(0,-1,true).getWidth())+11.f);
             const float bh=16.f;
             auto pill=juce::Rectangle<float>(bounds.getRight()-bw,bounds.getCentreY()-bh*.5f,bw,bh);
-            g.setColour(badgeHighlight?accent.withAlpha(.16f):juce::Colour(0xff222c25));
+            g.setColour(badgeHighlight?violet.withAlpha(.16f):juce::Colour(0xff222c25));
             g.fillRoundedRectangle(pill,4.f);
-            g.setColour(badgeHighlight?accent.withAlpha(.45f):line);
+            g.setColour(badgeHighlight?violet.withAlpha(.45f):line);
             g.drawRoundedRectangle(pill,4.f,1.f);
-            g.setColour(badgeHighlight?accent:muted);
+            g.setColour(badgeHighlight?violet:muted);
             g.setFont(badgeFont);
             g.drawText(badgeText,pill.toNearestInt(),juce::Justification::centred,false);
             bounds.removeFromRight(bw+6.f);
@@ -101,10 +104,13 @@ public:
             paintIcon(g,{start,bounds.getCentreY()-7.f,14.f,14.f});
             bounds.setLeft(start+19.f);
         }
-        g.drawFittedText(getButtonText(),bounds.toNearestInt(),(icon==Icon::none&&badgeText.isEmpty())?juce::Justification::centred:juce::Justification::centredLeft,1);
+        if(!iconOnly)g.drawFittedText(getButtonText(),bounds.toNearestInt(),(icon==Icon::none&&badgeText.isEmpty()&&role!="nav")?juce::Justification::centred:juce::Justification::centredLeft,1);
     }
+    void focusGained(juce::Component::FocusChangeType cause) override{keyboardFocus=cause==juce::Component::focusChangedByTabKey;juce::TextButton::focusGained(cause);repaint();}
+    void focusLost(juce::Component::FocusChangeType cause) override{keyboardFocus=false;juce::TextButton::focusLost(cause);repaint();}
 private:
-    juce::ValueTree state{"Button"};jive::StyleSheet::ReferenceCountedPointer skin;juce::String styleKey,badgeText;bool badgeHighlight=false;int countBadge=0;Icon icon=Icon::none;
+    bool keyboardFocus=false;
+    juce::ValueTree state{"Button"};jive::StyleSheet::ReferenceCountedPointer skin;juce::String styleKey,badgeText;bool badgeHighlight=false,iconOnly=false;int countBadge=0;Icon icon=Icon::none;
     void paintIcon(juce::Graphics& g,juce::Rectangle<float> a){
         juce::Graphics::ScopedSaveState saved(g);g.addTransform(juce::AffineTransform::scale(a.getWidth()/16.f).translated(a.getX(),a.getY()));
         const juce::PathStrokeType stroke(1.25f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded);
@@ -113,6 +119,8 @@ private:
             for(float cx:{3.6f,8.f,12.4f})g.fillEllipse(cx-1.3f,8.f-1.3f,2.6f,2.6f);
             return;
         }
+        if(icon==Icon::stop){g.fillRoundedRectangle(3.5f,3.5f,9,9,1);return;}
+        if(icon==Icon::users){g.drawEllipse(3,1.5f,5,5,1.2f);p.startNewSubPath(1,14);p.lineTo(1,12);p.cubicTo(1,7,10,7,10,12);p.lineTo(10,14);p.startNewSubPath(11,2);p.cubicTo(16,2,16,7,11,7);p.startNewSubPath(12,9);p.cubicTo(16,9,16,12,16,14);}
         if(icon==Icon::swap){
             p.startNewSubPath(2.5f,5.5f);p.lineTo(13.f,5.5f);p.startNewSubPath(10.f,2.8f);p.lineTo(13.2f,5.5f);p.lineTo(10.f,8.2f);
             p.startNewSubPath(13.5f,10.5f);p.lineTo(3.f,10.5f);p.startNewSubPath(6.f,7.8f);p.lineTo(2.8f,10.5f);p.lineTo(6.f,13.2f);

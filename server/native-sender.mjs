@@ -5,8 +5,8 @@ import {musicSDP} from '../web/audio.mjs';
 import {AudioBuffer} from './audio-buffer.mjs';
 import {qualities} from './session-policy.mjs';
 export class NativeSender {
-  constructor(send,ice){this.send=send;this.ice=ice;this.peers=new Map();this.events=[];this.pending=new Map();this.buffer=new AudioBuffer();this.source=new wrtc.nonstandard.RTCAudioSource();this.track=this.source.createTrack();this.stream=new wrtc.MediaStream([this.track]);this.bitrate=qualities.studio;this.live=false;this.chain=Promise.resolve();this.error=null;this.next=performance.now()+10;this.tick();}
-  setQuality(value){if(this.live)throw Error('Stop streaming before changing quality.');this.bitrate=qualities[value]||qualities.studio;}
+  constructor(send,ice){this.send=send;this.ice=ice;this.peers=new Map();this.events=[];this.pending=new Map();this.buffer=new AudioBuffer();this.source=new wrtc.nonstandard.RTCAudioSource();this.track=this.source.createTrack();this.stream=new wrtc.MediaStream([this.track]);this.bitrate=qualities.balanced;this.live=false;this.chain=Promise.resolve();this.error=null;this.next=performance.now()+10;this.tick();}
+  setQuality(value){if(this.live)throw Error('Stop streaming before changing quality.');this.bitrate=qualities[value]||qualities.balanced;}
   record(id,event,details={}){
     const entry={at:new Date().toISOString(),peer:id,event,...details};
     this.events.push(entry);if(this.events.length>64)this.events.shift();

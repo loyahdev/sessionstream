@@ -31,34 +31,31 @@ public:
         repaint();
     }
     void paint(juce::Graphics& g) override {
-        using namespace studio;auto area=getLocalBounds().toFloat();g.setColour(juce::Colour(0xff101612));g.fillRoundedRectangle(area,7.f);
-        auto plot=area.reduced(34,30);plot.removeFromRight(8);plot.removeFromTop(12);
+        using namespace studio;auto area=getLocalBounds().toFloat();
+        auto plot=area.withTrimmedTop(40).withTrimmedBottom(28).withTrimmedRight(30);
         g.setFont(font(9));
-        for(int db=-72;db<=0;db+=12){float y=plot.getBottom()-(db+84)/84.f*plot.getHeight();g.setColour(line.withAlpha(.28f));g.drawHorizontalLine(int(y),plot.getX(),plot.getRight());g.setColour(muted.withAlpha(.58f));g.drawText(juce::String(db),int(plot.getRight()+5),int(y-6),29,12,juce::Justification::left);}
-        for(int freq:{20,50,100,200,500,1000,2000,5000,10000,20000}){float x=plot.getX()+std::log(double(freq)/20)/std::log(1000.)*plot.getWidth();g.setColour(line.withAlpha(.26f));g.drawVerticalLine(int(x),plot.getY(),plot.getBottom());g.setColour(muted.withAlpha(.68f));g.drawText(freq>=1000?juce::String(freq/1000)+"k":juce::String(freq),int(x-16),int(plot.getBottom()+9),32,14,juce::Justification::centred);}
+        for(int db=-72;db<=0;db+=12){float y=plot.getBottom()-(db+84)/84.f*plot.getHeight();g.setColour(line.withAlpha(.6f));g.drawHorizontalLine(int(y),plot.getX(),plot.getRight());g.setColour(muted.withAlpha(.58f));g.drawText(juce::String(db),int(plot.getRight()+5),int(y-6),29,12,juce::Justification::left);}
+        for(int freq:{20,50,100,200,500,1000,2000,5000,10000,20000}){float x=plot.getX()+std::log(double(freq)/20)/std::log(1000.)*plot.getWidth();g.setColour(line.withAlpha(.6f));g.drawVerticalLine(int(x),plot.getY(),plot.getBottom());g.setColour(muted.withAlpha(.68f));g.drawText(freq>=1000?juce::String(freq/1000)+"k":juce::String(freq),juce::jlimit(0,getWidth()-32,int(x-16)),int(plot.getBottom()+9),32,14,juce::Justification::centred);}
         juce::Path curve;
         auto point=[&](int i){return juce::Point<float>{plot.getX()+float(i)/(points-1)*plot.getWidth(),plot.getBottom()-juce::jlimit(0.f,1.f,(trace[i]+84)/84.f)*plot.getHeight()};};
         auto previous=point(0);curve.startNewSubPath(previous);
         for(int i=1;i<points;++i){const auto current=point(i);curve.quadraticTo(previous,(previous+current)*.5f);previous=current;}
         curve.lineTo(previous);
         auto fill=curve;fill.lineTo(plot.getRight(),plot.getBottom());fill.lineTo(plot.getX(),plot.getBottom());fill.closeSubPath();g.setGradientFill(juce::ColourGradient(accent.withAlpha(.17f),0,plot.getY(),accent.withAlpha(.01f),0,plot.getBottom(),false));g.fillPath(fill);
-        g.setColour(accent.withAlpha(.07f));g.strokePath(curve,juce::PathStrokeType(4.f));g.setColour(accent.withAlpha(.9f));g.strokePath(curve,juce::PathStrokeType(1.3f));
+        g.setColour(accent.withAlpha(.9f));g.strokePath(curve,juce::PathStrokeType(1.3f));
         if(idleAlpha>.03f){
             const float a=juce::jlimit(0.f,1.f,idleAlpha);
-            auto badge=juce::Rectangle<float>(plot.getCentreX()-116.f,plot.getCentreY()-24.f,232.f,46.f);
+            auto badge=juce::Rectangle<float>(plot.getCentreX()-116.f,plot.getCentreY()-17.f,232.f,34.f);
             g.setColour(juce::Colour(0xff141c17).withAlpha(.92f*a));
             g.fillRoundedRectangle(badge,6.f);
             g.setColour(line.withAlpha(.8f*a));
             g.drawRoundedRectangle(badge,6.f,1.f);
             g.setColour(text.withAlpha(.82f*a));
             g.setFont(font(11.5f,true));
-            g.drawText(receivingMode?"Waiting for incoming stream":"Play audio in your DAW",badge.withHeight(24.f).translated(0,3.f).toNearestInt(),juce::Justification::centred,false);
-            g.setColour(muted.withAlpha(.72f*a));
-            g.setFont(font(9.5f));
-            g.drawText(juce::String::fromUTF8("20 Hz \xE2\x80\x93 20 kHz \xC2\xB7 Real-time stereo analyzer"),badge.withTrimmedTop(23.f).withHeight(18.f).toNearestInt(),juce::Justification::centred,false);
+            g.drawText(receivingMode?"Waiting for incoming stream":"Play audio in your DAW",badge.toNearestInt(),juce::Justification::centred,false);
         }
-        g.setColour(muted);g.setFont(font(11,true));g.drawText("Spectrum",18,13,150,16,juce::Justification::left);g.setFont(font(9.5f));g.drawText(juce::String(rate/1000,1)+juce::String::fromUTF8(" kHz  \xC2\xB7  Stereo"),getWidth()-170,13,152,16,juce::Justification::right);
-        g.setColour(line);g.drawRoundedRectangle(area.reduced(.5f),7.f,1.f);
+        g.setColour(muted);g.setFont(font(14,true));g.drawText("Spectrum",0,6,150,20,juce::Justification::left);g.setFont(font(9.5f));g.drawText(juce::String(rate/1000,1)+juce::String::fromUTF8(" kHz  \xC2\xB7  Stereo"),getWidth()-170,8,162,16,juce::Justification::right);
+
     }
 private:
     static constexpr int size=16384,points=280;

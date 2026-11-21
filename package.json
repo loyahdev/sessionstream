@@ -1,6 +1,6 @@
 {
   "name": "sessionstream",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "license": "AGPL-3.0-only",
   "engines": {
@@ -15,6 +15,7 @@
     "test:browser": "node tests/browser.mjs",
     "test:lifecycle": "node tests/runtime-lifecycle.mjs",
     "build:installer": "zsh scripts/build-installer.sh",
+    "build:setup": "zsh installer/setup/build.sh artifacts",
     "build:windows": "powershell -ExecutionPolicy Bypass -File scripts/build-windows.ps1",
     "build:windows-installer": "node scripts/build-windows-installer.mjs",
     "install:plugin": "zsh scripts/install-plugin.sh",

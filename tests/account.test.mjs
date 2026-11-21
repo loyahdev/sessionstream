@@ -51,8 +51,8 @@ test('identity expires and sign-out removes the name',async()=>{
 
 test('account controls and callback remain local, authenticated, and independent of invites',async()=>{
  const {createStreamServer}=await import('../server/index.mjs');
- const {account}=fixture();
- const app=await createStreamServer({publicPort:0,studioPort:0,udpPort:0,account,ignoreStoredURL:true});
+ const {account,calls}=fixture();
+ const app=await createStreamServer({publicPort:0,studioPort:0,udpPort:0,account,linkStore:{read:async()=>null,write:async()=>{},clear:async()=>{}},ignoreStoredURL:true});
  try {
   const local=`http://127.0.0.1:${app.studioPort}`,pub=`http://127.0.0.1:${app.publicPort}`;
   const before=await (await fetch(`${local}/api/studio`)).json();
@@ -63,10 +63,15 @@ test('account controls and callback remain local, authenticated, and independent
   const {url}=await (await post(local)).json();const auth=new URL(url);
   assert.equal(auth.searchParams.get('redirect_uri'),`${local}/auth/callback`);
   assert.equal((await fetch(`${pub}/auth/callback?${callback(auth)}`)).status,404);
-  assert.equal((await fetch(`${local}/auth/callback?${callback(auth)}`)).status,200);
+  const completed=await fetch(`${local}/auth/callback?${callback(auth)}`);assert.equal(completed.status,200);assert.match(completed.url,/\/auth\/complete\/[a-f0-9]+$/);assert.equal(new URL(completed.url).search,'');assert((await completed.text()).includes("You're signed in."));assert.equal((await fetch(completed.url)).status,200);
   const after=await (await fetch(`${local}/api/studio`)).json();
   assert.equal(after.account.name,'Jaxon');assert.equal(after.room,before.room);assert.equal(after.live,before.live);
-  assert.equal((await fetch(`${local}/auth/callback?${callback(auth)}`)).status,400);
+  const exchanges=calls.filter(call=>call.url.endsWith('/oauth/token')).length;
+  assert.equal((await fetch(`${local}/auth/callback?${callback(auth)}`)).status,200);assert.equal(calls.filter(call=>call.url.endsWith('/oauth/token')).length,exchanges);
+  assert.equal((await fetch(`${local}/auth/callback?${callback(auth,'altered')}`)).status,400);
+  assert.equal((await fetch(`${pub}${new URL(completed.url).pathname}`)).status,404);
+  await fetch(local+'/api/account',{method:'POST',headers:{Origin:local,Authorization:`Bearer ${before.token}`},body:JSON.stringify({action:'sign-out'})});
+  assert.equal((await fetch(completed.url)).status,410);
  } finally {await app.close();}
 });
 
@@ -115,4 +120,35 @@ test('signing out while stored login loads prevents account restoration',async()
 });
 test('remembered login requests offline access without expanding profile data',async()=>{
  const {account}=fixture();assert.equal(begin(account).searchParams.get('scope'),'profile offline_access');account.close();
+});
+
+
+test('background restore and refresh stay silent; only browser sign-in and sign-out request credential approval',async()=>{
+ const writes=[],clears=[],reads=[];let saved='saved';
+ const {account}=savedAccount({store:{read:async options=>{reads.push(options);return saved;},write:async(value,options)=>{saved=value;writes.push(options);},clear:async options=>clears.push(options)}});
+ try{
+  await account.ready;
+  assert.equal(reads[0],undefined);
+  assert.equal(writes[0].interactive,false);
+  await account.renew();assert.equal(writes.at(-1).interactive,false);
+  const url=begin(account);assert.equal(await account.callback(callback(url)),true);
+  assert.equal(writes.at(-1).interactive,true);
+  await account.signOut();assert.equal(clears.at(-1).interactive,true);
+ }finally{account.close();}
+});
+
+test('Keychain denial ends background restore with a reconnect message',async()=>{
+ const error=Object.assign(Error('denied'),{code:'SECURE_STORAGE_AUTH_REQUIRED'});
+ const {account}=fixture({store:{read:async()=>{throw error;}}});
+ await account.ready;
+ assert.equal(account.status().phase,'signed-out');
+ assert.match(account.status().message,/Keychain approval/);
+ assert.equal(account.refreshTimer,undefined);
+ account.close();
+});
+
+
+test('completed sign-in reports session-only login when a fresh silent read cannot restore the saved token',async()=>{
+ const {account}=savedAccount({autoRestore:false,store:{write:async()=>{},read:async()=>{throw Object.assign(Error('blocked'),{code:'SECURE_STORAGE_AUTH_REQUIRED'});},clear:async()=>{}}});
+ try{const url=begin(account);assert.equal(await account.callback(callback(url)),true);assert.equal(account.status().phase,'signed-in');assert.match(account.status().message,/for this session/);}finally{account.close();}
 });

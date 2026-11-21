@@ -6,7 +6,7 @@ A VST3 audio effect for macOS Apple Silicon and Windows 11 x64/ARM64, with AU al
 
 Supported systems: macOS 13.5+ on Apple Silicon (VST3 + AU), and Windows 11 on Intel/AMD x64 or ARM64 (VST3). Most DAWs supporting these formats are compatible; use AU in Logic Pro. AAX, Intel Macs and 32-bit DAWs are not included. For Windows installation, see [WINDOWS.md](WINDOWS.md).
 
-Open `SessionStream-mac-arm64.pkg` and complete the macOS Installer. It installs VST3 into `~/Library/Audio/Plug-Ins/VST3/SessionStream.vst3` and AU into `~/Library/Audio/Plug-Ins/Components/SessionStream.component`, each with its bundled runtime; it does not install a separate app. Requires Apple Silicon and macOS 13.5 or newer. Save and close your DAW before installing an update, then reopen it and rescan plugins if needed.
+Open `SessionStream-mac-arm64.dmg` and launch SessionStream Setup. The same disk image includes Uninstall SessionStream. It installs VST3 into `~/Library/Audio/Plug-Ins/VST3/SessionStream.vst3` and AU into `~/Library/Audio/Plug-Ins/Components/SessionStream.component`, each with its bundled runtime; it does not install a separate app. Requires Apple Silicon and macOS 13.5 or newer. Save and close your DAW before installing an update, then reopen it and rescan plugins if needed.
 
 This build is ad-hoc signed. The installer is unsigned and not notarized because no Developer ID certificate is configured. Downloaded copies may require approval under macOS System Settings → Privacy & Security → Open Anyway. A notarized release needs Developer ID signing.
 
@@ -90,7 +90,8 @@ Save and close your DAW before installing. `npm run install:plugin` installs bot
 - Plugin: `build/SessionStream_artefacts/Release/VST3/SessionStream.vst3`
 - Audio Unit: `build/SessionStream_artefacts/Release/AU/SessionStream.component`
 - Installed: `~/Library/Audio/Plug-Ins/VST3/SessionStream.vst3` and `~/Library/Audio/Plug-Ins/Components/SessionStream.component`
-- Installer: `artifacts/SessionStream-mac-arm64.pkg`
+- Designed setup: `artifacts/setup/SessionStream-Setup-1.0.2-mac-arm64.dmg`
+- Intermediate package: `artifacts/SessionStream-mac-arm64.pkg`
 - Plugin archive: `artifacts/SessionStream-mac-arm64.vst3.zip`
 - Checksums: `artifacts/SHA256SUMS.txt`
 

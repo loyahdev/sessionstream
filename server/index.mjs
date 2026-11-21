@@ -1,6 +1,7 @@
 import {expiredPage} from './expired-page.mjs';
 import {ListenerAdmission} from './listener-admission.mjs';
 import {pluginSignInURL, accountResultPage} from './account-pages.mjs';
+import {AccountCompletion} from './account-completion.mjs';
 import {DashboardClient} from './dashboard-client.mjs';
 import http from 'node:http';
 import {sharePrefix,validName,normalizeName} from './link-names.mjs';
@@ -48,6 +49,8 @@ export async function createStreamServer(options = {}) {
   const testWorker=!!process.env.NODE_TEST_CONTEXT;
   const config=accountConfig();
   const account = options.account || new Account({...config,autoRestore:false,store:new CredentialStore(config.issuer,config.clientId)});
+  const accountCompletion=new AccountCompletion();
+  const accountEpoch=()=>account.status().phase==='signed-in'?(account.generation??0):null;
   const linkAuth=new LinkAuthorization(account,options.linkStore||new CredentialStore(config.issuer,`${config.clientId}|custom-links`),options.linkOptions);
   const links=new LinkClient(account,linkAuth,{preferences:path.join(options.runtimeDir||path.join(root,'.runtime'),'link-preferences.json'),...options.linkOptions});
   const receivers=new Map(),receiverCredentials=new Map();
@@ -205,7 +208,7 @@ export async function createStreamServer(options = {}) {
       if (!studio || !headerAuth(req) || req.headers.origin !== `http://${req.headers.host}`) return reply(403,{error:'Unauthorized'});
       const body = await readJSON(req,512);
       if (body.error) return reply(body.status,{error:body.error});
-      if (body.value?.action === 'sign-out'){reconnectFlow=null;native?.stop();live=false;stopReporting();owner=null;sessionPolicy.stop();await dashboard.stopped();for(const receiver of receivers.values())receiver.close();receivers.clear();await linkAuth.clear().catch(()=>{});return reply(200,await account.signOut());}
+      if (body.value?.action === 'sign-out'){accountCompletion.clear();reconnectFlow=null;native?.stop();live=false;stopReporting();owner=null;sessionPolicy.stop();await dashboard.stopped();for(const receiver of receivers.values())receiver.close();receivers.clear();await linkAuth.clear().catch(()=>{});return reply(200,await account.signOut());}
       if (['sign-in','reconnect'].includes(body.value?.action)){
         const reconnect=body.value.action==='reconnect'||!!reconnectFlow;
         if(reconnect&&live)return reply(200,{ok:false,error:'Stop streaming before reconnecting.'});
@@ -226,8 +229,16 @@ export async function createStreamServer(options = {}) {
       }
       return reply(400,{error:'Unknown account action'});
     }
+    if(url.pathname.startsWith('/auth/complete/')){
+      if(!studio||req.method!=='GET')return reply(404,{error:'Not found'});
+      const ok=accountCompletion.get(url.pathname.slice('/auth/complete/'.length),accountEpoch());
+      res.writeHead(ok?200:410,{'Content-Type':'text/html; charset=utf-8','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; img-src https://sessionstream.app; font-src https://sessionstream.app; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"});
+      return res.end(accountResultPage(ok,{expired:!ok}));
+    }
     if (url.pathname === '/auth/callback') {
       if (!studio || req.method !== 'GET' || url.searchParams.getAll('state').length !== 1 || url.searchParams.getAll('code').length > 1) return reply(404,{error:'Not found'});
+      const completed=accountCompletion.lookup(url.searchParams,accountEpoch());
+      if(completed){res.writeHead(303,{Location:'/auth/complete/'+completed});return res.end();}
       const linkCallback=linkAuth.matches(url.searchParams);
       const reconnect=!linkCallback&&reconnectFlow?.state===url.searchParams.get('state')?reconnectFlow:null;
       const ok=linkCallback?await links.callback(url.searchParams):await account.callback(url.searchParams);
@@ -236,7 +247,8 @@ export async function createStreamServer(options = {}) {
         const result=await dashboard.reconnectAfterSignIn(reconnect?.previous);
         accountError=result.ok?'':result.error;
       }
-      res.writeHead(ok?200:400,{'Content-Type':'text/html; charset=utf-8','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"});
+      if(ok){const receipt=accountCompletion.remember(url.searchParams,accountEpoch());res.writeHead(303,{Location:'/auth/complete/'+receipt});return res.end();}
+      res.writeHead(400,{'Content-Type':'text/html; charset=utf-8','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; img-src https://sessionstream.app; font-src https://sessionstream.app; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"});
       return res.end(accountResultPage(ok));
     }
     if (url.pathname === '/api/invite' && req.method === 'POST') {
@@ -262,7 +274,8 @@ export async function createStreamServer(options = {}) {
       if(m.requestId!==undefined&&(typeof m.requestId!=='string'||!/^[a-f0-9-]{32,36}$/.test(m.requestId)))return reply(400,{error:'Invalid request ID'});
       if(!validPasscode(m.passcode))return reply(400,{error:'Passcode must be at most 64 characters.'});
       if(!validSessionSettings(m.quality,m.expiresInHours))return reply(400,{error:'Invalid session settings.'});
-      if(m.action==='generate'&&m.quality&&m.quality!=='studio'){const access=await dashboard.requirePro();if(!access.ok)return reply(403,{error:access.error});}
+      const requestedQuality=m.quality||(['start','handoff'].includes(m.action)&&sessionPolicy.created?sessionPolicy.quality:'balanced');
+      if(['generate','start','handoff'].includes(m.action)&&requestedQuality!=='balanced'){if(account.status().phase!=='signed-in')return reply(403,{error:'SessionStream Pro is required for this quality preset.'});const access=await dashboard.requirePro();if(!access.ok)return reply(403,{error:access.error});}
       if((m.action==='start'||m.action==='handoff')&&sessionPolicy.expired)return reply(410,{error:'This invite has expired. Create a new invite.'});
       if(m.action==='end'){
         if(inviteSource!==null&&inviteSource!==m.source)return reply(403,{error:'Only the session host can end this session.'});

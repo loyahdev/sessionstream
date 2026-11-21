@@ -14,8 +14,8 @@ public:
         if(paid){
             for(int i=0;i<3;++i)buttons[size_t(i)].setBounds(2+i*73,20,71,24);
         }else{
-            buttons[0].setBounds(2,20,96,24);
-            buttons[1].setBounds(99,20,62,24);
+            buttons[0].setBounds(99,20,62,24);
+            buttons[1].setBounds(2,20,96,24);
             buttons[2].setBounds(162,20,60,24);
         }
     }
@@ -31,6 +31,6 @@ public:
         g.drawFittedText(quality==0?juce::String::fromUTF8("510 kbps stereo \xC2\xB7 Full studio detail."):quality==1?juce::String::fromUTF8("320 kbps stereo \xC2\xB7 Less data for long sessions."):juce::String::fromUTF8("96 kbps stereo \xC2\xB7 Optimized for mobile data."),0,50,getWidth(),24,juce::Justification::topLeft,2);
     }
 private:
-    int quality=0;bool canEdit=true,paid=true;std::array<studio::ModernButton,3> buttons;
-    void refresh(){for(int i=0;i<3;++i){buttons[size_t(i)].setVisible(i==0||paid);studio::syncToggleState(buttons[size_t(i)],i==quality);buttons[size_t(i)].setEnabled(canEdit&&(i==0||paid));buttons[size_t(i)].setTooltip(i>0&&!paid?"Pro quality preset":"");buttons[size_t(i)].refreshStyle();}resized();repaint();}
+    int quality=1;bool canEdit=true,paid=true;std::array<studio::ModernButton,3> buttons;
+    void refresh(){for(int i=0;i<3;++i){buttons[size_t(i)].setVisible(i==1||paid);studio::syncToggleState(buttons[size_t(i)],i==quality);buttons[size_t(i)].setEnabled(canEdit&&(i==1||paid));buttons[size_t(i)].setTooltip(i!=1&&!paid?"Pro quality preset":"");buttons[size_t(i)].refreshStyle();}resized();repaint();}
 };

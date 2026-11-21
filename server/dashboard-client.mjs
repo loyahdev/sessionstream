@@ -5,7 +5,7 @@ import {CredentialStore} from './credential-store.mjs';
 // One client per shared companion, never per processor. Secrets stay in private
 // OS-store pipes and HTTPS requests; status is an explicit public allowlist.
 export class DashboardClient {
-  constructor({account, storeFactory, onDenied=()=>{}, onLimits=()=>{}, fetchImpl=fetch, now=Date.now, origin='https://sessionstream.app', version='1.0.1', enabled=true, autoTimer=true}) {
+  constructor({account, storeFactory, onDenied=()=>{}, onLimits=()=>{}, fetchImpl=fetch, now=Date.now, origin='https://sessionstream.app', version='1.0.2', enabled=true, autoTimer=true}) {
     this.enabled=enabled;this.account=account; this.storeFactory=storeFactory || (sub=>new CredentialStore(account.issuer,`${account.clientId}|installation-v1|${sub}`));
     this.onDenied=onDenied; this.onLimits=onLimits; this.fetch=fetchImpl; this.now=now; this.origin=origin; this.version=version;
     this.plan='free'; this.listenerLimit=3; this.live=false; this.queue=Promise.resolve(); this.reset();
@@ -36,19 +36,20 @@ export class DashboardClient {
   async enroll(){
     if(this.record)return {ok:true};
     this.store=this.storeFactory(this.sub);
-    const saved=await this.store.read();
+    const interaction={interactive:this.authorizingCredentials===true};
+    const saved=await this.store.read(interaction);
     let stored=saved?JSON.parse(saved):null;
     if(stored?.deviceCredential){if(!/^[a-f0-9-]{36}$/.test(stored.device)||!/^[a-f0-9]{64}$/.test(stored.deviceCredential))throw Error('Invalid saved installation');this.record=stored;return {ok:true};}
     // Persist an enrollment intent before the request. If its response is lost,
     // retry the same ID; 409 then requires an explicit dashboard cleanup.
     const id=stored?.device || (this.enrollingId ||= randomUUID());
-    if(!stored)await this.store.write(JSON.stringify({device:id}));
-    if(this.unsaved){await this.store.write(JSON.stringify(this.unsaved));this.record=this.unsaved;this.unsaved=null;return {ok:true};}
+    if(!stored)await this.store.write(JSON.stringify({device:id}),interaction);
+    if(this.unsaved){await this.store.write(JSON.stringify(this.unsaved),interaction);this.record=this.unsaved;this.unsaved=null;return {ok:true};}
     const result=await this.request('enroll',JSON.stringify({device:id,name:os.hostname().slice(0,80),platform:process.platform==='darwin'?'macOS':process.platform==='win32'?'Windows':process.platform,version:this.version}));
     if(!result.ok)return result;
     if(!/^[a-f0-9]{64}$/.test(result.deviceCredential))throw Error('Invalid enrollment response');
     const record={device:id,deviceCredential:result.deviceCredential};
-    this.unsaved=record;await this.store.write(JSON.stringify(record));this.unsaved=null;this.record=record;this.enrollingId=null;return {ok:true};
+    this.unsaved=record;await this.store.write(JSON.stringify(record),interaction);this.unsaved=null;this.record=record;this.enrollingId=null;return {ok:true};
   }
   totalsForReport(){const date=new Date(this.now()).toISOString().slice(0,10),yesterday=new Date(this.now()-86400000).toISOString().slice(0,10);for(const key of this.totals.keys())if(key!==date&&key!==yesterday)this.totals.delete(key);if(!this.totals.has(date))this.totals.set(date,{date,seconds:0,listenerSeconds:0,bytes:0});return [...this.totals.values()].sort((a,b)=>a.date.localeCompare(b.date)).map(t=>({...t}));}
   // Called from the UDP handler with packet duration, never from the audio
@@ -76,7 +77,7 @@ export class DashboardClient {
       // (also renew on duplicate: replay does not renew the server lease).
       if(result.duplicate||sent.live!==live)return this.flush(live);
       return {ok:true};
-    }catch{return this.failure({ok:false,status:503,error:'Account connection unavailable. Retrying automatically.'});}
+    }catch(error){if(error.code==='SECURE_STORAGE_AUTH_REQUIRED'){const result={ok:false,status:423,error:'Saved installation needs Keychain approval. Use Sign in to reconnect.'};this.deny(result.error,result.status);return result;}return this.failure({ok:false,status:503,error:'Account connection unavailable. Retrying automatically.'});}
   }
   failure(result){this.message=result.error||'Account reporting failed.';
     if([400,403,409,426].includes(result.status))this.deny(this.message,result.status);
@@ -100,6 +101,8 @@ export class DashboardClient {
   reconnectAfterSignIn(previous={}){
     this.connectingAfterSignIn=true;
     return this.serial(async()=>{
+      this.authorizingCredentials=true;
+      try{
       await this.syncAccount();
       if(!this.sub)return {ok:false,error:'Sign in first.'};
       const knownRevocation=previous.sub===this.sub&&previous.status===403||this.blockedStatus===403;
@@ -110,9 +113,10 @@ export class DashboardClient {
         if(result.status!==403)return result;
       }
       // Only a fresh browser callback can replace a denied installation.
-      await this.storeFactory(this.sub).clear();
+      await this.storeFactory(this.sub).clear({interactive:true});
       this.reset();
       return this.flush(false);
+      }finally{this.authorizingCredentials=false;}
     }).catch(()=>({ok:false,error:'Could not update the saved installation. Try reconnecting again.'}))
       .finally(()=>{this.connectingAfterSignIn=false;});
   }

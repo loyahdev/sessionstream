@@ -3,8 +3,9 @@
 #include "BinaryData.h"
 
 namespace studio {
-inline const juce::Colour background{0xff151a17}, panel{0xff1b221d}, inset{0xff111813}, line{0xff303b33},
-    text{0xffe9eee8}, muted{0xff929e94}, accent{0xffbaf77a}, warm{0xffe9bb80};
+inline const juce::Colour violet{0xffbaa7d7};
+inline const juce::Colour background{0xff111714}, panel{0xff1b2721}, inset{0xff151e19}, line{0xff34423a},
+    text{0xffedf3e7}, muted{0xffa6b5aa}, accent{0xffc2e879}, warm{0xfff1a0ac};
 inline juce::Font font(float size,bool bold=false){
     static const auto regular=juce::Typeface::createSystemTypefaceFor(BinaryData::DMSansRegular_ttf,BinaryData::DMSansRegular_ttfSize);
     static const auto semibold=juce::Typeface::createSystemTypefaceFor(BinaryData::DMSansSemibold_ttf,BinaryData::DMSansSemibold_ttfSize);
@@ -110,6 +111,15 @@ public:
         g.setColour(background);g.fillEllipse(position-8,centre-8,16,16);g.setColour(accent);g.fillEllipse(position-5,centre-5,10,10);
     }
     void drawToggleButton(juce::Graphics& g,juce::ToggleButton& button,bool hover,bool) override {
+        if(button.getComponentID()=="include-passcode"){
+        const auto area=button.getLocalBounds().toFloat();const bool on=button.getToggleState();
+        g.setColour(muted.withAlpha(button.isEnabled()?1.f:.45f));g.setFont(font(11));g.drawText(button.getButtonText(),area.toNearestInt().withTrimmedRight(34),juce::Justification::centredLeft);
+        auto track=juce::Rectangle<float>{area.getRight()-25,area.getCentreY()-7,24,14};
+        g.setColour(panel);g.fillRoundedRectangle(track,7);g.setColour(on?accent.withAlpha(.55f):line);g.drawRoundedRectangle(track,7,1);
+        g.setColour(on?accent:muted);g.fillEllipse(track.getX()+(on?13.f:3.f),track.getY()+3,8,8);
+        if(button.hasKeyboardFocus(true)){g.setColour(accent);g.drawRoundedRectangle(area.reduced(1),3,1);}
+            return;
+        }
         const auto alpha=button.isEnabled()?1.f:.4f;auto box=juce::Rectangle<float>(1,button.getHeight()*.5f-8,16,16);
         g.setColour(button.getToggleState()?accent:inset);g.fillRoundedRectangle(box,4.f);g.setColour(hover?accent:line);g.drawRoundedRectangle(box,4.f,1.f);
         if(button.getToggleState()){juce::Path tick;tick.startNewSubPath(5,box.getY()+8);tick.lineTo(8,box.getY()+11);tick.lineTo(13,box.getY()+5);g.setColour(background);g.strokePath(tick,juce::PathStrokeType(1.7f));}

@@ -11,7 +11,60 @@
 
 // Secrets travel through private pipes, never command arguments or files.
 int main(int argc, char** argv) {
-    if (argc != 3) return 2;
+#if defined(__APPLE__)
+    // Installer maintenance is restricted to this product's exact service.
+    // Permission is granted only through macOS, never by rewriting item ACLs.
+    if(argc==2){
+        const std::string maintenance(argv[1]);
+        if(maintenance=="service-check"||maintenance=="service-authorize"||maintenance=="service-reset"){
+            const bool prompt=maintenance=="service-authorize";
+            if(SecKeychainSetUserInteractionAllowed(prompt)!=errSecSuccess)return 1;
+            auto query=CFDictionaryCreateMutable(nullptr,0,&kCFTypeDictionaryKeyCallBacks,&kCFTypeDictionaryValueCallBacks);
+            CFDictionarySetValue(query,kSecClass,kSecClassGenericPassword);
+            CFDictionarySetValue(query,kSecAttrService,CFSTR("audio.sessionstream.oauth"));
+            OSStatus status=errSecSuccess;
+            if(maintenance=="service-reset"){
+                CFDictionarySetValue(query,kSecMatchLimit,kSecMatchLimitAll);
+                status=SecItemDelete(query);
+                CFDictionaryRemoveValue(query,kSecMatchLimit);
+                if(status==errSecSuccess||status==errSecItemNotFound){
+                    CFDictionarySetValue(query,kSecReturnAttributes,kCFBooleanTrue);
+                    CFTypeRef remaining=nullptr;status=SecItemCopyMatching(query,&remaining);
+                    if(remaining)CFRelease(remaining);
+                    if(status==errSecItemNotFound)status=errSecSuccess;
+                    else if(status==errSecSuccess)status=errSecInternalComponent;
+                }
+            }else{
+                // Enumerate metadata first: macOS forbids ReturnData + MatchAll.
+                CFDictionarySetValue(query,kSecReturnAttributes,kCFBooleanTrue);
+                CFDictionarySetValue(query,kSecMatchLimit,kSecMatchLimitAll);
+                CFTypeRef matches=nullptr;status=SecItemCopyMatching(query,&matches);
+                if(status==errSecSuccess&&matches&&CFGetTypeID(matches)==CFArrayGetTypeID()){
+                    auto items=static_cast<CFArrayRef>(matches);
+                    CFDictionaryRemoveValue(query,kSecReturnAttributes);
+                    CFDictionarySetValue(query,kSecMatchLimit,kSecMatchLimitOne);
+                    CFDictionarySetValue(query,kSecReturnData,kCFBooleanTrue);
+                    for(CFIndex i=0;i<CFArrayGetCount(items)&&status==errSecSuccess;++i){
+                        auto item=static_cast<CFDictionaryRef>(CFArrayGetValueAtIndex(items,i));
+                        auto key=CFDictionaryGetValue(item,kSecAttrAccount);
+                        if(!key){status=errSecParam;break;}
+                        CFDictionarySetValue(query,kSecAttrAccount,key);
+                        CFTypeRef data=nullptr;status=SecItemCopyMatching(query,&data);
+                        if(data)CFRelease(data); // No secrets leave this process.
+                    }
+                }
+                if(matches)CFRelease(matches);
+            }
+            CFRelease(query);
+            if(status==errSecInteractionNotAllowed||status==errSecInteractionRequired||status==errSecAuthFailed||status==errSecUserCanceled)return 3;
+            if(status!=errSecSuccess&&status!=errSecItemNotFound)std::cerr<<"Keychain operation failed ("<<status<<")\n";
+            return status==errSecSuccess||status==errSecItemNotFound?0:1;
+        }
+    }
+#endif
+    if (argc != 3 && argc != 4) return 2;
+    const bool interactive=argc==4 && std::string(argv[3])=="--interactive";
+    if(argc==4 && !interactive)return 2;
     const std::string action(argv[1]), key(argv[2]);
     if (key.size()!=64 || !std::all_of(key.begin(),key.end(),[](char c){return (c>='0'&&c<='9')||(c>='a'&&c<='f');})) return 2;
     if (action!="read" && action!="write" && action!="clear") return 2;
@@ -22,6 +75,9 @@ int main(int argc, char** argv) {
         if(value.empty())return 2;
     }
 #if defined(__APPLE__)
+    // This is a short-lived helper: never let background refresh open Keychain UI.
+    // Legacy login-keychain ACL dialogs also require the process-wide setting.
+    if(SecKeychainSetUserInteractionAllowed(interactive)!=errSecSuccess)return 1;
     auto query=CFDictionaryCreateMutable(nullptr,0,&kCFTypeDictionaryKeyCallBacks,&kCFTypeDictionaryValueCallBacks);
     auto account=CFStringCreateWithCString(nullptr,key.c_str(),kCFStringEncodingUTF8);
     CFDictionarySetValue(query,kSecClass,kSecClassGenericPassword);
@@ -53,6 +109,7 @@ int main(int argc, char** argv) {
         CFRelease(update);CFRelease(data);
     }
     CFRelease(account);CFRelease(query);
+    if(status==errSecInteractionNotAllowed || status==errSecInteractionRequired || status==errSecUserCanceled || status==errSecAuthFailed)return 3;
     return status==errSecSuccess || (status==errSecItemNotFound && action!="write") ? 0 : 1;
 #elif defined(_WIN32)
     const std::wstring target=L"SessionStream/OAuth/"+std::wstring(key.begin(),key.end());

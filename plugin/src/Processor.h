@@ -52,7 +52,7 @@ public:
     bool isSending() const { return sendParameter->get()&&!receiveMode.load(); }
     std::unique_ptr<StreamController> controller;
     UpdateChecker updates;
-    std::atomic<int> streamQuality{0},linkExpiryHours{0},receiveBufferIndex{0},uiScaleIndex{0};
+    std::atomic<int> streamQuality{1},linkExpiryHours{0},receiveBufferIndex{0},uiScaleIndex{0};
     std::atomic<bool> receiveLowLatency{false},sendLimiterActive{false};
     bool localMuted()const {return muteParameter->get();}
     void setLocalMuted(bool value){muteParameter->setValueNotifyingHost(value?1.f:0.f);}
