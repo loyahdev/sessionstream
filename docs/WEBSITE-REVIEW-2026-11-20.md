@@ -28,4 +28,10 @@ Current checkout: `/Users/jaxonhensch/Documents/GitHub/sessionstream`.
 
 - The reported custom-domain email rejection is not reproduced or resolved. The exact provider rejection message/event is still needed. A rendered sign-up form and passing automated tests do not prove that specific address will be accepted. No security protections were disabled.
 - No real account was created, payment made, installer run or live DAW stream tested in this website pass.
-- Changes are local. No commit, push or deployment was performed. After deployment, confirm that the new page and its versioned assets load on the public domain.
+- The site was subsequently deployed to Cloudflare at the user’s request. No Git commit or push was performed.
+
+## Cloudflare deployment
+
+Deployed to the existing `sessionstream-tunnels` Worker and `https://sessionstream.app` custom domain, preserving deployed variables and secrets. Version: `1f040e09-bf5a-4c44-b577-0a941063e122`. Previous version: `be086bf4-c09a-433c-95e0-dbe06913be75`.
+
+Post-deployment verification: public HTML, homepage CSS, app/site JavaScript, Receive image and listener image matched packaged SHA-256 hashes. Sign-in and sign-up returned HTTP 200, dashboard redirected signed-out visitors, and download configuration returned both stable installer URLs. The public homepage rendered in the browser with no observed console errors. The specific flagged-email rejection remains unverified.
