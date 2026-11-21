@@ -65,6 +65,14 @@ export class AccountHub {
  if(path==='/api/account/sign-in'&&request.method==='GET'&&url.searchParams.get('flow')!=='authorize')return new Response(null,{status:302,headers:{Location:'/sign-in/'+(url.searchParams.get('intent')==='upgrade'?'?intent=upgrade':''),'Cache-Control':'no-store'}});
  if(path==='/api/account/sign-in'&&request.method==='GET'){const state=random(),verifier=random(),challenge=btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest('SHA-256',encoder.encode(verifier))))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');await this.store.put(`oauth:${state}`,{verifier,expires:Date.now()+900000,intent:url.searchParams.get('intent')==='upgrade'?'upgrade':null});await this.store.setAlarm(Date.now()+3600000);const target=new URL('/oauth/authorize',this.env.CLERK_ISSUER);target.search=new URLSearchParams({client_id:this.env.CLERK_CLIENT_ID,response_type:'code',redirect_uri:`${this.origin}/api/account/callback`,scope:'profile email offline_access',state,code_challenge:challenge,code_challenge_method:'S256'});return new Response(null,{status:302,headers:{Location:target.href,'Set-Cookie':cookie('__Host-ss-oauth',state,900),'Cache-Control':'no-store'}})}
  if(path==='/api/account/callback'&&request.method==='GET'){const fail=reason=>new Response(null,{status:302,headers:{Location:'/api/account/sign-in-error?reason='+encodeURIComponent(reason),'Set-Cookie':cookie('__Host-ss-oauth','',0),'Cache-Control':'no-store'}});const state=url.searchParams.get('state');if(!state||cookies(request)['__Host-ss-oauth']!==state)return fail('expired');const pending=await this.store.get(`oauth:${state}`);await this.store.delete(`oauth:${state}`);if(!pending||pending.expires<Date.now())return fail('expired');if(url.searchParams.has('error'))return fail(url.searchParams.get('error'));if(!url.searchParams.get('code'))return fail('incomplete');let stage='token_exchange';try{const tokens=await this.authFetch('/oauth/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'authorization_code',client_id:this.env.CLERK_CLIENT_ID,code:url.searchParams.get('code'),redirect_uri:`${this.origin}/api/account/callback`,code_verifier:pending.verifier})});stage='profile_verification';const user=await this.profile(tokens.access_token),secret=random();await this.store.put(`session:${await hash(secret)}`,{user:user.id,accessToken:tokens.access_token,refreshToken:tokens.refresh_token,tokenExpires:Date.now()+Math.min(Number(tokens.expires_in)||3600,86400)*1000,expires:Date.now()+7*86400000,dashboardEntry:Date.now()});const response=new Response(null,{status:302,headers:{Location:pending.intent==='upgrade'?'/dashboard/?intent=upgrade':'/dashboard/','Cache-Control':'no-store'}});response.headers.append('Set-Cookie',cookie('__Host-ss-session',secret,7*86400));response.headers.append('Set-Cookie',cookie('__Host-ss-oauth','',0));return response}catch{return fail(stage)}}
+ if(path==='/api/account/plugin/v1/listener/ticket'){
+   if(request.method!=='POST'||request.headers.has('origin'))return json({},request.method!=='POST'?405:403);
+   const auth=request.headers.get('authorization')||'';if(!/^Bearer \S{1,16384}$/.test(auth))return json({error:'Sign in to request listener access.'},401);
+   const listener=await this.profile(auth.slice(7));
+   const {room}=await readJSON(request);if(!/^[a-f0-9]{48}$/.test(room||''))return json({error:'Invalid invitation.'},400);
+   const ticket=random();await this.store.put('listener-ticket:'+await hash(ticket),{room,user:listener.id,name:listener.name,expires:Date.now()+90000});
+   await this.store.setAlarm(Date.now()+60000);return json({ok:true,ticket,expiresInSeconds:90});
+ }
  if(path==='/api/account/plugin/v1/listener/verify'){
    if(request.method!=='POST')return json({},405);
    const auth=request.headers.get('authorization')||'';if(!/^Bearer \S{1,16384}$/.test(auth))return json({error:'Sign in to manage listeners.'},401);
@@ -84,6 +92,12 @@ export class AccountHub {
    const {room}=await readJSON(request);if(!/^[a-f0-9]{48}$/.test(room||''))return json({error:'Invalid invitation.'},400);
    const ticket=random();await this.store.put('listener-ticket:'+await hash(ticket),{room,user:user.id,name:user.name,expires:Date.now()+90000});
    await this.store.setAlarm(Date.now()+60000);return json({ticket,expiresInSeconds:90});
+ }
+ if(path==='/api/account/links'){
+   if(!['GET','PUT','DELETE'].includes(request.method))return json({},405);
+   if((await this.billing(user.id)).plan!=='pro')return json({error:'SessionStream Pro is required for reusable links.'},403);
+   const body=request.method==='PUT'?await readJSON(request,1024):{};
+   return this.env.BROKER.get(this.env.BROKER.idFromName('account')).fetch(new Request(`${this.origin}/internal/web-links`,{method:'POST',body:JSON.stringify({user:user.id,method:request.method,...(request.method==='PUT'?{name:body.name}:{})})}));
  }
  if(path==='/api/account/profile'&&request.method==='GET')return json({user});
  if(path==='/api/account/sign-out'&&request.method==='POST'){await this.store.delete(`session:${await hash(cookies(request)['__Host-ss-session'])}`);return new Response('{}',{headers:{'Content-Type':'application/json','Cache-Control':'no-store','Set-Cookie':cookie('__Host-ss-session','',0)}})}

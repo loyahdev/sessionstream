@@ -44,13 +44,31 @@ function appearance(){
   }
  };
 }
+// Preserve Clerk's actual error while offering a useful recovery path.
+// Only the error category is used; never copy entered identifiers or credentials.
+window.addEventListener('securitypolicyviolation',event=>{
+ let host='';try{host=new URL(event.blockedURI).hostname}catch{}
+ if(host==='challenges.cloudflare.com'||host.endsWith('.protect.clerk.com')){
+  document.querySelector('#signup-help').open=true;
+  const diagnostic=document.querySelector('#signup-diagnostic');diagnostic.hidden=false;diagnostic.textContent='The browser blocked part of the security check. Please contact support if reloading doesn’t help.';
+ }
+});
+const authErrorObserver=new MutationObserver(()=>{
+ const alert=mount.querySelector('[role="alert"],.cl-formFieldErrorText,.cl-alertText');
+ if(alert?.textContent.trim())document.querySelector('#signup-help').open=true;
+});
+authErrorObserver.observe(mount,{childList:true,subtree:true,characterData:true});
+let loadingTimeout=setTimeout(()=>{
+ if(!mount.childElementCount&&!clerkMounted){loading.hidden=true;failure.hidden=false;failure.querySelector('p').textContent='The account form is taking longer than expected. Reload, or contact support if it keeps happening.';}
+},20000);
+let clerkMounted=false;
 try{
  if(pluginError)throw pluginError;
  const clerk=await loadAccountClerk({...(plugin?{allowedRedirectOrigins:['https://clerk.sessionstream.app']}:{}),signInUrl,signUpUrl,signInForceRedirectUrl:complete,signUpForceRedirectUrl:complete});
  if(clerk.session){loading.querySelector('p').textContent='Opening your account…';location.replace(complete)}
  else{
-  const observer=new MutationObserver(()=>{if(mount.childElementCount){loading.hidden=true;observer.disconnect()}});observer.observe(mount,{childList:true});
+  const observer=new MutationObserver(()=>{if(mount.childElementCount){clerkMounted=true;clearTimeout(loadingTimeout);loading.hidden=true;failure.hidden=true;observer.disconnect()}});observer.observe(mount,{childList:true});
   const options={routing:'hash',signInUrl,signUpUrl,forceRedirectUrl:complete,signInForceRedirectUrl:complete,signUpForceRedirectUrl:complete,appearance:appearance()};
   if(signup)clerk.mountSignUp(mount,options);else clerk.mountSignIn(mount,options);
  }
-}catch{loading.hidden=true;failure.hidden=false;if(pluginError){failure.querySelector('h2').textContent='Start sign-in from the plugin.';failure.querySelector('p').textContent='This sign-in link is incomplete or expired. Return to SessionStream and choose Sign in again.';document.querySelector('#auth-fallback').hidden=true;}}
+}catch{clearTimeout(loadingTimeout);loading.hidden=true;failure.hidden=false;if(pluginError){failure.querySelector('h2').textContent='Start sign-in from the plugin.';failure.querySelector('p').textContent='This sign-in link is incomplete or expired. Return to SessionStream and choose Sign in again.';document.querySelector('#auth-fallback').hidden=true;}}

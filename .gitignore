@@ -1,7 +1,9 @@
 # Downloaded dependencies, compiled products, and local streaming state
 node_modules/
-/vendor/
+/vendor/*
+!/vendor/JIVE/
 /build/
+/build-windows-*/
 /.runtime/
 /artifacts/
 

@@ -4,3 +4,18 @@ const origin='https://sessionstream.app',room='a'.repeat(48);
 async function fixture(){const storage=new Storage(),hub=new AccountHub({storage},{PUBLIC_ORIGIN:origin,CLERK_ISSUER:'https://clerk.example',AUTH_FETCH:async(url,opt)=>{const sub=opt.headers.Authorization.slice(7);return ['host','listener','other'].includes(sub)?Response.json({sub,name:sub}):Response.json({}, {status:401});}});hub.billing=async id=>({plan:id==='host'?'pro':'free'});await storage.put('session:'+await hash('b'.repeat(64)),{user:'listener',accessToken:'listener',tokenExpires:Date.now()+3600000,expires:Date.now()+3600000});const issue=body=>hub.fetch(new Request(origin+'/api/account/listener-ticket',{method:'POST',headers:{Origin:origin,Cookie:'__Host-ss-session='+'b'.repeat(64)},body:JSON.stringify(body)}));const verify=(body,token='host')=>hub.fetch(new Request(origin+'/api/account/plugin/v1/listener/verify',{method:'POST',headers:{Authorization:'Bearer '+token},body:JSON.stringify(body)}));return {storage,hub,issue,verify};}
 test('verified web identity issues opaque room-bound tickets; only a Pro host can redeem once',async()=>{const f=await fixture();const issued=await f.issue({room});assert.equal(issued.status,200);const {ticket}=await issued.json();assert.match(ticket,/^[a-f0-9]{64}$/);assert(!JSON.stringify([...f.storage.data]).includes(ticket));assert.equal((await f.verify({ticket,room},'forged')).status,401);assert.equal((await f.verify({ticket,room},'other')).status,403);assert.equal((await f.verify({ticket,room:'c'.repeat(48)})).status,403);const proof=await f.verify({ticket,room});assert.equal(proof.status,200);assert.deepEqual((await proof.json()).listener,{id:'listener',name:'listener'});assert.equal((await f.verify({ticket,room})).status,403);});
 test('concurrent redemption cannot replay tickets, expired tickets fail, and foreign origins cannot mint',async()=>{const f=await fixture();const {ticket}=await(await f.issue({room})).json();const statuses=await Promise.all([f.verify({ticket,room}),f.verify({ticket,room})]).then(rs=>rs.map(r=>r.status).sort());assert.deepEqual(statuses,[200,403]);const fresh=await(await f.issue({room})).json();const key='listener-ticket:'+await hash(fresh.ticket);const saved=await f.storage.get(key);saved.expires=Date.now()-1;await f.storage.put(key,saved);assert.equal((await f.verify({ticket:fresh.ticket,room})).status,403);const foreign=await f.hub.fetch(new Request(origin+'/api/account/listener-ticket',{method:'POST',headers:{Origin:'https://evil.example'},body:JSON.stringify({room})}));assert.equal(foreign.status,403);assert.equal((await f.issue({room:'invalid'})).status,400);});
+test('signed-in plugin companions mint room-bound listener tickets over Bearer auth without browser cookies',async()=>{
+ const f=await fixture();
+ const deniedBrowser=await f.hub.fetch(new Request(origin+'/api/account/plugin/v1/listener/ticket',{method:'POST',headers:{Origin:origin,Authorization:'Bearer listener'},body:JSON.stringify({room})}));
+ assert.equal(deniedBrowser.status,403);
+ const unauth=await f.hub.fetch(new Request(origin+'/api/account/plugin/v1/listener/ticket',{method:'POST',body:JSON.stringify({room})}));
+ assert.equal(unauth.status,401);
+ const issued=await f.hub.fetch(new Request(origin+'/api/account/plugin/v1/listener/ticket',{method:'POST',headers:{Authorization:'Bearer listener'},body:JSON.stringify({room})}));
+ assert.equal(issued.status,200);
+ const {ticket}=await issued.json();
+ assert.match(ticket,/^[a-f0-9]{64}$/);
+ const verified=await f.verify({ticket,room});
+ assert.equal(verified.status,200);
+ assert.deepEqual((await verified.json()).listener,{id:'listener',name:'listener'});
+ assert.equal((await f.verify({ticket,room})).status,403);
+});

@@ -41,8 +41,10 @@ try{
   host.stdin.write('suspend 1\n');await sleep(6000);const idle=await state();assert.equal(idle.enginePID,s.enginePID);assert.equal(idle.listenerURL,s.listenerURL);
   report.checks.push({name:'Enabled idle track without render callbacks preserves engine and invite',result:'PASS'});
   host.stdin.write('suspend 0\n');s=await running();
-  host.stdin.write('deactivate\n');await stopped(s,'Host deactivation stops helper and tunnel');
-  host.stdin.write('activate\n');s=await running(s.enginePID);
+  host.stdin.write('deactivate\n');await sleep(6500);
+  const released=await state();assert.equal(released.enginePID,s.enginePID);assert.equal(released.listenerURL,s.listenerURL);assert(released.live);
+  host.stdin.write('activate\n');s=await running();assert.equal(s.listenerURL,released.listenerURL);
+  report.checks.push({name:'Audio release/reprepare during a long render preserves helper, tunnel and invite',result:'PASS'});
   const exit=new Promise(resolve=>host.once('exit',code=>resolve(code)));
   host.stdin.write('remove\n');assert.equal(await exit,0,output);await stopped(s,'Removing plugin destroys helper and tunnel');
   // A second host is terminated without destructors to exercise the safety lease.

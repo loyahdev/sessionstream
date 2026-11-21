@@ -32,17 +32,21 @@ for plugin in build/SessionStream_artefacts/Release/VST3/SessionStream.vst3 buil
   cp plugin/third_party/LICENSE-qrcodegen.txt "$runtime/notices/"
   cp vendor/JUCE/LICENSE.md "$runtime/notices/JUCE-LICENSE.md"
   cp LICENSE README.md "$runtime/notices/"
+  cp vendor/JIVE/LICENSE.md "$runtime/notices/JIVE-LICENSE.md"
+  cp plugin/assets/Inter-LICENSE.txt "$runtime/notices/Inter-LICENSE.txt"
+  cp plugin/assets/DMSans-OFL.txt plugin/assets/Manrope-OFL.txt "$runtime/notices/"
   copy_tree server "$runtime/server"
   copy_tree web "$runtime/web"
   cp scripts/companion.mjs "$runtime/scripts/companion.mjs"
   cp scripts/launch-engine.mjs "$runtime/scripts/launch-engine.mjs"
+  cp build/account-credentials "$runtime/bin/account-credentials"
   cp vendor/node/bin/node "$runtime/bin/node"
   cp "$CLOUDFLARED_PATH" "$runtime/bin/cloudflared"
   cp vendor/node/LICENSE "$runtime/bin/NODE-LICENSE"
   for module in ws @roamhq domexception webidl-conversions; do
     copy_tree "node_modules/$module" "$runtime/node_modules/$module"
   done
-  for binary in "$runtime/bin/node" "$runtime/bin/cloudflared" "$runtime/node_modules/@roamhq/wrtc-darwin-arm64/wrtc.node"; do
+  for binary in "$runtime/bin/account-credentials" "$runtime/bin/node" "$runtime/bin/cloudflared" "$runtime/node_modules/@roamhq/wrtc-darwin-arm64/wrtc.node"; do
     codesign --force --sign - "$binary"
   done
 done

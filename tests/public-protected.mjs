@@ -23,7 +23,7 @@ try{
  await page.waitForFunction(()=>{const a=new Float32Array(2048);window.__testAudio.analyser.getFloatTimeDomainData(a);return a.some(x=>Math.abs(x)>.005);});
  report.checks.push({name:'Plugin-generated public protected link: incorrect code has no listener/peer, correct code renders stereo audio',result:'PASS'});
  await page.locator('#mute').click();await page.waitForTimeout(1200);assert.equal((await read()).listenerIssue,null);
- await page.locator('#mute').click();await page.locator('#fallback').click();
+ await page.locator('#mute').click();await page.locator('#mode-buffered').check();
  await page.waitForFunction(()=>window.sessionDiagnostics().pcm&&window.sessionDiagnostics().lastAudioAgeMs<500,null,{timeout:15000});
  await page.waitForFunction(()=>{const a=new Float32Array(2048);window.__testAudio.analyser.getFloatTimeDomainData(a);return a.some(x=>Math.abs(x)>.005);});
  report.checks.push({name:'Public compatibility PCM and mute preserve protection and normal producer status',result:'PASS'});

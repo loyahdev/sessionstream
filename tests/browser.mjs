@@ -23,7 +23,7 @@ try{
   await client.goto(invite.replace('/listen#','/listen?audio-test#'));
   assert.equal(await client.locator('#volume').inputValue(),'0');
   assert.equal(await client.locator('#volume-label').textContent(),'0 dB');
-  assert.equal(await client.locator('footer').textContent(),'built by loyahdev.');
+  assert.equal(await client.locator('footer').textContent(),'Streaming live from their DAW with SessionStream · Get the free plugin ↗');
   assert(!/A seat in|LIVE SESSION|EARLY BUILD|\/ 01/.test(await client.locator('body').innerText()));
   await client.locator('#connect').click();
   await client.waitForFunction(()=>window.__testAudio?.context.state==='running');
@@ -92,7 +92,7 @@ try{
   assert(quiet[0]/rtcRms[0]>.38&&quiet[0]/rtcRms[0]<.65,`Gain did not reduce stream: ${quiet} / ${rtcRms}`);
   report.checks.push({name:'Plugin -6 dB output gain reduces listener audio, with unchanged DAW passthrough',result:'PASS',rms:quiet});
   tone.stdin.write('gain 0\n');await client.waitForTimeout(600);
-  await client.locator('#fallback').click();
+  await client.locator('#mode-buffered').check();
   await client.waitForFunction(()=>window.sessionDiagnostics?.().pcm&&window.sessionDiagnostics().lastAudioAgeMs<500,null,{timeout:15000});
   const pcmRms=await audibleProbe(client);assert(pcmRms[0]>pcmRms[1]*1.3);
   report.checks.push({name:'Public Cloudflare WebSocket PCM fallback with separate stereo channels',result:'PASS',rms:pcmRms});
@@ -101,14 +101,14 @@ try{
   await client.waitForFunction(()=>window.sessionDiagnostics?.().lastAudioAgeMs<500,null,{timeout:15000});
   const recoveredRms=await audibleProbe(client);
   report.checks.push({name:'Listener reconnect after network interruption resumes fresh audio',result:'PASS',rms:recoveredRms});
-  await client.locator('#fallback').click();await client.waitForFunction(()=>window.sessionDiagnostics().connections.includes('connected'),null,{timeout:15000});
+  await client.locator('#mode-live').check();await client.waitForFunction(()=>window.sessionDiagnostics().connections.includes('connected'),null,{timeout:15000});
   await client.waitForTimeout(600);const retriedRms=await probe(client);assert(retriedRms[0]>.01);
   report.checks.push({name:'Return from compatibility mode to WebRTC stereo',result:'PASS',rms:retriedRms});
   await assertSingleOutput(client);
   for(let i=0;i<2;i++){
-    await client.locator('#fallback').click();await client.waitForFunction(()=>window.sessionDiagnostics().pcm&&window.sessionDiagnostics().lastAudioAgeMs<500);
+    await client.locator('#mode-buffered').check();await client.waitForFunction(()=>window.sessionDiagnostics().pcm&&window.sessionDiagnostics().lastAudioAgeMs<500);
     assert.equal(await client.locator('audio').count(),0);
-    await client.locator('#fallback').click();await client.waitForFunction(()=>window.sessionDiagnostics().connections.includes('connected'),null,{timeout:15000});
+    await client.locator('#mode-live').check();await client.waitForFunction(()=>window.sessionDiagnostics().connections.includes('connected'),null,{timeout:15000});
     await client.waitForTimeout(300);await assertSingleOutput(client);assert((await probe(client))[0]>.01);
   }
   report.checks.push({name:'Repeated PCM/WebRTC switches keep a single muted decoder and one audible output',result:'PASS'});
@@ -125,7 +125,7 @@ try{
   await new Promise(r=>setTimeout(r,800));assert((await probe(client))[0]>.01);
   report.checks.push({name:'Broadcaster stop/start recovers existing listener',result:'PASS'});
   await client.locator('#mute').click();await setLevel(-6);
-  await client.locator('#fallback').click();await client.waitForFunction(()=>window.sessionDiagnostics().pcm&&window.sessionDiagnostics().lastAudioAgeMs<500);
+  await client.locator('#mode-buffered').check();await client.waitForFunction(()=>window.sessionDiagnostics().pcm&&window.sessionDiagnostics().lastAudioAgeMs<500);
   assert.equal(await client.evaluate(()=>window.__testAudio.gain.gain.value),0);assert((await probe(client)).every(x=>x<.0001));
   await client.locator('#connect').click();await client.waitForFunction(()=>document.querySelector('#connect').textContent.includes('Start listening'));await client.locator('#connect').click();
   await client.waitForFunction(()=>window.sessionDiagnostics().running&&window.sessionDiagnostics().lastAudioAgeMs<500);

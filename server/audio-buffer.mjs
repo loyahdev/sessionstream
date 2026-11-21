@@ -1,12 +1,13 @@
+import {StereoPeakLimiter} from '../web/peak-limiter.mjs';
 // Bounded stereo FIFO. Resampling follows the DAW clock instead of periodically
 // dropping a whole block; a short reservoir absorbs large Ableton callbacks.
 export class AudioBuffer {
-  constructor(targetMs=60) { this.capacity=65536;this.l=new Float32Array(this.capacity);this.r=new Float32Array(this.capacity);this.targetMs=targetMs;this.underruns=0;this.trims=0;this.reset(); }
-  reset(){this.read=0;this.write=0;this.rate=48000;this.source=null;this.seq=null;this.primed=false;this.lastL=0;this.lastR=0;}
+  constructor(targetMs=60) { this.capacity=65536;this.l=new Float32Array(this.capacity);this.r=new Float32Array(this.capacity);this.targetMs=targetMs;this.limiter=new StereoPeakLimiter(48000);this.underruns=0;this.trims=0;this.reset(); }
+  reset(){this.read=0;this.write=0;this.rate=48000;this.source=null;this.seq=null;this.primed=false;this.lastL=0;this.lastR=0;this.previousFrames=256;this.limiter.reset();}
   push(packet,p){
     if(this.source!==p.source||this.rate!==p.rate){this.reset();this.source=p.source;this.rate=p.rate;}
-    if(this.seq!==null){const gap=(p.sequence-this.seq-1)>>>0;if(gap>0x80000000)return;if(gap>8){this.read=this.write;this.primed=false;}else for(let i=0;i<gap*256;i++)this.put(0,0);}
-    this.seq=p.sequence;
+    if(this.seq!==null){const gap=(p.sequence-this.seq-1)>>>0;if(gap>0x80000000)return;if(gap>8){this.read=this.write;this.primed=false;}else for(let i=0;i<gap*this.previousFrames;i++)this.put(0,0);}
+    this.seq=p.sequence;this.previousFrames=p.frames;
     for(let i=0;i<p.frames;i++)this.put(packet.readFloatLE(24+i*8),packet.readFloatLE(28+i*8));
     const target=this.rate*this.targetMs/1000;
     if(this.write-this.read>Math.min(this.capacity-512,target+this.rate*.12)){this.read=this.write-target;this.primed=false;this.trims++;}
@@ -26,7 +27,8 @@ export class AudioBuffer {
         // Fade the last sample rather than clicking abruptly to zero.
         this.lastL*=.9;this.lastR*=.9;l=this.lastL;r=this.lastR;
       }
-      samples[2*i]=Math.round(Math.max(-1,Math.min(1,l))*32767);samples[2*i+1]=Math.round(Math.max(-1,Math.min(1,r))*32767);
+      this.limiter.sample(l,r);
+      samples[2*i]=Math.round(this.limiter.outL*32767);samples[2*i+1]=Math.round(this.limiter.outR*32767);
     }
     return {samples,sampleRate:48000,bitsPerSample:16,channelCount:2,numberOfFrames:480};
   }

@@ -9,17 +9,15 @@ import {fileURLToPath} from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const manifest = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
 if (!/^\d+\.\d+\.\d+$/.test(manifest.version)) throw new Error('Invalid package.json version');
-// Source and installer filenames use the manifest display version.
-const version = manifest.version.replace(/\.0$/, '');
-const files = ['.gitignore', '.nvmrc', 'CMakeLists.txt', 'LICENSE', 'README.md', 'package.json', 'package-lock.json', 'version.txt'];
-const directories = ['cmake', 'docs', 'installer', 'plugin', 'scripts', 'server', 'tests', 'web'];
+const files = ['.gitignore', '.nvmrc', 'CMakeLists.txt', 'LICENSE', 'README.md', 'index.html', 'package.json', 'package-lock.json', 'version.txt'];
+const directories = ['cmake', 'docs', 'installer', 'plugin', 'scripts', 'server', 'services', 'tests', 'web', 'websrc', 'vendor/JIVE'];
 const scratch = await mkdtemp(path.join(tmpdir(), 'sessionstream-source-'));
 const destination = path.join(scratch, 'SessionStream');
 const artifacts = path.join(root, 'artifacts');
 const variant = process.argv.includes('--windows') ? '-windows' : '';
-const archive = path.join(artifacts, `SessionStream-${version}${variant}-source.zip`);
+const archive = path.join(artifacts, `SessionStream${variant}-source.zip`);
 const excluded = name => name === '.DS_Store' || name.startsWith('._') || name === '__MACOSX' ||
-  name === 'node_modules' || name === '.env' || (name.startsWith('.env.') && name !== '.env.example') ||
+  name === 'node_modules' || name === '.wrangler' || name === '.dev.vars' || name.startsWith('.dev.vars.') || name === '.env' || (name.startsWith('.env.') && name !== '.env.example') ||
   /\.(log|swp|swo|tgz)$/.test(name);
 
 async function copy(relative) {

@@ -48,3 +48,25 @@ test('payment cannot be confirmed after identity failure or invalid payment deta
 test('only a confirmed Clerk payment finalizes; ambiguous results require billing review',async()=>{let finalized=0;const calls={verify:async()=>{},submit:async()=>({data:{gateway:'stripe',paymentToken:'test-only-token'},error:null}),confirm:async()=>({data:{status:'completed'},error:null}),finalize:async()=>{finalized++}};await completeCheckout(calls);assert.equal(finalized,1);await assert.rejects(()=>completeCheckout({...calls,confirm:async()=>{throw Error('network')}}),e=>e.uncertain===true);await assert.rejects(()=>completeCheckout({...calls,confirm:async()=>({data:{status:'needs_confirmation'}})}),e=>e.uncertain===true);await assert.rejects(()=>completeCheckout({...calls,confirm:async()=>({error:{message:'Card declined'}})}),/Card declined/);assert.equal(finalized,1);});
 
 test('profile settings verify identity and Clerk revocation without loading dashboard usage or subscriptions',async()=>{let status='active',sessionUser='alice',checks=0;const {hub,storage}=clerkSetup({CLERK_FETCH:async url=>{assert.match(url,/\/sessions\/sess_profile$/);checks++;return Response.json({status,user_id:sessionUser})},ACCOUNT_STATE:{idFromName:()=>{throw Error('Profile must not query account metrics')}}});assert.equal((await hub.fetch(new Request(origin+'/api/account/profile'))).status,401);const token=await session(storage);const request=()=>{const r=web('/api/account/profile',token);r.headers.set('x-clerk-session-token','header.'+btoa(JSON.stringify({sid:'sess_profile'}))+'.signature');return r};let r=await hub.fetch(request());assert.equal(r.status,200);const data=await r.json();assert.equal(data.user.id,'alice');assert.equal(data.user.email,'alice@example.com');assert(!('usage' in data));assert(!('plan' in data));assert.equal(checks,1);status='revoked';assert.equal((await hub.fetch(request())).status,401);status='active';sessionUser='bob';assert.equal((await hub.fetch(request())).status,401);assert.equal(checks,3);});
+
+test('dashboard links use the verified account identity, require Pro, and reject cross-origin changes',async()=>{
+ let pro=true,verified='alice',seen=[];
+ const {hub,storage,env}=setup();hub.billing=async()=>({plan:pro?'pro':'free'});
+ env.BROKER={idFromName:name=>name,get:()=>({fetch:async request=>{seen.push(await request.json());return Response.json({name:'my-studio'})}})};
+ const token=await session(storage);
+ let response=await hub.fetch(web('/api/account/links',token,'PUT',{name:'my-studio',user:'bob'}));
+ assert.equal(response.status,200);assert.deepEqual(seen[0],{user:'alice',method:'PUT',name:'my-studio'});
+ pro=false;response=await hub.fetch(web('/api/account/links',token));assert.equal(response.status,403);assert.equal(seen.length,1);
+ pro=true;const foreign=web('/api/account/links',token,'PUT',{name:'other-studio'});foreign.headers.set('origin','https://evil.example');assert.equal((await hub.fetch(foreign)).status,403);
+ assert.equal((await hub.fetch(new Request(origin+'/api/account/links'))).status,401);
+});
+
+test('account pages allow Clerk Protect scripts, challenge frames, nonstandard-port checks and blob workers',async()=>{
+ const {default:worker}=await import('../services/tunnel-broker/worker.mjs');
+ const env={PUBLIC_ORIGIN:origin,BROKER:{idFromName:x=>x,get:()=>({})},ACCOUNTS:{idFromName:x=>x,get:()=>({fetch:async()=>Response.json({authenticated:true})})},ASSETS:{fetch:async()=>new Response('account page')}};
+ for(const path of ['/sign-up/','/sign-in/','/dashboard/billing/']){
+  const response=await worker.fetch(new Request(origin+path),env),policy=response.headers.get('content-security-policy');
+  assert.equal(response.status,200);assert.match(policy,/script-src[^;]*https:\/\/\*\.protect\.clerk\.com/);assert.match(policy,/connect-src[^;]*https:\/\/\*\.protect\.clerk\.com:\*/);assert.match(policy,/frame-src[^;]*https:\/\/\*\.protect\.clerk\.com[^;]*https:\/\/challenges\.cloudflare\.com/);assert.match(policy,/worker-src 'self' blob:/);assert(!policy.includes("'unsafe-eval'"));
+ }
+ assert.equal((await worker.fetch(new Request(origin+'/internal/web-links',{method:'POST',body:JSON.stringify({user:'alice',method:'PUT',name:'hijack'})}),env)).status,404);
+});

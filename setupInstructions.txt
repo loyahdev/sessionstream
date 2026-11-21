@@ -1,0 +1,2 @@
+npm run build:site
+npx wrangler deploy --config services/tunnel-broker/wrangler.jsonc

@@ -5,43 +5,107 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>SessionStream — listen in</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="/fonts/DMSans.woff" as="font" type="font/woff" crossorigin>
+  <link rel="preload" href="/fonts/Manrope.woff" as="font" type="font/woff" crossorigin>
+  <script src="/theme-init.js"></script>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <div class="shell">
-    <header><span class="brand">SESSION<span class="brand-icon" aria-hidden="true">≋</span>STREAM</span></header>
+    <header>
+      <a class="brand" href="https://sessionstream.app/" aria-label="SessionStream home"><img src="/brand-mark.svg" width="25" height="29" alt=""><span>sessionstream</span></a>
+      <button class="theme-button" id="theme-toggle" type="button" aria-label="Switch to dark mode" title="Switch to dark mode"><svg class="icon theme-moon" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" /></svg><svg class="icon theme-sun" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m6.34 17.66-1.41 1.41" /><path d="m19.07 4.93-1.41 1.41" /></svg></button>
+    </header>
     <main>
-      <section class="listener" aria-label="Audio session">
-        <p id="intro-text" class="description">Listen to audio shared straight from your DAW, wherever you are.</p>
-        <h1 id="heading">Listen in</h1>
-        <div class="connection-status"><span class="dot" id="status-dot"></span><span id="status-label">READY TO LISTEN</span></div>
+      <section class="listener" id="console-card" aria-label="Audio session">
+        <div class="console-top">
+          <div class="connection-status"><span class="dot" id="status-dot"></span><span id="status-label">READY TO LISTEN</span></div>
+          <h1 id="heading">Listen</h1>
+          <p id="host-name" class="description host-name" hidden></p>
+        </div>
+
         <div id="studio-settings" hidden>
           <label for="title">Session name</label><input id="title" value="Studio session" maxlength="80">
-          <label for="bitrate">Quality</label><select id="bitrate"><option value="320000">High · 320 kbps stereo</option><option value="510000">Maximum · 510 kbps stereo</option><option value="192000">Lean · 192 kbps stereo</option></select>
+          <label for="bitrate">Quality</label><select id="bitrate"><option value="510000">Studio · 510 kbps stereo</option><option value="320000">Balanced · 320 kbps stereo</option><option value="96000">Phone · 96 kbps stereo</option></select>
         </div>
+
+        <section id="listener-identity" class="passcode-form" hidden>
+          <label for="listener-name">Name to show the host</label><input id="listener-name" maxlength="48" autocomplete="nickname" placeholder="Your name">
+          <p id="listener-access-note" role="status">The host approves access before you hear audio.</p>
+          <a id="listener-signin" href="https://sessionstream.app/sign-in/" target="_blank" rel="noopener noreferrer" hidden>Sign in to SessionStream ↗</a>
+        </section>
+
         <button id="connect" class="primary">Start listening <span aria-hidden="true">↗</span></button>
+
         <form id="passcode-form" class="passcode-form" hidden>
           <label for="passcode">Session passcode</label>
           <input id="passcode" type="password" maxlength="64" autocomplete="off" autocapitalize="none" spellcheck="false" required aria-describedby="passcode-error">
           <p id="passcode-error" class="passcode-error" role="status"></p>
           <button id="passcode-submit" class="primary" type="submit">Start listening <span aria-hidden="true">↗</span></button>
         </form>
-        <div id="listener-settings" class="volume-control">
-          <label for="volume">Volume</label><input id="volume" type="range" min="-60" max="6" step="0.5" value="0" aria-label="Listening volume in decibels" aria-valuetext="0 dB"><output id="volume-label" for="volume">0 dB</output><button id="mute" class="mute-button" aria-pressed="false" title="Mute audio while staying connected">Mute</button>
-        </div>
-        <section class="audio-details" aria-label="Audio details">
-          <div class="audio-summary"><span id="quality">STEREO AUDIO</span><span id="source-label">WAITING FOR AUDIO</span></div>
-          <canvas id="scope" aria-label="Live audio waveform"></canvas>
-          <dl class="metrics">
-            <div><dt>Connection</dt><dd id="transport">—</dd></div>
-            <div><dt>Network RTT</dt><dd id="rtt">—</dd></div>
-            <div><dt>Audio buffer</dt><dd id="buffer">—</dd></div>
-            <div><dt id="fourth-label">Packet loss</dt><dd id="fourth-value">—</dd></div>
-          </dl>
-        </section>
+
         <p class="message" id="message" role="status"></p>
-        <button id="fallback" class="text-button">Use compatibility audio</button>
+
+        <section class="audio-details" aria-label="Audio details">
+          <div class="audio-summary">
+            <div class="audio-tags">
+              <span id="quality">STEREO</span>
+              <span class="summary-sep">·</span>
+              <span id="source-label">WAITING FOR AUDIO</span>
+            </div>
+            <div class="scope-switcher" role="group" aria-label="Visualizer mode">
+              <button type="button" id="scope-wave" class="scope-tab active" aria-pressed="true">Stereo L/R</button>
+              <button type="button" id="scope-fft" class="scope-tab" aria-pressed="false">Spectrum</button>
+            </div>
+          </div>
+          <div class="scope-frame">
+            <canvas id="scope" aria-label="Live stereo audio visualizer"></canvas>
+          </div>
+        </section>
+
+        <div id="listener-settings" class="monitor-strip">
+          <div class="volume-control">
+            <label for="volume">Monitor</label>
+            <input id="volume" type="range" min="-60" max="6" step="0.5" value="0" aria-label="Listening volume in decibels" aria-valuetext="0 dB">
+            <output id="volume-label" for="volume">0 dB</output>
+          </div>
+          <div class="monitor-buttons" role="group" aria-label="Monitor check controls">
+            <button id="mono" type="button" class="mute-button" aria-pressed="false" title="Fold stereo mix to mono (L+R)">Mono</button>
+            <button id="dim" type="button" class="mute-button" aria-pressed="false" title="Attenuate listening level by 12 dB">Dim −12</button>
+            <button id="mute" type="button" class="mute-button" aria-pressed="false" title="Mute audio while staying connected">Mute</button>
+          </div>
+        </div>
+
+        <form id="note-form" class="note-bar" hidden>
+          <div class="note-chips" role="group" aria-label="Quick mix reactions">
+            <button type="button" class="note-chip" data-note="Sounds clean">Sounds clean</button>
+            <button type="button" class="note-chip" data-note="Check vocal level">Vocal level</button>
+            <button type="button" class="note-chip" data-note="Check low end">Low end</button>
+          </div>
+          <div class="note-input-row">
+            <input id="note-input" type="text" maxlength="120" autocomplete="off" placeholder="Send timestamped mix note to DAW…">
+            <button id="note-submit" type="submit" class="note-send">Send</button>
+          </div>
+          <p id="note-status" class="note-status" role="status" hidden></p>
+        </form>
+
+        <fieldset id="audio-mode" class="audio-mode" aria-describedby="mode-help">
+          <legend>Audio transport</legend>
+          <div class="mode-options">
+            <label><input id="mode-live" type="radio" name="audio-mode" value="live" checked><span>Live audio<small>Lower latency</small></span></label>
+            <label><input id="mode-buffered" type="radio" name="audio-mode" value="buffered"><span>Buffered audio<small>Lossless PCM</small></span></label>
+          </div>
+          <p id="mode-help">Switch to Buffered audio if the connection is unstable.</p>
+        </fieldset>
+
+        <details class="connection-details"><summary>Connection details</summary><dl class="metrics">
+          <div><dt>Connection</dt><dd id="transport">—</dd></div>
+          <div><dt>Network RTT</dt><dd id="rtt">—</dd></div>
+          <div><dt>Audio buffer</dt><dd id="buffer">—</dd></div>
+          <div><dt id="fourth-label">Packet loss</dt><dd id="fourth-value">—</dd></div>
+        </dl></details>
       </section>
+
       <section class="invite" id="invite-panel" hidden>
         <label for="invite">Listener link</label>
         <div class="invite-actions"><input id="invite" readonly><button id="copy">Copy link</button><button id="rotate">New invite</button></div>
@@ -49,7 +113,7 @@
       </section>
       <span id="session-title" hidden></span>
     </main>
-    <footer>built by loyahdev.</footer>
+    <footer><span>Streaming live from their DAW with SessionStream · </span><a href="https://sessionstream.app/#download" target="_blank" rel="noopener noreferrer">Get the free plugin ↗</a></footer>
   </div>
   <script type="module" src="/app.mjs"></script>
 </body>

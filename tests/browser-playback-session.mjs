@@ -24,7 +24,7 @@ try{
     if(policy==='supported')assert.equal(await page.evaluate(()=>window.__sessionBeforeContext),'playback');
     let energy=await rms(page);assert(energy[0]>.01&&energy[1]>.005,`Silent WebRTC (${policy}): ${energy}`);
     assert(await page.locator('.audio-details').isVisible());assert(await page.locator('#scope').isVisible());
-    await page.waitForFunction(()=>document.querySelector('#transport').textContent.includes('WebRTC'));
+    await page.locator('.connection-details summary').click();await page.waitForFunction(()=>document.querySelector('#transport').textContent.includes('WebRTC'));
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
     assert.equal(await page.locator('audio').count(),1);assert(await page.locator('audio').evaluate(e=>e.muted&&e.defaultMuted&&e.hasAttribute('muted')));
     await page.evaluate(()=>{document.querySelector('audio').volume=1;document.querySelector('#volume').value='-60';document.querySelector('#volume').dispatchEvent(new Event('input'));});
@@ -39,7 +39,7 @@ try{
       await page.screenshot({path:'artifacts/listener-phone-waveform.png',fullPage:true});
       await page.setViewportSize({width:1280,height:850});await page.waitForTimeout(200);await page.screenshot({path:'artifacts/listener-waveform-desktop.png',fullPage:true});
     }
-    await page.locator('#fallback').click();await page.waitForFunction(()=>window.sessionDiagnostics().pcm&&window.sessionDiagnostics().lastAudioAgeMs<500);
+    await page.locator('#mode-buffered').check();await page.waitForFunction(()=>window.sessionDiagnostics().pcm&&window.sessionDiagnostics().lastAudioAgeMs<500);
     assert.equal(await page.locator('audio').count(),0);energy=await rms(page);assert(energy[0]>.01&&energy[1]>.005,`Silent PCM (${policy}): ${energy}`);
     if(policy==='supported')assert.equal(await page.evaluate(()=>navigator.audioSession.type),'playback');
     await page.locator('#connect').click();await page.waitForFunction(()=>!window.sessionDiagnostics().running);

@@ -12,7 +12,7 @@ public:
     explicit InviteQR(const juce::String& link = {}) {
         setSize(320, 390);
         addAndMakeVisible(close);
-        close.setButtonText("Close");
+        close.setButtonText("Close");close.setComponentID("qr-close");
         close.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff29382d));
         close.setColour(juce::TextButton::textColourOffId, juce::Colour(0xffd8f8c3));
         close.onClick = [this] {

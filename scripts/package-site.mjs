@@ -1,13 +1,21 @@
 // Explicit public-file allowlist: never publish app source, runtime state or secrets.
 import {cp,mkdir,rm,writeFile,readFile} from 'node:fs/promises';
-import {build} from 'esbuild';
+import {build,transform} from 'esbuild';
 import {createHash} from 'node:crypto';
 import path from 'node:path';import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),destination=path.join(root,'site-dist');
 await rm(destination,{recursive:true,force:true});await mkdir(destination,{recursive:true});
-for(const relative of ['index.html','websrc/styles.css','websrc/app.js','websrc/site.js','websrc/navigation.js','websrc/navigation.css','websrc/billing-navigation.js','websrc/account-session.js','websrc/theme-init.js','websrc/icons.js','websrc/assets/logo.svg','websrc/assets/plugin-current.webp','websrc/assets/listener.webp']){await mkdir(path.dirname(path.join(destination,relative)),{recursive:true});await cp(path.join(root,relative),path.join(destination,relative))}
+for(const relative of ['index.html','websrc/styles.css','websrc/home.css','websrc/colors.css','websrc/app.js','websrc/site.js','websrc/navigation.js','websrc/navigation.css','websrc/billing-navigation.js','websrc/account-session.js','websrc/theme-init.js','websrc/icons.js','websrc/assets/logo.svg','websrc/assets/studio-session.webp','websrc/assets/producer-workshop.webp','websrc/assets/plugin-current.webp','websrc/assets/listener.webp','websrc/assets/plugin-receive.webp','websrc/assets/plugin-pro-settings.webp','websrc/assets/Manrope.woff','websrc/assets/DMSans.woff']){await mkdir(path.dirname(path.join(destination,relative)),{recursive:true});await cp(path.join(root,relative),path.join(destination,relative))}
+// Keep editable CSS readable while shipping a compact marketing stylesheet.
+for(const relative of ['websrc/home.css','websrc/colors.css']){const file=path.join(destination,relative);const result=await transform(await readFile(file,'utf8'),{loader:'css',minify:true,target:'es2022',legalComments:'none'});if(result.warnings.length)throw Error('Website CSS could not be packaged cleanly: '+relative);await writeFile(file,result.code);}
 await cp(path.join(root,'websrc/assets/daws'),path.join(destination,'websrc/assets/daws'),{recursive:true});
-for(const file of ['index.html','dashboard.css','dashboard.js']){await mkdir(path.join(destination,'dashboard'),{recursive:true});await cp(path.join(root,'websrc/dashboard',file),path.join(destination,'dashboard',file))}
+await mkdir(path.join(destination,'dashboard'),{recursive:true});
+await cp(path.join(root,'websrc/dashboard/index.html'),path.join(destination,'dashboard/index.html'));
+// Static dashboard UI files use the same asset path as the sign-in and billing UI.
+await mkdir(path.join(destination,'websrc/dashboard'),{recursive:true});
+for(const file of ['dashboard.css','dashboard.js']){
+ await cp(path.join(root,'websrc/dashboard',file),path.join(destination,'websrc/dashboard',file));
+}
 for(const name of ['terms','privacy']){await mkdir(path.join(destination,name),{recursive:true});await cp(path.join(root,'websrc/legal',`${name}.html`),path.join(destination,name,'index.html'))}
 await mkdir(path.join(destination,'websrc/legal'),{recursive:true});await cp(path.join(root,'websrc/legal/legal.css'),path.join(destination,'websrc/legal/legal.css'));
 for(const name of ['sign-in','sign-up']){await mkdir(path.join(destination,name),{recursive:true});await cp(path.join(root,'websrc/auth/index.html'),path.join(destination,name,'index.html'))}
@@ -15,13 +23,18 @@ await mkdir(path.join(destination,'websrc/auth'),{recursive:true});for(const fil
 for(const name of ['billing','account']){await mkdir(path.join(destination,'dashboard',name),{recursive:true});let html=await readFile(path.join(root,'websrc/billing/index.html'),'utf8');if(name==='account')html=html.replace('Skip to checkout','Skip to account settings').replace('<title>Checkout |','<title>Account settings |').replace('id="profile-heading" class="billing-heading" hidden','id="profile-heading" class="billing-heading"').replace('class="checkout-layout" id="checkout-layout"','class="checkout-layout" id="checkout-layout" hidden').replace('id="billing-loading" class="profile-loading" role="status" hidden','id="billing-loading" class="profile-loading" role="status"');await writeFile(path.join(destination,'dashboard',name,'index.html'),html)}
 await mkdir(path.join(destination,'websrc/billing'),{recursive:true});for(const file of ['billing.css','billing.js','checkout-flow.js'])await cp(path.join(root,'websrc/billing',file),path.join(destination,'websrc/billing',file));
 await build({entryPoints:[path.join(root,'websrc/billing/checkout.jsx')],outfile:path.join(destination,'websrc/billing/checkout.js'),bundle:true,minify:true,format:'esm',platform:'browser',target:'es2022',define:{'process.env.NODE_ENV':'"production"'},legalComments:'none'});
-await build({entryPoints:[path.join(root,'websrc/hero/hero.js')],outdir:path.join(destination,'websrc/hero'),bundle:true,splitting:true,minify:true,format:'esm',platform:'browser',target:'es2022',chunkNames:'[name]-[hash]',legalComments:'linked'});
-await cp(path.join(root,'node_modules/three/LICENSE'),path.join(destination,'websrc/hero/THREE-LICENSE.txt'));
 const digest=async file=>createHash('sha256').update(await readFile(path.join(destination,file))).digest('hex').slice(0,10);
 const billingScript=path.join(destination,'websrc/billing/billing.js');
 await writeFile(billingScript,(await readFile(billingScript,'utf8')).replace('/websrc/billing/checkout.js',`/websrc/billing/checkout.js?v=${await digest('websrc/billing/checkout.js')}`).replace('/websrc/billing/checkout-flow.js',`/websrc/billing/checkout-flow.js?v=${await digest('websrc/billing/checkout-flow.js')}`));
 for(const route of ['billing','account']){const html=path.join(destination,'dashboard',route,'index.html');await writeFile(html,(await readFile(html,'utf8')).replace('/websrc/billing/billing.js',`/websrc/billing/billing.js?v=${await digest('websrc/billing/billing.js')}`).replace('/websrc/billing/billing.css',`/websrc/billing/billing.css?v=${await digest('websrc/billing/billing.css')}`));}
-for(const [html,assets] of [['index.html',['/websrc/styles.css','/websrc/app.js','/websrc/site.js','/websrc/hero/hero.js']],['dashboard/index.html',['/dashboard/dashboard.js','/dashboard/dashboard.css']],['sign-in/index.html',['/websrc/auth/auth.js']],['sign-up/index.html',['/websrc/auth/auth.js']]]){const file=path.join(destination,html);let text=await readFile(file,'utf8');for(const asset of assets){const pattern=new RegExp(asset.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?:\\?v=[a-zA-Z0-9_-]+)?','g');text=text.replace(pattern,asset+'?v='+await digest(asset.slice(1)));}await writeFile(file,text);}
+// Version alternate preview images too, so tab changes cannot retrieve an old export.
+const marketingApp=path.join(destination,'websrc/app.js');
+let marketingCode=await readFile(marketingApp,'utf8');
+for(const asset of ['/websrc/assets/plugin-current.webp','/websrc/assets/plugin-receive.webp','/websrc/assets/listener.webp'])marketingCode=marketingCode.replaceAll(asset,asset+'?v='+await digest(asset.slice(1)));
+await writeFile(marketingApp,marketingCode);
+for(const [html,assets] of [['index.html',['/websrc/styles.css','/websrc/home.css','/websrc/app.js','/websrc/site.js','/websrc/assets/plugin-current.webp','/websrc/assets/listener.webp','/websrc/assets/plugin-receive.webp','/websrc/assets/plugin-pro-settings.webp','/websrc/assets/producer-workshop.webp']],['dashboard/index.html',['/websrc/dashboard/dashboard.js','/websrc/dashboard/dashboard.css']],['sign-in/index.html',['/websrc/auth/auth.js']],['sign-up/index.html',['/websrc/auth/auth.js']]]){const file=path.join(destination,html);let text=await readFile(file,'utf8');for(const asset of assets){const pattern=new RegExp(asset.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'(?:\\?v=[a-zA-Z0-9_-]+)?','g');text=text.replace(pattern,asset+'?v='+await digest(asset.slice(1)));}await writeFile(file,text);}
+const colorVersion=await digest('websrc/colors.css');
+for(const html of ['index.html','dashboard/index.html','dashboard/billing/index.html','dashboard/account/index.html','sign-in/index.html','sign-up/index.html','terms/index.html','privacy/index.html']){const file=path.join(destination,html);await writeFile(file,(await readFile(file,'utf8')).replace('/websrc/colors.css',`/websrc/colors.css?v=${colorVersion}`));}
 await writeFile(path.join(destination,'robots.txt'),'User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /sign-in/\nDisallow: /sign-up/\nDisallow: /dashboard/\nDisallow: /v1/\nDisallow: /health\nSitemap: https://sessionstream.app/sitemap.xml\n');
 await writeFile(path.join(destination,'sitemap.xml'),'<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://sessionstream.app/</loc></url><url><loc>https://sessionstream.app/terms/</loc></url><url><loc>https://sessionstream.app/privacy/</loc></url></urlset>\n');
 console.log('SessionStream website, dashboard, and legal pages prepared in site-dist/');

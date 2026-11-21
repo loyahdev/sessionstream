@@ -16,7 +16,24 @@ bool waitFor(StreamController& controller, const char* label, Check check) {
     return false;
 }
 
+static int queuedStart(const char* endpoint){
+    std::atomic<bool> entered{false},released{false},firstRead{true},desired{false};
+    StreamController controller(101,[&]{
+        if(firstRead.exchange(false)){entered=true;while(!released.load())juce::Thread::sleep(1);}
+        return desired.load();
+    },endpoint,juce::File("/missing-test-runtime"));
+    for(int i=0;i<3000&&!entered.load();++i)juce::Thread::sleep(1);
+    if(!entered){released=true;return 20;}
+    // Pause exactly after the control loop checked for a Generate request,
+    // then queue a protected Start before it reads the desired audio state.
+    controller.generate("protected-race-code");desired=true;released=true;controller.wake();
+    if(!waitFor(controller,"queued protected Start",[](auto s){return s.live&&s.passcodeRequired&&!s.generating&&s.link.isNotEmpty();}))return 21;
+    std::cout<<"PASS: queued Start generated its protected invite before enabling audio"<<std::endl;
+    return 0;
+}
+
 int main(int argc, char** argv) {
+    if(argc==3&&juce::String(argv[2])=="--queued-start")return queuedStart(argv[1]);
     if(argc!=2)return 1;
     std::atomic<bool> desired{false}, enabled{true};
     StreamController controller(101,[&]{return desired.load();},argv[1],juce::File("/missing-test-runtime"),[&]{return enabled.load();});

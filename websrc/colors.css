@@ -1,0 +1,75 @@
+/* SessionStream color roles. See docs/COLOR-GUIDE.md for rationale and contrast. */
+:root{
+ --ss-canvas:#f4f5f0;--ss-surface:#ffffff;--ss-surface-muted:#e8ede5;
+ --ss-text:#26332a;--ss-text-muted:#58665c;--ss-border:#c8d2c6;--ss-control-border:#738677;
+ --ss-brand:#315c3f;--ss-brand-hover:#244a30;--ss-signal:#c2e879;--ss-signal-hover:#b0da65;--ss-on-signal:#19251c;
+ --ss-selected:#dcead8;--ss-selected-text:#284e34;--ss-selected-border:#53765a;
+ --ss-focus:#17756e;--ss-link:#2e6747;--ss-success:#256e45;--ss-danger:#b63d50;--ss-warning:#846522;
+ --ss-inverse:#edf3e7;--ss-inverse-muted:#b5c4b5;--ss-inverse-canvas:#15221a;
+ --ss-wave-bg:#121e18;--ss-wave-border:#3b5142;--ss-wave-grid:#2e4235;--ss-wave-ruler:#9ab09e;
+ --ss-wave-left-peak:#70965a;--ss-wave-left-body:#bbd986;--ss-wave-left-future:#405b36;--ss-wave-left-future-body:#698353;
+ --ss-wave-right-peak:#83709f;--ss-wave-right-body:#baa7d7;--ss-wave-right-future:#493c5d;--ss-wave-right-future-body:#77648f;
+ --ss-wave-playhead:#edf3e7;
+ /* Compatibility aliases for the existing website, account and billing styles. */
+ --paper:var(--ss-canvas);--bg:var(--ss-canvas);--surface:var(--ss-surface);--ink:var(--ss-text);--muted:var(--ss-text-muted);--line:var(--ss-border);--tonal:var(--ss-selected);--input:var(--ss-surface);
+ --accent:var(--ss-brand);--accent-text:var(--ss-inverse);--blue:var(--ss-focus);--danger:var(--ss-danger);--lime:var(--ss-signal);--strong:var(--ss-brand);--sidebar:var(--ss-surface-muted);
+}
+html[data-theme=dark]{
+ --ss-canvas:#111a16;--ss-surface:#1b2721;--ss-surface-muted:#202f26;
+ --ss-text:#ecf1e7;--ss-text-muted:#a6b5aa;--ss-border:#34483b;--ss-control-border:#708576;
+ --ss-brand:#8ac596;--ss-brand-hover:#a0d7a9;--ss-selected:#283f30;--ss-selected-text:#c2e879;--ss-selected-border:#739e79;
+ --ss-focus:#76c8bf;--ss-link:#a3d9ae;--ss-success:#8ed0a0;--ss-danger:#f1a0ac;--ss-warning:#dcc979;
+ --paper:var(--ss-canvas);--bg:var(--ss-canvas);--surface:var(--ss-surface);--ink:var(--ss-text);--muted:var(--ss-text-muted);--line:var(--ss-border);--tonal:var(--ss-selected);--input:var(--ss-surface);
+ --accent:var(--ss-brand);--accent-text:#16231a;--blue:var(--ss-focus);--danger:var(--ss-danger);--lime:var(--ss-signal);--strong:var(--ss-brand);--sidebar:var(--ss-surface-muted);
+}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--ss-focus);outline-offset:4px}
+.ss-navigation-progress:before,.homepage .ss-navigation-progress:before{background:var(--ss-brand)}
+.ss-navigation-status,html[data-theme=dark] .ss-navigation-status{background:var(--ss-surface);border-color:var(--ss-border);color:var(--ss-text)}
+/* Marketing color placement. Photography and the actual product images stay intact. */
+.homepage{--accent:var(--ss-signal)}
+.homepage .button.primary,.homepage .pro-column .button.primary{background:var(--ss-signal);border-color:var(--ss-signal);color:var(--ss-on-signal)}
+.homepage .button.primary:hover{background:var(--ss-signal-hover);border-color:var(--ss-signal-hover)}
+.homepage.editorial .header-download{background:var(--ss-signal);border-color:var(--ss-signal);color:var(--ss-on-signal)}
+.homepage.editorial .header-download:hover{background:var(--ss-signal-hover);border-color:var(--ss-signal-hover)}
+.homepage .accent-period{color:var(--ss-signal)}
+.homepage .hero-composition{background:var(--ss-inverse-canvas);color:var(--ss-inverse)}
+.homepage .hero-copy>.eyebrow,.homepage .hero-description{color:var(--ss-inverse)}
+.homepage .hero-formats{color:var(--ss-inverse-muted)}
+.homepage .hero-actions a:focus-visible,.homepage .site-header a:focus-visible,.homepage .site-header button:focus-visible{outline-color:var(--ss-signal);box-shadow:0 0 0 2px var(--ss-inverse-canvas)}
+.homepage .text-link{color:var(--ss-link)}
+.homepage .hero-actions .text-link{color:var(--ss-inverse)}
+.homepage .text-link:hover{color:var(--ss-brand)}
+.homepage .hero-actions .text-link:hover{color:var(--ss-signal)}
+.homepage .preview-tabs button[aria-selected=true],.homepage .demo-channel-mode button[aria-pressed=true],.homepage .demo-switches>button[aria-pressed=true]{background:var(--ss-selected);border-color:var(--ss-selected-border);color:var(--ss-selected-text)}
+.homepage .preview-tabs button[aria-selected=true]{box-shadow:inset 0 0 0 1px var(--ss-selected-border)}
+.homepage .preview-tabs button:not([aria-selected=true]):hover,.homepage .demo-switches button:hover{background:var(--ss-surface-muted);border-color:var(--ss-control-border)}
+.homepage .demo-channel-mode,.homepage .demo-switches>button{border-color:var(--ss-control-border)}
+.homepage .demo-play{background:var(--ss-brand);border-color:var(--ss-brand);color:var(--accent-text)}
+.homepage .demo-play:hover{background:var(--ss-brand-hover);border-color:var(--ss-brand-hover);opacity:1}
+.homepage .demo-play[aria-pressed=true]{background:var(--ss-signal);border-color:var(--ss-signal);color:var(--ss-on-signal)}
+.homepage .demo-monitor input{accent-color:var(--ss-brand)}
+.homepage .listening-demo[data-playing=true] .demo-register>span:last-child{color:var(--ss-brand)}
+.homepage .demo-wave{background:var(--ss-wave-bg);border-color:var(--ss-wave-border)}
+.homepage .demo-footnote button{color:var(--ss-link)}
+.homepage .pro-column{border-top-color:var(--ss-selected-border)}
+.homepage .pro-column .plan-name h3{color:var(--ss-brand)}
+.homepage .download-option{border-color:var(--ss-control-border)}
+.homepage .download-option>.icon:first-child{color:var(--ss-brand)}
+.homepage .download-option:hover{background:var(--ss-selected);border-color:var(--ss-selected-border)}
+.homepage .faq-list summary>span{color:var(--ss-brand)}
+.homepage .signal-ribbon{stroke:var(--ss-brand);opacity:.14}
+.homepage .setup-list li:nth-child(2) .step-symbol{color:var(--ss-brand)}
+.homepage .studio-footer{background:var(--ss-inverse-canvas);color:var(--ss-inverse)}
+.homepage .footer-poster .footer-outline{color:var(--ss-inverse)}
+.homepage .footer-poster svg{stroke:var(--ss-signal)}
+.homepage .footer-spectrum i{background:var(--ss-signal)}
+.homepage .footer-links a:hover{color:var(--ss-signal)}
+.homepage .footer-main>div>p,.homepage .footer-main>div>a:last-child,.homepage .footer-bottom{color:var(--ss-inverse-muted)}
+/* Muted violet is an editorial accent, never a status or primary-action color. */
+:root{--ss-accent-violet:#74638f}
+html[data-theme=dark]{--ss-accent-violet:#baa7d7}
+.homepage .deck-heading h2 em,.homepage .download-copy h2 em,.homepage .preview-tabs span{color:var(--ss-accent-violet)}
+.homepage .preview-tabs button[aria-selected=true] span{color:inherit}
+.homepage .signal-ribbon{stroke:var(--ss-accent-violet);opacity:.16}
+
+:root{--ss-accent-violet-on-dark:#baa7d7}

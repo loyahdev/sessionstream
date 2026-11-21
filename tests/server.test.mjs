@@ -36,3 +36,9 @@ test('private publisher, capability invite, stereo relay, source isolation and s
   const rotate=await fetch(`${local}/api/rotate`,{method:'POST',headers:{Authorization:`Bearer ${session.token}`,Origin:local}});assert.equal(rotate.status,200);
   const changed=await fetch(`${local}/api/studio`).then(r=>r.json());assert.notEqual(session.room,changed.room);
 });
+test('listener branding uses the website mark and serves bundled fonts locally',async t=>{
+  const app=await createStreamServer({publicPort:0,studioPort:0,udpPort:0});t.after(()=>app.close());const base=`http://127.0.0.1:${app.publicPort}`;
+  const html=await fetch(base+'/listen').then(r=>r.text());assert(html.includes('src="/brand-mark.svg"'));assert(html.includes('Manrope.woff'));
+  for(const name of ['DMSans','Manrope']){const response=await fetch(base+`/fonts/${name}.woff`);assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'font/woff');assert((await response.arrayBuffer()).byteLength>10000);}
+  const mark=await fetch(base+'/brand-mark.svg').then(r=>r.text());const {readFile}=await import('node:fs/promises');assert.equal(mark,await readFile(new URL('../websrc/assets/logo.svg',import.meta.url),'utf8'));
+});

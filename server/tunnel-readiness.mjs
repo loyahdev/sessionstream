@@ -41,13 +41,18 @@ function probeHealth(url,instance,options){
 }
 // Keep an advertisement local to one tunnel generation. A slow health probe from
 // an exited/replaced tunnel must never publish its old hostname.
-export async function awaitTunnelReady({url,instance,current,probe=probeTunnel,browserProbe=probeBrowserTunnel,sleep=ms=>new Promise(r=>setTimeout(r,ms)),attempts=90}){
+export async function awaitTunnelReady({url,instance,current,probe=probeTunnel,browserProbe=probeBrowserTunnel,sleep=ms=>new Promise(r=>setTimeout(r,ms)),attempts=90,onProgress=()=>{},requiredSuccesses=2,pollInterval=500}){
   let successes=0;const deadline=Date.now()+90000;
   for(let i=0;i<attempts&&Date.now()<deadline&&current();i++){
     const ok=await probe(url,instance);if(!current())return false;
     successes=ok?successes+1:0;
-    if(successes>=2){const browserReady=await browserProbe(url,instance);if(!current())return false;if(browserReady)return true;}
-    await sleep(500);
+    onProgress({attempt:i+1,stage:'direct-health',ok,consecutive:successes});
+    if(successes>=requiredSuccesses){const browserReady=await browserProbe(url,instance);if(!current())return false;onProgress({attempt:i+1,stage:'system-dns-health',ok:browserReady});if(browserReady)return true;}
+    await sleep(pollInterval);
   }
   return false;
 }
+
+// Managed links use the already-resolved broker origin. Probe the same route a
+// browser opens; Quick Tunnels retain fresh-DNS checks for their new hostnames.
+export const awaitManagedTunnelReady=options=>awaitTunnelReady({...options,probe:options.probe||probeBrowserTunnel,browserProbe:async()=>true,requiredSuccesses:1,pollInterval:250});

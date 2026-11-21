@@ -60,6 +60,7 @@ int main(int argc,char** argv) {
             if(line.rfind("bypass ",0)==0){if(!bypass){std::cerr<<"Bypass parameter missing\n";return 6;}bypass->setValueNotifyingHost(std::stof(line.substr(7)));}
             if(line.rfind("suspend ",0)==0)rendering=std::stoi(line.substr(8))==0;
             if(line=="reset")p->reset();
+            if(line.rfind("offline ",0)==0){p->releaseResources();p->setNonRealtime(std::stoi(line.substr(8))!=0);p->prepareToPlay(48000,256);}
             if(line=="deactivate"){p->releaseResources();rendering=false;}
             if(line=="activate"){p->prepareToPlay(48000,256);rendering=true;}
             if(line=="remove"){p.reset();removed=true;break;}

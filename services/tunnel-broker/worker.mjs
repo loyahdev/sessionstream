@@ -40,6 +40,7 @@ export default {
       return broker.fetch(request);
     }
     const prefix=sharePrefix(url.pathname),match=prefix?[prefix,prefix.slice(1)]:null;
+    if(url.pathname.startsWith('/internal/'))return json({error:'Not found'},404);
     if(!match||['/dashboard','/dashboard/'].includes(url.pathname)||url.pathname.startsWith('/dashboard/')){
       if(!env.ASSETS)return json({error:'Open the invite shared by your SessionStream host.'},404);
       const assetURL=['/dashboard/welcome','/dashboard/welcome/'].includes(url.pathname)?'/dashboard/':/^\/dashboard\/account(?:\/|$)/.test(url.pathname)?'/dashboard/account/':null;
@@ -49,7 +50,17 @@ export default {
       response.headers.set('Referrer-Policy','strict-origin-when-cross-origin');
       const authPage=/^\/sign-(in|up)(?:\/|$)/.test(url.pathname),billingPage=/^\/dashboard\/(billing|account)(?:\/|$)/.test(url.pathname),clerkUI=authPage||billingPage;
       if(authPage)response.headers.set('Cache-Control','private, no-store');
-      response.headers.set('Content-Security-Policy',"default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self' https://clerk.sessionstream.app"+(clerkUI?" https://challenges.cloudflare.com":"")+(billingPage?" https://js.stripe.com":"")+"; connect-src 'self' https://clerk.sessionstream.app"+(billingPage?" https://api.stripe.com https://*.stripe.com":"")+"; frame-src https://accounts.sessionstream.app https://clerk.sessionstream.app"+(clerkUI?" https://challenges.cloudflare.com":"")+(billingPage?" https://js.stripe.com https://hooks.stripe.com https://*.stripe.com":"")+"; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"+(authPage?"; worker-src 'self' blob:":""));
+      // Clerk Protect runs during SDK initialization as well as signup. Its
+      // checks use non-443 ports; challenge frames also need their own origin.
+      response.headers.set('Content-Security-Policy',[
+        "default-src 'self'", "img-src 'self' data: https:",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' https://fonts.gstatic.com",
+        "script-src 'self' https://clerk.sessionstream.app https://*.protect.clerk.com"+(clerkUI?" https://challenges.cloudflare.com":"")+(billingPage?" https://js.stripe.com":""),
+        "connect-src 'self' https://clerk.sessionstream.app https://*.protect.clerk.com:*"+(billingPage?" https://api.stripe.com https://*.stripe.com":""),
+        "frame-src https://accounts.sessionstream.app https://clerk.sessionstream.app https://*.protect.clerk.com"+(clerkUI?" https://challenges.cloudflare.com":"")+(billingPage?" https://js.stripe.com https://hooks.stripe.com https://*.stripe.com":""),
+        "worker-src 'self' blob:", "frame-ancestors 'none'", "base-uri 'self'", "form-action 'self'"
+      ].join('; '));
       return response;
     }
     const listenerDocument=request.method==='GET'&&['','/','/listen'].includes(url.pathname.slice(prefix.length))&&!request.headers.has('upgrade');
@@ -132,12 +143,14 @@ export class TunnelBroker {
     const session=await this.state.storage.get(`link-session:${await digest(token)}`);
     return session?.expires>Date.now()?session.user:null;
   }
-  async links(request){
+  async links(request,webUser=null){
     if(request.headers.has('origin'))return json({error:'Use the SessionStream plugin to manage links.'},403);
-    const user=await this.user(request.headers.get('authorization'));if(!user)return json({error:'Authorize custom links to continue.'},401);
+    const user=webUser||await this.user(request.headers.get('authorization'));if(!user)return json({error:'Authorize custom links to continue.'},401);
     if(this.env.ACCOUNTS){const access=await this.env.ACCOUNTS.get(this.env.ACCOUNTS.idFromName('accounts')).fetch(new Request(`${this.env.PUBLIC_ORIGIN}/internal/account-plan`,{method:'POST',body:JSON.stringify({user})}));if((await access.json()).plan!=='pro')return json({error:'SessionStream Pro is required for reusable links.'},403);}
     const store=this.state.storage,old=await store.get(`owner:${user}`);
     if(request.method==='GET')return json({name:old||''});
+    const activeId=await store.get(`custom:${user}`),active=activeId&&await store.get(`lease:${activeId}`);
+    if(webUser&&active?.active&&active.expires>Date.now())return json({error:'End your active custom-link session in the plugin before changing this link.'},409);
     if(request.method==='DELETE'){
       await store.transaction(async tx=>{if(old)await tx.delete(`name:${old}`);await tx.delete(`owner:${user}`);});return json({name:''});
     }
@@ -168,6 +181,29 @@ export class TunnelBroker {
     return null;
   }
   publicURL(lease){return `${this.env.PUBLIC_ORIGIN}/${lease.customName||lease.code}`;}
+  async mintTurnIceServers(){
+    const keyId=this.env.CF_TURN_KEY_ID,apiToken=this.env.CF_TURN_API_TOKEN;
+    if(!keyId||!apiToken)return null;
+    try{
+      const response=await (this.env.TURN_FETCH||this.env.CF_FETCH||fetch)(`https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(keyId)}/credentials/generate-ice-servers`,{
+        method:'POST',headers:{Authorization:`Bearer ${apiToken}`,'Content-Type':'application/json'},
+        body:JSON.stringify({ttl:7200}),redirect:'manual',signal:AbortSignal.timeout(5000)
+      });
+      if(!response.ok)return null;
+      const data=await response.json();
+      if(!Array.isArray(data?.iceServers))return null;
+      const iceServers=[];
+      for(const entry of data.iceServers){
+        const raw=Array.isArray(entry?.urls)?entry.urls:typeof entry?.urls==='string'?[entry.urls]:[];
+        const urls=raw.filter(u=>typeof u==='string'&&u.length<=256&&/^(stun|turns?):[a-z0-9.-]+\.cloudflare\.com(?::\d{2,5})?(?:\?transport=(?:udp|tcp))?$/i.test(u));
+        if(!urls.length)continue;
+        const needsAuth=urls.some(u=>/^turns?:/i.test(u));
+        if(needsAuth&&(typeof entry.username!=='string'||!entry.username||entry.username.length>512||typeof entry.credential!=='string'||!entry.credential||entry.credential.length>512))continue;
+        iceServers.push(needsAuth?{urls,username:entry.username,credential:entry.credential}:{urls});
+      }
+      return iceServers.some(s=>s.urls.some(u=>/^turns?:/i.test(u)))?{iceServers,iceExpires:Date.now()+7200000}:null;
+    }catch{return null;}
+  }
   async api(path,method='GET',body){
     this.diagnostic={stage:path.includes('/dns_records')?'dns':path.endsWith('/token')?'connector-token':path.endsWith('/configurations')?'configuration':'tunnel',method};
     const response=await (this.env.CF_FETCH||fetch)(`https://api.cloudflare.com/client/v4${path}`,{
@@ -232,6 +268,12 @@ export class TunnelBroker {
   async handle(request){
     const url=new URL(request.url),store=this.state.storage;
     if(url.pathname.startsWith('/v1/link-auth/'))return this.linkAuth(request);
+    if(url.pathname==='/internal/web-links'){
+      if(request.method!=='POST'||request.headers.has('origin'))return json({},403);
+      const body=await readBody(request);
+      if(typeof body.user!=='string'||!body.user||body.user.length>256||!['GET','PUT','DELETE'].includes(body.method))return json({},400);
+      return this.links(new Request(`${this.env.PUBLIC_ORIGIN}/v1/links`,{method:body.method,...(body.method==='PUT'?{body:JSON.stringify({name:body.name})}:{})}),body.user);
+    }
     if(url.pathname==='/v1/links')return this.links(request);
     if(url.pathname==='/maintenance'&&request.method==='POST'){await this.maintain();return json({ok:true});}
     const resolve=url.pathname.match(/^\/resolve\/([a-z0-9-]+)$/);
@@ -261,8 +303,13 @@ export class TunnelBroker {
         const old=lease.code;lease.code=await this.newCode();lease.revision=body.revision;
         await store.transaction(async tx=>{await tx.delete(`code:${old}`);await tx.put(`code:${lease.code}`,lease.id);await tx.put(`lease:${lease.id}`,lease);});
       }
+      let turn=null;
+      if(body.refreshTurn===true&&(!lease.turnMintedAt||Date.now()-lease.turnMintedAt>=600000)){
+        turn=await this.mintTurnIceServers();
+        if(turn)lease.turnMintedAt=Date.now();
+      }
       lease.expires=Date.now()+TTL;await this.save(lease);
-      return json({url:this.publicURL(lease),expires:lease.expires});
+      return json({url:this.publicURL(lease),expires:lease.expires,...(turn?{iceServers:turn.iceServers,iceExpires:turn.iceExpires}:{})});
     }
     if(url.pathname!=='/v1/leases'||request.method!=='POST')return json({},404);
     // Native clients do not set Origin. Do not let third-party webpages allocate.
@@ -287,8 +334,10 @@ export class TunnelBroker {
       await this.api(`${this.account}/${tunnel.id}/configurations`,'PUT',{config:{ingress:[{hostname:lease.hostname,service:`http://127.0.0.1:${body.port}`},{service:'http_status:404'}]}});
       if(!pooled){const record=await this.api(this.dns,'POST',{type:'CNAME',name:lease.hostname,content:`${tunnel.id}.cfargotunnel.com`,proxied:true,ttl:1});lease.dnsId=record.id;await this.save(lease);}
       const token=await this.api(`${this.account}/${tunnel.id}/token`);
+      const turn=await this.mintTurnIceServers();
+      if(turn)lease.turnMintedAt=now;
       lease.active=true;await this.save(lease);await store.put(`code:${lease.code}`,id);
-      return json({id,token,url:this.publicURL(lease),expires:lease.expires},201);
+      return json({id,token,url:this.publicURL(lease),expires:lease.expires,...(turn?{iceServers:turn.iceServers,iceExpires:turn.iceExpires}:{})},201);
     }catch(error){
       console.error('Broker provisioning failed',error.name,error.message);
       lease.active=false;lease.expires=0;await this.save(lease);

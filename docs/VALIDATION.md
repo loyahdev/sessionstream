@@ -1,5 +1,11 @@
 # Validation notes
 
+## 1.0: simpler sharing, clearer listener modes and maximum Opus setting
+
+Prepared October 25, 2026. Start streaming now creates the first invitation and starts audio in one action, including passcode protection. Existing invites remain available after Stop. The listener names the two paths Live audio (recommended, less delay) and Buffered audio (for connection issues); mode explanations, automatic fallback selection and collapsed connection details make the choice clear. Native offers and the browser broadcaster default to 510 kbps stereo Opus; this is a requested encoding setting, not a fixed measured bitrate or a claim of lossless WebRTC audio.
+
+Version metadata, updater comparison, macOS and Windows installer text, documentation and the download page use 1.0 / 1.0.0. The previous render-recovery and diagnostic logging fixes are included. Local build/package validation and browser/native test evidence are recorded in `artifacts/validation-1.0.json`. These checks do not substitute for Ableton's actual bounce/consolidate/export UI, physical Windows DAWs or physical iPhone testing. Historical sections below describe the builds tested at the time.
+
 ## 0.30: matching installers, diagnostics and compatibility wording
 
 Built on October 1, 2026 from the same seek-fixed source for macOS Apple Silicon and Windows x64/ARM64.
@@ -170,3 +176,9 @@ Source cleanup and clean source-build verification:
 - Current local VST3 archive SHA-256: `3253c58fb60363a0287effcde34626f6cbbddbb1beae574f1e57baf566ca18a3`. Check `artifacts/SHA256SUMS.txt` after rebuilding; build artifacts are intentionally not committed.
 
 Not yet verified: the reporting client's exact browser/device, physical Safari/iOS audio, real client WAN WebRTC connections, long sessions, TURN operation or actual end-to-end latency. These checks establish the corrected playback routing and Chrome regression results; they do not establish worldwide reliability.
+
+## Render recovery and diagnostic logging patch (2026-10-25)
+
+This patch separates audio rendering readiness from session lifetime. Offline mode, long release/reprepare cycles, suspension and same-instance gain-state restoration preserve the invitation and requested streaming state. Explicit bypass and removal still detach. Newly constructed instances still open with streaming off. Generate and Start are initialized disabled until the current engine and public tunnel are ready; an already queued controller request survives loading.
+
+Regression coverage in `tests/seek-reset.mjs` drives the compiled processor and controller against an isolated real server with a protected PCM listener. It checks repeated offline renders with 8192-frame blocks and sample-rate changes, pauses longer than the five-second lease, unchanged DAW audio, preserved listener connections, and bypass/removal cleanup. `tests/render-recovery.mjs` also loads the actual built VST3 wrapper, verifies no offline PCM reaches the connected listener, and checks resumed plugin audio through two offline/reprepare cycles. `host-lifecycle` checks offline exit before the first realtime callback and log collection; `diagnostics.test.mjs` checks persistent log rotation and credential redaction, including split tunnel output. These are automated host simulations, not confirmation of Ableton's actual bounce, consolidation or export UI. Native Windows DAW validation is also still required.

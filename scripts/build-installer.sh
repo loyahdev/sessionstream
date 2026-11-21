@@ -3,9 +3,9 @@ set -eu
 cd "${0:A:h:h}"
 package_version=$(node -p "require('./package.json').version")
 [[ "$package_version" == <->.<->.<-> ]] || { echo 'package.json must contain a dotted package version.' >&2; exit 1; }
-# Artifact names use the display version from the package manifest.
+# Keep the download filename stable across releases.
 display_version=$(node -p "require('./package.json').version.replace(/\\.0$/, '')")
-installer_output="artifacts/SessionStream-${display_version}-mac-arm64.pkg"
+installer_output="artifacts/SessionStream-mac-arm64.pkg"
 announcement_version=$(<version.txt)
 [[ "$announcement_version" == "$display_version" || "$announcement_version" == "$package_version" ]] || {
   echo 'version.txt must match package.json.' >&2; exit 1;

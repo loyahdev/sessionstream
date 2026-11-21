@@ -1,6 +1,6 @@
 {
   "name": "sessionstream",
-  "version": "0.30.0",
+  "version": "1.0.1",
   "private": true,
   "license": "AGPL-3.0-only",
   "engines": {
@@ -21,9 +21,11 @@
     "package:source": "node scripts/package-source.mjs",
     "start:plugin": "node --expose-gc scripts/companion.mjs",
     "test:access": "node --expose-gc tests/access-browser.mjs",
+    "test:render": "node --expose-gc tests/seek-reset.mjs && node --expose-gc tests/render-recovery.mjs",
+    "test:startup": "node tests/controller-retry.mjs && node tests/controller-retry.mjs --restart && node tests/controller-protected-recovery.mjs && node tests/controller-start-race.mjs",
     "build:site": "node scripts/package-site.mjs",
     "deploy:site": "node scripts/package-site.mjs && npx wrangler deploy --config services/tunnel-broker/wrangler.jsonc",
-    "test:accounts-web": "node --test tests/website-accounts.test.mjs tests/account-database.test.mjs"
+    "test:accounts-web": "node --test tests/website-accounts.test.mjs tests/account-database.test.mjs tests/dashboard-client.test.mjs"
   },
   "dependencies": {
     "@roamhq/wrtc": "^0.10.0",

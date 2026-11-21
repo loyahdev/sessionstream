@@ -12,4 +12,13 @@ test('native sender start/stop requires local capability and isolates plugin ins
   assert.equal((await control('start',102)).status,409);assert.equal((await control('stop',102)).status,409);
   assert.equal((await control('stop')).status,200);assert(!(await fetch(local+'/api/studio').then(r=>r.json())).live);
   assert.equal((await control('start')).status,200);assert.equal((await fetch(local+'/api/studio').then(r=>r.json())).room,invite.room,'Stop/start must preserve the invite');
+  // Explicit handoff switches the active audio track without rotating the invite or dropping listeners
+  assert.equal((await control('handoff',102)).status,200);
+  const handedOff=await fetch(local+'/api/studio').then(r=>r.json());
+  assert.equal(handedOff.room,invite.room,'Track handoff must preserve the invite room');
+  assert.equal(handedOff.owner,102);
+  assert.equal(handedOff.inviteSource,102);
+  assert.equal(handedOff.live,true);
+  assert.equal((await control('stop',101)).status,409,'Previous track can no longer stop handed-off session');
+  assert.equal((await control('stop',102)).status,200);
 });

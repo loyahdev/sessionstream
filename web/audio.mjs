@@ -7,8 +7,8 @@ export async function loadAudioEngine(worklet){
   if(!worklet)throw Error('Audio playback needs a modern browser and a secure HTTPS link. Open the full invite in your browser.');
   try{
     await within((async()=>{
-      try{await worklet.addModule('/pcm-worklet.mjs');}
-      catch{await worklet.addModule('/pcm-worklet.mjs?retry=1');}
+      try{await worklet.addModule(new URL('./pcm-worklet.mjs',import.meta.url).href);}
+      catch{await worklet.addModule(new URL('./pcm-worklet.mjs?retry=1',import.meta.url).href);}
     })(),10000,'The audio engine took too long to load. Check your connection, reload this page and press Start listening.');
   }catch{throw Error('The audio engine could not load. Check your connection, reload this page and press Start listening. If the link has expired, ask your host for a new one.');}
 }
@@ -29,15 +29,51 @@ export async function createAudio(targetMs=35){
   } catch(e) { context.close().catch(()=>{}); throw e; }
   const node=new AudioWorkletNode(context,'session-pcm',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[2],processorOptions:{targetMs}});
   node.channelCount=2;node.channelCountMode='explicit';
-  const analyser=new AnalyserNode(context,{fftSize:2048,smoothingTimeConstant:.7});
+  const analyser=new AnalyserNode(context,{fftSize:2048,smoothingTimeConstant:.72});
+  analyser.channelCount=2;analyser.channelCountMode='explicit';
+
+  const splitter=new ChannelSplitterNode(context,{numberOfOutputs:2});
+  const analyserL=new AnalyserNode(context,{fftSize:2048,smoothingTimeConstant:.72});
+  const analyserR=new AnalyserNode(context,{fftSize:2048,smoothingTimeConstant:.72});
+  analyser.connect(splitter);
+  splitter.connect(analyserL,0);
+  splitter.connect(analyserR,1);
+
   const gain=new GainNode(context,{gain:1});
-  node.connect(analyser);analyser.connect(gain);
-  let pcmConnected=true;
-  return {context,node,analyser,gain,resume(){mediaPlayback();return context.resume();},usePCM(enabled){
-    if(enabled===pcmConnected)return;
-    if(enabled)node.connect(analyser);else node.disconnect(analyser);
-    pcmConnected=enabled;
-  },feed(buffer){node.port.postMessage({type:'packet',buffer},[buffer]);},reset(){node.port.postMessage({type:'reset'});}};
+  gain.channelCount=2;gain.channelCountMode='explicit';
+
+  const stereoDirect=new GainNode(context,{gain:1});
+  stereoDirect.channelCount=2;stereoDirect.channelCountMode='explicit';
+  const monoSum=new GainNode(context,{gain:0});
+  monoSum.channelCount=1;monoSum.channelCountMode='explicit';monoSum.channelInterpretation='speakers';
+
+  const output=new AudioWorkletNode(context,'session-safety',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[2],channelCount:2,channelCountMode:'explicit'});
+  node.connect(analyser);
+  analyser.connect(gain);
+  gain.connect(stereoDirect);
+  gain.connect(monoSum);
+  stereoDirect.connect(output);
+  monoSum.connect(output);
+
+  let pcmConnected=true,monoEnabled=false;
+  return {
+    context,node,analyser,analyserL,analyserR,gain,output,
+    resume(){mediaPlayback();return context.resume();},
+    setMono(enabled){
+      const next=!!enabled;if(next===monoEnabled)return;monoEnabled=next;
+      const now=context.currentTime;
+      stereoDirect.gain.cancelScheduledValues(now);monoSum.gain.cancelScheduledValues(now);
+      stereoDirect.gain.setTargetAtTime(next?0:1,now,.012);
+      monoSum.gain.setTargetAtTime(next?1:0,now,.012);
+    },
+    usePCM(enabled){
+      if(enabled===pcmConnected)return;
+      if(enabled)node.connect(analyser);else node.disconnect(analyser);
+      pcmConnected=enabled;
+    },
+    feed(buffer){node.port.postMessage({type:'packet',buffer},[buffer]);},
+    reset(){node.port.postMessage({type:'reset'});}
+  };
 }
 export function musicSDP(description,bitrate){
   const lines=description.sdp.split('\r\n');
