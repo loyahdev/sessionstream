@@ -121,7 +121,9 @@ void StreamProcessor::getStateInformation(juce::MemoryBlock& state) {
         ?(controller->listenerPreferences()&3)|(controller->sharesHostName()?4:0)|(controller->requiresPasscode()?8:0)|(controller->prefersCustomLink()?16:0)
         :0;
     if(controller&&(controller->listenerPreferences()&4)!=0)flags|=1024;
-    if(controller&&controller->usesCloud())flags|=2048;
+    flags|=16384; // New state records whether delivery was explicitly chosen.
+    if(controller&&controller->hasDeliveryPreference())flags|=8192;
+    if(controller&&(controller->hasDeliveryPreference()?controller->preferredCloudDelivery():controller->usesCloud()))flags|=2048;
     if(controller&&!controller->encryptsAudio())flags|=4096;
     if(receiveLowLatency.load())flags|=32;
     flags|=((receiveBufferIndex.load()&3)<<6);
@@ -148,7 +150,7 @@ void StreamProcessor::setStateInformation(const void* data,int size) {
             setReceiveBufferIndex((flags>>6)&3);
             uiScaleIndex.store(juce::jlimit(0,2,(flags>>8)&3));
             if(controller){
-                controller->cloudDelivery((flags&2048)!=0);
+                controller->restoreCloudDelivery((flags&2048)!=0,(flags&16384)==0||(flags&8192)!=0);
                 controller->encryptAudio((flags&4096)==0);
                 controller->restoreListenerPreferences((flags&3)|((flags&1024)?4:0));
                 controller->shareHostName((flags&4)!=0);
@@ -244,8 +246,9 @@ public:
             endConfirmTicks=0;p.setSending(false);p.setLocalMuted(false);p.controller->requirePasscode(false);p.controller->endSession();waitingInviteSettings=false;inviteSettingsDirty=true;
             studio::syncToggleState(usePasscode,false);passcode.clear();invite.clear();timerCallback();
         };
+        addChildComponent(useDirect);useDirect.setButtonText("Use Direct instead");useDirect.setComponentID("cloud-direct-fallback");useDirect.setTooltip("Direct streaming uses no Cloud hours. Pro supports up to eight direct listeners.");useDirect.onClick=[this]{if(p.isSending()||s.generating||s.ending)return;if(sessionLatched)p.controller->endSession();p.controller->chooseCloudDelivery(false);inviteSettingsDirty=true;timerCallback();};
         localMute.setComponentID("mute-local");localMute.setIcon(studio::ModernButton::Icon::speaker);localMute.setTooltip("Silences this plugin's local DAW output while streaming. Listeners still hear the stream.");localMute.onClick=[this]{p.setLocalMuted(!p.localMuted());timerCallback();};
-        setupOverlay.onDelivery=[this](bool cloud){if(sessionLatched||p.isSending()||s.generating||s.ending)return;p.controller->cloudDelivery(cloud);inviteSettingsDirty=true;};
+        setupOverlay.onDelivery=[this](bool cloud){if(sessionLatched||p.isSending()||s.generating||s.ending)return;p.controller->chooseCloudDelivery(cloud);inviteSettingsDirty=true;timerCallback();};
         setupOverlay.onEncryption=[this](bool value){if(sessionLatched||p.isSending()||s.generating||s.ending)return;p.controller->encryptAudio(value);inviteSettingsDirty=true;};
         setupOverlay.setComponentID("setup-panel");addChildComponent(setupOverlay);setupOverlay.onChange=[this](int q,int channels){if(sessionLatched||p.isSending()||s.generating||s.ending)return;if(q!=p.streamQuality||channels!=p.streamChannels){p.streamQuality=q;p.streamChannels=channels;p.linkExpiryHours=0;p.controller->sessionSettings(q,0,channels);inviteSettingsDirty=true;}};
         addChildComponent(showHostName);
@@ -345,8 +348,8 @@ public:
         level.onDragStart=[this]{dragging=true;};level.onDragEnd=[this]{dragging=false;};level.onValueChange=[this]{p.setGainDb(static_cast<float>(level.getValue()));};
 
         update.setButtonText("Get update");ignoreUpdate.setButtonText("Ignore for this session");
-        update.onClick=[]{juce::URL(UpdateChecker::releasesURL).launchInDefaultBrowser();};
-        ignoreUpdate.onClick=[this]{p.updates.ignoreForSession();refreshUpdate();};
+        update.onClick=[this]{const auto phase=s.updater["phase"].toString();if(phase=="ready")p.controller->updatePlugin(2);else if(phase=="complete"||phase=="cancelled"){p.controller->updatePlugin(4);p.updates.ignoreForSession();}else p.controller->updatePlugin(1);};
+        ignoreUpdate.onClick=[this]{const auto phase=s.updater["phase"].toString();p.controller->updatePlugin(phase=="downloading"||phase=="ready"||phase=="waiting"?3:4);p.updates.ignoreForSession();refreshUpdate();};
         update.setVisible(false);ignoreUpdate.setVisible(false);
         addChildComponent(qrOverlay);
         addChildComponent(linkProgress);linkProgress.onCancel=[this]{cancellingLink=true;p.setSending(false);p.setLocalMuted(false);p.controller->endSession();waitingInviteSettings=false;inviteSettingsDirty=true;timerCallback();};
@@ -374,13 +377,14 @@ public:
             juce::PopupMenu menu;menu.setLookAndFeel(&look);
             menu.addSubMenu("UI scale",scaleMenu);
             menu.addSubMenu("Troubleshooting",troubleshooting);
-            menu.addItem(2,"Compatibility");
+            menu.addItem(2,"Compatibility");menu.addItem(4,"Check for updates");
             const juce::Component::SafePointer<StreamEditor> safe(this);
             menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&more).withParentComponent(this),[safe](int result){
                 if(!safe)return;
                 if(result>=10&&result<=12){safe->p.uiScaleIndex.store(result-10);safe->applyUiScale();return;}
                 if(result==1){juce::SystemClipboard::copyTextToClipboard(safe->p.diagnostics());safe->diagnosticsMessage="Diagnostics copied";safe->diagnosticsTicks=60;safe->repaint();}
                 if(result==3)safe->exportDiagnostics();
+                if(result==4){safe->p.updates.check(true);safe->checkingUpdate=true;safe->diagnosticsMessage="Checking for updates...";safe->diagnosticsTicks=100;}
                 if(result==2)juce::AlertWindow::showMessageBoxAsync(juce::MessageBoxIconType::InfoIcon,"SessionStream compatibility","Works with most DAWs that support VST3, and AU hosts on macOS.\n\nmacOS 13.5+: Apple Silicon, VST3 + AU\nWindows 11: Intel/AMD x64 + ARM64, VST3\n\nUse AU in Logic Pro. Pro Tools requires AAX, which is not included. Windows ARM64 uses an x64 streaming helper under emulation. Intel Macs and 32-bit DAWs are not supported.");
             });
         };
@@ -419,7 +423,7 @@ public:
         copyWithPasscode.setBounds(602,208,224,26);
         generate.setBounds(750,98,76,26);
 
-        setupOverlay.setBounds(602,136,224,130);
+        setupOverlay.setBounds(602,136,224,130);useDirect.setBounds(602,390,224,24);
         linkKind.setBounds(602,272,224,28);
         customName.setBounds(602,306,140,28);
         claimLink.setBounds(750,306,76,28);
@@ -442,8 +446,8 @@ public:
 
         endButton.setBounds(652,430,42,38);
         toggle.setBounds(602,430,42,38);
-        update.setBounds(584,526,108,30);
-        ignoreUpdate.setBounds(700,526,144,30);
+        update.setBounds(584,526,134,30);
+        ignoreUpdate.setBounds(726,526,118,30);
         qrOverlay.setBounds(getLocalBounds());linkProgress.setBounds(getLocalBounds());
         for(auto* field:{&invite,&passcode,&customName,&receiveTarget,&receivePasscode}){field->setBorder(juce::BorderSize<int>());field->setIndents(10,0);field->setJustification(juce::Justification::centredLeft);}
     }
@@ -546,7 +550,13 @@ public:
             const auto quality=pro?p.streamQuality.load():1;
             label("Format",602,296,60,20,11,muted);
             label(streamformat::names[juce::jlimit(0,8,quality)],672,296,154,20,11,text,false,juce::Justification::centredRight);
-            label(streamformat::layout(pro?p.streamChannels.load():2),602,374,224,20,11,muted);
+            const bool cloud=s.hasSession?s.delivery=="cloud":p.controller->usesCloud();
+            if(cloud&&pro&&(!s.canCloud&&!p.isSending()))label("Cloud hours unavailable",602,374,224,14,10.5f,muted);
+            else if(cloud&&pro){
+                const auto bits=streamformat::pcm(quality)?p.signalRate()*(pro?p.streamChannels.load():2)*(quality==6?16:quality==7?24:32):double(quality==0?510000:quality==2?96000:quality==3?128000:quality==4?192000:quality==5?256000:320000);
+                label(juce::String(bits/320000.0,2)+" Cloud h per listener-hour",602,374,224,20,10.5f,muted);
+                label(juce::String(bits*3600/8/1e9,3)+" GB per listener-hour",602,396,224,16,10,muted);
+            }else label(streamformat::layout(pro?p.streamChannels.load():2),602,374,224,20,11,muted);
             if(!pro)label(juce::String(s.listeners)+((s.hasSession?s.delivery=="cloud":p.controller->usesCloud())?" Cloud":" / "+juce::String(s.listenerLimit)),750,72,76,20,10.5f,muted,false,juce::Justification::centredRight);
             label("Delivery",602,322,70,20,11,muted);label((s.hasSession?s.delivery=="cloud":p.controller->usesCloud())?"Cloud":"Direct",672,322,154,20,11,text,false,juce::Justification::centredRight);
             label("Encryption",602,348,80,20,11,muted);label((s.hasSession?s.encrypted:p.controller->encryptsAudio())?"End to end":"Connection only",692,348,134,20,11,text,false,juce::Justification::centredRight);
@@ -608,7 +618,7 @@ public:
 
         if(updateVisible){
             g.setColour(line);g.drawHorizontalLine(513,16.f,844.f);
-            label("SessionStream "+latest+" is available",16,526,550,27,12,text,true);
+            label(updateMessage,16,522,550,38,12,text,true);
         }
     }
 
@@ -616,13 +626,13 @@ private:
     StreamProcessor& p;studio::Look look;juce::TooltipWindow tooltips{this,450};SpectrumView spectrum;std::unique_ptr<juce::Drawable> logo;
     studio::ModernButton generate,copy,copyWithPasscode,qrButton,toggle,update,ignoreUpdate,more,accountButton,sendMode,receiveMode,claimLink,setupButton,localMute,sessionPageButton,endButton,peopleButton,rxLiveMode,rxPcmMode,rxBuf40,rxBuf90,rxBuf200;
     ListenerPanel listenerPanel;juce::ComboBox linkKind;juce::ToggleButton usePasscode,showHostName,includePasscode;juce::Slider level;
-    juce::TextEditor invite,passcode,customName,receiveTarget,receivePasscode;InviteOverlay qrOverlay;SessionSetup setupOverlay;LinkProgressOverlay linkProgress;
+    juce::TextEditor invite,passcode,customName,receiveTarget,receivePasscode;studio::ModernButton useDirect;InviteOverlay qrOverlay;SessionSetup setupOverlay;LinkProgressOverlay linkProgress;
     std::vector<std::pair<juce::Component*,bool>> progressEnabledStates;bool cancellingLink=false;
-    juce::String lastLayoutKey,lastPaintKey,lastFooter,latest,diagnosticsMessage,lastClaimedName;
+    juce::String lastLayoutKey,lastPaintKey,lastFooter,lastUpdateFooter,latest,updateMessage,diagnosticsMessage,lastClaimedName;
     juce::int64 lastDurationTick=-1;StreamController::Status s;
     float peaks[2]{},heldPeaks[2]{};int peakHoldTicks[2]{};
     int copiedTicks=0,copiedPasscodeTicks=0,diagnosticsTicks=0,endConfirmTicks=0,limiterHoldTicks=0,appliedScale=-1;
-    bool showingSetup=false,showingPeople=false,sessionLatched=false,dragging=false,updateVisible=false,nameDirty=false,wasSignedIn=false,inviteSettingsDirty=false,waitingInviteSettings=false;
+    bool checkingUpdate=false,showingSetup=false,showingPeople=false,sessionLatched=false,dragging=false,updateVisible=false,nameDirty=false,wasSignedIn=false,inviteSettingsDirty=false,waitingInviteSettings=false;
     std::unique_ptr<juce::FileChooser> diagnosticsChooser;
 
     void applyUiScale(){
@@ -664,10 +674,18 @@ private:
     }
 
     void refreshUpdate(){
-        const auto u=p.updates.status();latest=u.latest;updateVisible=u.available;
-        update.setVisible(updateVisible);ignoreUpdate.setVisible(updateVisible);
-        const int height=510+(updateVisible?62:0);
-        if(getHeight()!=height){setSize(860,height);resized();}
+        const auto u=p.updates.status();latest=u.latest;if(checkingUpdate&&u.checked){checkingUpdate=false;diagnosticsMessage=u.available?"Update available.":u.latest.isEmpty()?"Could not check for updates. Try again.":"SessionStream is up to date.";diagnosticsTicks=100;}const auto phase=s.updater["phase"].toString();
+        const bool active=phase.isNotEmpty()&&phase!="idle";
+        updateVisible=u.available||active;
+        updateMessage=active?s.updater["message"].toString():"SessionStream "+latest+" is available";
+        if(phase=="downloading")updateMessage="Downloading SessionStream "+s.updater["version"].toString()+" · "+juce::String(juce::jlimit(0,100,int(double(s.updater["progress"])*100)))+"%";
+        update.setButtonText(phase=="ready"?"Install on close":phase=="waiting"?"Queued":phase=="downloading"?"Downloading...":phase=="applying"?"Installing...":phase=="complete"||phase=="cancelled"?"Done":phase=="error"?"Try again":"Update plugin");
+        update.setTooltip(phase=="error"?updateMessage:phase=="ready"?"Updates after you close all DAWs. Your account and preferences are kept.":"Downloads and verifies the release without opening a browser.");
+        update.setEnabled(phase!="downloading"&&phase!="waiting"&&phase!="applying");
+        ignoreUpdate.setButtonText(phase=="downloading"||phase=="ready"||phase=="waiting"?"Cancel":"Not now");
+        update.setVisible(updateVisible);ignoreUpdate.setVisible(updateVisible&&phase!="applying"&&phase!="complete"&&phase!="cancelled");
+        const auto footer=phase+updateMessage+juce::String(int(updateVisible));if(footer!=lastUpdateFooter){lastUpdateFooter=footer;repaint(0,510,860,62);}
+        const int height=510+(updateVisible?62:0);if(getHeight()!=height){setSize(860,height);resized();}
     }
 
     void timerCallback() override {
@@ -748,7 +766,7 @@ private:
 
         const bool customReady=!custom||(pro&&!s.customName.isEmpty()&&!s.linkBusy&&s.linkAuthorized);
         const bool needsPlan=p.controller->listenerPreferences()!=0||p.controller->prefersCustomLink()||p.streamQuality.load()!=1||p.streamChannels.load()!=2;
-        const bool planReady=!needsPlan||s.planKnown||s.accountPhase=="signed-out";
+        const bool planReady=(s.accountPhase!="signed-in"||s.planKnown)&&(!needsPlan||s.planKnown||s.accountPhase=="signed-out");
         const bool matchingBus=p.streamChannels.load()<=2||p.getMainBusNumInputChannels()==p.streamChannels.load();
         const bool canGenerate=matchingBus&&(!p.controller->usesCloud()||s.canCloud)&&settingsEditable&&p.isHostEnabled()&&s.ready&&customReady&&planReady;
 
@@ -758,6 +776,8 @@ private:
         const bool hasPasscode=!usePasscode.getToggleState()||passcode.getText().isNotEmpty();
 
         const bool onSessionTab=!receiving&&!showingSetup&&!showingPeople;
+        const bool cloudBlocked=pro&&p.controller->usesCloud()&&!s.canCloud&&!p.isSending()&&!s.generating&&!s.ending;
+        useDirect.setVisible(onSessionTab&&cloudBlocked);useDirect.setEnabled(cloudBlocked);
         copy.setEnabled(s.link.isNotEmpty()&&!s.ending&&!s.generating);
         qrButton.setEnabled(s.link.isNotEmpty()&&!s.ending&&!s.generating);
         const bool canCopyWithPass=onSessionTab&&s.link.isNotEmpty()&&s.passcodeRequired&&p.controller->activePasscode().isNotEmpty()&&!s.ending&&!s.generating;
@@ -765,7 +785,7 @@ private:
         copyWithPasscode.setEnabled(canCopyWithPass);
 
         const bool canHandoff=!receiving&&s.handoffReady&&p.isHostEnabled()&&!s.ending&&(s.streamChannels<=2||s.streamChannels==p.getMainBusNumInputChannels());
-        toggle.setEnabled(!s.ending&&(p.isSending()||canHandoff||(matchingBus&&p.isHostEnabled()&&s.ready&&!s.generating&&customReady&&((s.link.isNotEmpty()&&!inviteSettingsDirty)||(hasPasscode&&planReady)))));
+        toggle.setEnabled(!s.ending&&(p.isSending()||canHandoff||(matchingBus&&p.isHostEnabled()&&s.ready&&!s.generating&&customReady&&(!p.controller->usesCloud()||s.canCloud)&&((s.link.isNotEmpty()&&!inviteSettingsDirty)||(hasPasscode&&planReady)))));
         generate.setEnabled(canGenerate&&hasPasscode);
         usePasscode.setEnabled(settingsEditable&&!s.linkBusy);
         passcode.setEnabled(settingsEditable&&usePasscode.getToggleState());
@@ -862,7 +882,7 @@ private:
         const auto timeTick=sessionLatched?juce::Time::currentTimeMillis()/1000:0;
         if(timeTick!=lastDurationTick){lastDurationTick=timeTick;repaint(704,430,126,38);}
 
-        const auto paintKey=s.listenerMessage+juce::String(int(showingPeople))+juce::String(int(showingSetup))+juce::String(int(sessionLatched))+juce::String(int(endConfirmTicks>0))+juce::String(int(s.ending))+s.link+s.linkMessage+juce::String(int(s.live))+juce::String(int(s.warning))+juce::String(int(s.linkBusy))+juce::String(int(s.passcodeRequired))+customName.getText()+juce::String(int(validDraftName()))+s.receivePhase+s.receiveTransport+juce::String(int(s.handoffReady))+juce::String(pendingRequests);
+        const auto paintKey=s.listenerMessage+juce::String(int(showingPeople))+juce::String(int(showingSetup))+juce::String(int(sessionLatched))+juce::String(int(endConfirmTicks>0))+juce::String(int(s.ending))+s.link+s.linkMessage+juce::String(int(s.live))+juce::String(int(s.warning))+juce::String(int(s.linkBusy))+juce::String(int(s.passcodeRequired))+customName.getText()+juce::String(int(validDraftName()))+s.receivePhase+s.receiveTransport+juce::String(int(s.handoffReady))+juce::String(pendingRequests)+"/"+juce::String(int(p.controller->usesCloud()))+"/"+juce::String(int(s.canCloud))+"/"+juce::String(p.streamQuality.load())+"/"+juce::String(p.streamChannels.load())+"/"+juce::String(p.signalRate())+"/"+juce::String(int(p.controller->encryptsAudio()));
         if(paintKey!=lastPaintKey){lastPaintKey=paintKey;repaint(584,64,260,408);}
 
         if(s.generating||cancellingLink){

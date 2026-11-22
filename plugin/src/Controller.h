@@ -1,7 +1,13 @@
 #pragma once
 #include <juce_core/juce_core.h>
-#if !JUCE_WINDOWS
+#if JUCE_WINDOWS
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
 #include <dlfcn.h>
+#include <unistd.h>
 #endif
 #include <atomic>
 #include "WorkerThread.h"
@@ -9,11 +15,16 @@
 
 class StreamController final : private WorkerThread {
 public:
-    struct Status { bool hasSession=false,ending=false,inviteExpired=false,activeElsewhere=false,handoffReady=false;juce::int64 streamStartedAt=0;juce::var transportDiagnostics,listenerAccess;juce::String plan="free",listenerMessage;int listenerLimit=3,receiveChannels=2,streamChannels=2,streamQuality=1;bool canManageListeners=false,planKnown=false,canCloud=false;double cloudHoursRemaining=0;juce::String delivery="direct";bool encrypted=true;juce::String listenerSettingsAck; juce::String customName,linkMode,linkMessage;bool linkBusy=false,linkAuthorized=false;juce::String receivePhase,receiveMessage,receiveTransport="pcm";bool receiving=false;juce::String accountName,accountPhase,accountMessage;bool accountConfigured=false,reconnectRequired=false;juce::String link,message="Preparing streaming engine...";int listeners=0;bool live=false,available=false,ready=false,generating=false,passcodeRequired=false,warning=false; };
-    explicit StreamController(uint32_t id,std::function<bool()> sending,juce::String endpoint="http://127.0.0.1:8788",juce::File resources={},std::function<bool()> enabled=[]{return true;},std::function<void()> expired={},std::function<void()> yielded={})
-        :WorkerThread("SessionStream control"),source(id),wantsAudio(std::move(sending)),hostEnabled(std::move(enabled)),onExpired(std::move(expired)),onYielded(std::move(yielded)),base(std::move(endpoint)),runtimeOverride(std::move(resources)){startThread();}
+    struct Status { bool hasSession=false,ending=false,inviteExpired=false,activeElsewhere=false,handoffReady=false;juce::int64 streamStartedAt=0;juce::var transportDiagnostics,listenerAccess,updater;juce::String plan="free",listenerMessage;int listenerLimit=3,receiveChannels=2,streamChannels=2,streamQuality=1;bool canManageListeners=false,planKnown=false,canCloud=false;double cloudHoursRemaining=0;juce::String delivery="direct";bool encrypted=true;juce::String listenerSettingsAck; juce::String customName,linkMode,linkMessage;bool linkBusy=false,linkAuthorized=false;juce::String receivePhase,receiveMessage,receiveTransport="pcm";bool receiving=false;juce::String accountName,accountPhase,accountMessage;bool accountConfigured=false,reconnectRequired=false;juce::String link,message="Preparing streaming engine...";int listeners=0;bool live=false,available=false,ready=false,generating=false,passcodeRequired=false,warning=false; };
+    explicit StreamController(uint32_t id,std::function<bool()> sending,juce::String endpoint="http://127.0.0.1:8788",juce::File resources={},std::function<bool()> enabled=[]{return true;},std::function<void()> expired={},std::function<void()> yielded={},juce::File preferences={})
+        :WorkerThread("SessionStream control"),source(id),wantsAudio(std::move(sending)),hostEnabled(std::move(enabled)),onExpired(std::move(expired)),onYielded(std::move(yielded)),base(std::move(endpoint)),runtimeOverride(std::move(resources)),deliveryPrefs(preferences==juce::File{}?deliveryPreferenceFile():preferences){loadDeliveryPreference();startThread();}
     ~StreamController() override{stopThread();}
-    void cloudDelivery(bool value){useCloud.store(value);}
+    void cloudDelivery(bool value){deliveryChoice.store(value?1:0);useCloud.store(value);}
+    void restoreCloudDelivery(bool value,bool chosen){deliveryChoice.store(chosen?(value?1:0):-1);useCloud.store(value);}
+    bool hasDeliveryPreference()const{return deliveryChoice.load()>=0;}
+    bool preferredCloudDelivery()const{return deliveryChoice.load()==1;}
+    void chooseCloudDelivery(bool value){cloudDelivery(value);const auto file=deliveryPrefs;file.getParentDirectory().createDirectory();auto saved=juce::JSON::parse(file);if(!saved.isObject())saved=juce::var(new juce::DynamicObject());saved.getDynamicObject()->setProperty("delivery",value?"cloud":"direct");file.replaceWithText(juce::JSON::toString(saved));}
+
     void inputLayout(int channels){inputChannels.store(channels);}
     int audioChannels(int fallback)const{const auto value=ownedChannels.load();return value>0?value:fallback;}
     bool hasProAudio()const{return proAudio.load();}
@@ -29,6 +40,7 @@ public:
     bool requiresPasscode()const{return passcodePreference.load();}
     void preferCustomLink(bool enabled){customLinkPreference.store(enabled);}
     bool prefersCustomLink()const{return customLinkPreference.load();}
+    void updatePlugin(int action){updateRequested.store(action);prepared=true;notify();}
     void wake(){notify();}
     void prepare(){prepared=true;notify();}
     void generate(juce::String passcode={},int quality=1,int hours=0){{const juce::ScopedLock l(lock);if(current.generating||generateRequested.load())return;memoryPasscode=passcode;pendingPasscode=std::move(passcode);sessionQuality.store(quality);sessionHours.store(hours);generateRequested=true;current.generating=true;current.link.clear();current.warning=false;current.message="Creating link...";}prepared=true;notify();}
@@ -45,13 +57,24 @@ public:
     Status status(){const juce::ScopedLock l(lock);return current;}
     juce::StringArray logs(){const juce::ScopedLock l(lock);return events;}
 private:
-    uint32_t source;std::function<bool()> wantsAudio,hostEnabled;std::function<void()> onExpired,onYielded;juce::String base;juce::File runtimeOverride;
-    std::atomic<int> accountRequested{0},sessionQuality{1},sessionHours{0},sessionChannels{2},inputChannels{2},ownedChannels{0};
+    static juce::int64 hostProcessId(){
+#if JUCE_WINDOWS
+        return static_cast<juce::int64>(GetCurrentProcessId());
+#else
+        return static_cast<juce::int64>(getpid());
+#endif
+    }
+    uint32_t source;std::function<bool()> wantsAudio,hostEnabled;std::function<void()> onExpired,onYielded;juce::String base;juce::File runtimeOverride,deliveryPrefs;
+    std::atomic<int> updateRequested{0},accountRequested{0},sessionQuality{1},sessionHours{0},sessionChannels{2},inputChannels{2},ownedChannels{0};
     std::atomic<bool> showHostName{false},passcodePreference{false},customLinkPreference{false};
     std::atomic<int> listenerPreferenceBits{0};
     std::atomic<bool> generateRequested{false},endRequested{false},handoffRequested{false},prepared{false};juce::CriticalSection lock;Status current;juce::String linkAction,linkValue,lastLinkAuthorization,receiveError;juce::String pendingPasscode,memoryPasscode,receiveTarget,receivePasscode;bool receiveDesired=false,receiveLowLatency=false;int receivePort=0;uint64_t receiveRevision=0;
     juce::ChildProcess child;juce::String token;bool owned=false,lifetimeSupported=false;uint32_t nextLaunch=0;
     std::atomic<bool> proAudio{false},useCloud{false},extraEncryption{true};
+    std::atomic<int> deliveryChoice{-1};
+    static juce::File deliveryPreferenceFile(){return juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory).getChildFile("SessionStream").getChildFile("plugin-preferences.json");}
+    void loadDeliveryPreference(){const auto saved=juce::JSON::parse(deliveryPrefs)["delivery"].toString();if(saved=="cloud"||saved=="direct")cloudDelivery(saved=="cloud");}
+
     juce::StringArray events;juce::Array<juce::var> listenerCommands;juce::String listenerError,listenerSettingsAck,controlError;
     void log(const juce::String& event){const juce::ScopedLock l(lock);events.add(juce::Time::getCurrentTime().toISO8601(true)+" "+event);while(events.size()>256)events.remove(0);}
     void publish(Status next){
@@ -188,6 +211,12 @@ private:
                 next.listenerSettingsAck=listenerSettingsAck;
                 next.listenerMessage=listenerError;
                 proAudio.store(next.planKnown&&next.plan=="pro"&&data["account"]["phase"].toString()=="signed-in");
+                next.updater=data["updater"];
+                if(const int update=updateRequested.exchange(0)){
+                    auto* command=new juce::DynamicObject();command->setProperty("action",update==1?"download":update==2?"install":update==3?"cancel":"dismiss");
+                    if(update==2)command->setProperty("hostPID",hostProcessId());
+                    const auto result=request("/api/update",juce::var(command));if(result["error"].toString().isNotEmpty()){auto* failure=new juce::DynamicObject();failure->setProperty("phase","error");failure->setProperty("message",result["error"].toString());next.updater=juce::var(failure);}
+                }
                 next.accountName=data["account"]["name"].toString();next.accountPhase=data["account"]["phase"].toString();
                 next.reconnectRequired=bool(data["accountConnection"]["reconnectRequired"]);next.accountMessage=data["accountConnection"]["message"].toString();if(next.accountMessage.isEmpty())next.accountMessage=data["account"]["message"].toString();next.accountConfigured=bool(data["account"]["configured"]);
                 if(const int intent=accountRequested.exchange(0)){
@@ -204,7 +233,7 @@ private:
                 const auto authorization=data["links"]["authorizationURL"].toString();
                 if(authorization.startsWith("https://clerk.sessionstream.app/")&&authorization!=lastLinkAuthorization&&static_cast<juce::int64>(data["links"]["authorizationSource"])==source){lastLinkAuthorization=authorization;juce::URL(authorization).launchInDefaultBrowser();}
                 lifetimeSupported=static_cast<int>(data["engineProtocol"])>=1;
-                if(!lifetimeSupported||static_cast<int>(data["controlProtocol"])<9){
+                if(!lifetimeSupported||static_cast<int>(data["controlProtocol"])<10){
                     next.message=bool(data["live"])?"Stop the old SessionStream session to update its engine.":"Updating streaming engine...";
                     if(!bool(data["live"]))launch(true);
                     publish(next);wait(250);continue;
@@ -238,7 +267,11 @@ private:
                 if(owned&&requestId.isNotEmpty()&&data["inviteRequest"].toString()==requestId)
                     sessionPasscode=requestPasscode;
                 if(wasOwned&&ownedElsewhere){if(onYielded)onYielded();}
-                next.hasSession=owned;if(owned){cloudDelivery(next.delivery=="cloud");encryptAudio(next.encrypted);}
+                next.hasSession=owned;if(owned){useCloud.store(next.delivery=="cloud");encryptAudio(next.encrypted);}
+                else if(next.accountPhase=="signed-out"||(next.planKnown&&next.accountPhase=="signed-in")){
+                    const bool pro=next.planKnown&&next.plan=="pro"&&next.accountPhase=="signed-in";
+                    useCloud.store(pro&&(deliveryChoice.load()<0||deliveryChoice.load()==1));
+                }
                 next.activeElsewhere=ownedElsewhere;
                 next.handoffReady=ownedElsewhere&&!bool(data["inviteExpired"]);
                 const auto owner=data["owner"];const bool mine=!owner.isVoid()&&static_cast<juce::int64>(owner)==source;
@@ -262,7 +295,7 @@ private:
                     // acknowledged by GET and repeated requests never rotate twice.
                     if(generating&&modern&&owned&&data["inviteRequest"].toString()==requestId)acknowledged=true;
                     const bool needsPlan=listenerPreferences()!=0||prefersCustomLink()||sessionQuality.load()!=1||sessionChannels.load()!=2;
-                    const bool planReady=!needsPlan||next.planKnown||next.accountPhase=="signed-out";
+                    const bool planReady=(next.accountPhase!="signed-in"||next.planKnown)&&(!needsPlan||next.planKnown||next.accountPhase=="signed-out");
                     if(generating&&!acknowledged&&planReady){acknowledged=action("generate",requestId,requestPasscode,pro);if(!acknowledged&&controlError.isNotEmpty()){generating=false;generateRequested=false;if(desired&&onExpired)onExpired();}}
                     if(generating&&acknowledged){const auto refreshed=request("/api/studio");if(refreshed.isObject()){data=refreshed;link=data["listenerURL"].toString();}}
                     const bool ownsInvite=!data["inviteSource"].isVoid()&&static_cast<juce::int64>(data["inviteSource"])==source;

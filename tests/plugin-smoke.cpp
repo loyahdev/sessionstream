@@ -1,7 +1,22 @@
 #include "Processor.h"
 #include <iostream>
-int main() {
+static int deliveryStateTest(){
+    auto p=std::make_unique<StreamProcessor>();juce::MemoryBlock state;
+    p->controller->restoreCloudDelivery(false,false);p->getStateInformation(state);
+    auto restored=std::make_unique<StreamProcessor>();restored->setStateInformation(state.getData(),int(state.getSize()));
+    if(restored->controller->hasDeliveryPreference())return 31;
+    for(bool cloud:{false,true}){
+        p->controller->cloudDelivery(cloud);p->getStateInformation(state);restored->setStateInformation(state.getData(),int(state.getSize()));
+        if(!restored->controller->hasDeliveryPreference()||restored->controller->preferredCloudDelivery()!=cloud)return 32;
+        juce::MemoryBlock legacy;juce::MemoryOutputStream out(legacy,false);out.writeFloat(0);out.writeInt(0x53535231);out.writeBool(false);out.writeInt(1);out.writeInt(cloud?2048:0);out.writeInt(2);
+        restored->setStateInformation(legacy.getData(),int(legacy.getSize()));
+        if(!restored->controller->hasDeliveryPreference()||restored->controller->preferredCloudDelivery()!=cloud)return 33;
+    }
+    std::cout<<"PASS: new default and saved/legacy Direct/Cloud project states round-trip without activation"<<std::endl;return 0;
+}
+int main(int argc,char** argv) {
     juce::ScopedJuceInitialiser_GUI init;
+    if(argc>1&&juce::String(argv[1])=="--delivery-state")return deliveryStateTest();
     juce::DatagramSocket receiver(false);
     if (!receiver.bindToPort(49300, "127.0.0.1")) { std::cerr << "Stop bridge before native test\n"; return 1; }
     // Receive buffers exceed the default Windows thread stack; hosts allocate plugins on the heap.

@@ -2,7 +2,7 @@ import http from 'node:http';
 import {spawn} from 'node:child_process';
 import assert from 'node:assert/strict';
 const errors=[],actions=[];
-const state={native:true,controlProtocol:9,quality:'balanced',format:{codec:'opus',channels:2,bitrate:320000},engineProtocol:1,token:'test-engine',owner:null,inviteSource:null,inviteRequest:null,live:false,listeners:0,passcodeRequired:false,publicSiteReady:true,tunnelPhase:'ready',listenerURL:'https://race-test.invalid/listen#initial'};
+const state={native:true,controlProtocol:10,quality:'balanced',format:{codec:'opus',channels:2,bitrate:320000},engineProtocol:1,token:'test-engine',owner:null,inviteSource:null,inviteRequest:null,live:false,listeners:0,passcodeRequired:false,publicSiteReady:true,tunnelPhase:'ready',listenerURL:'https://race-test.invalid/listen#initial'};
 const server=http.createServer(async(req,res)=>{
   const reply=data=>{res.writeHead(200,{'Content-Type':'application/json'});res.end(JSON.stringify(data));};
   if(req.url==='/api/studio')return reply(state);

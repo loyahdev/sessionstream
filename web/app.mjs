@@ -41,11 +41,16 @@ function syncMediaSession(){
     }
   }catch{}
 }
+function showSecurity(info){
+  if(studio||!['cloud','direct'].includes(info.delivery)||typeof info.encrypted!=='boolean')return;
+  $('audio-security').hidden=false;
+  $('audio-security').textContent=info.encrypted?'End-to-end encrypted':'End-to-end encryption off';
+}
 function showHost(name){
   currentHostName=typeof name==='string'?name:'';
   const line=$('host-name');
   line.hidden=!currentHostName;
-  line.textContent=line.hidden?'':`Session hosted by ${currentHostName}`;
+  line.textContent=line.hidden?'':`Hosted by ${currentHostName}`;
   syncMediaSession();
 }
 let expired=false;
@@ -73,7 +78,7 @@ const pathPrefix=document.documentElement.dataset.sharePrefix||location.pathname
 const room=location.hash.slice(1)||document.documentElement.dataset.room||'';
 function message(text,error=false){$('message').textContent=text;$('message').classList.toggle('error',error);}
 function status(text,kind=''){
-  $('status-label').textContent=text.toUpperCase();
+  $('status-label').textContent=text;
   $('status-dot').className=`dot ${kind}`;
   $('console-card')?.classList.toggle('is-live',kind==='live');
   if(!studio)$('heading').textContent=kind==='live'?'Listening':'Listen';
@@ -107,7 +112,7 @@ async function joinListener(){
   checkingSignIn=false;
   send({type:'join',role:'listener',mode:pcm?'pcm':'webrtc',room,name:$('listener-name').value.trim()||'Guest',listenerCredential,...(listenerTicket?{listenerTicket}:{}),...(passcode?{passcode}:{})});
 }
-function showListenerSignIn(){accountRequired=true;checkingSignIn=true;awaitingPasscode=false;$('passcode-form').hidden=true;$('connect').hidden=false;$('listener-identity').hidden=false;$('listener-signin').hidden=false;$('listener-name').hidden=true;$('listener-identity').querySelector('label').hidden=true;$('listener-access-note').textContent='Sign in in the new tab, then return here and try again.';message('This host requires a signed-in account.');status('Sign in required');$('connect').innerHTML='Check sign-in <span>↗</span>';}
+function showListenerSignIn(){accountRequired=true;checkingSignIn=true;awaitingPasscode=false;$('passcode-form').hidden=true;$('connect').hidden=false;$('listener-identity').hidden=false;$('listener-signin').hidden=false;$('listener-name').hidden=true;$('listener-identity').querySelector('label').hidden=true;$('listener-access-note').textContent='Sign in in the new tab, then return here and try again.';message('This host requires a signed-in account.');status('Sign in required');$('connect').innerHTML='Check sign-in';}
 
 function accessBlocked(reason){
   if(accessDenied)return;
@@ -120,7 +125,7 @@ function accessBlocked(reason){
   message(reason==='revoked'?'The host revoked your access to this invitation.':'The host declined your request to join this invitation.',true);
 }
 function idleButton(){
-  $('connect').innerHTML=studio?'Start broadcast <span>↗</span>':accountRequired?'Check sign-in <span>↗</span>':approvalRequired?'Request access <span>↗</span>':'Start listening <span aria-hidden="true">↗</span>';
+  $('connect').innerHTML=studio?'Start broadcast <span>↗</span>':accountRequired?'Check sign-in':approvalRequired?'Request access':'Start listening';
 }
 function passcodePrompt(invalid=false){
   awaitingPasscode=true;$('passcode-form').hidden=false;$('connect').hidden=true;
@@ -143,7 +148,7 @@ function reportHealth(next,showMessage=true){
   }
   if(!showMessage)return;
   if(next!=='ok')message(healthMessages[next],true);
-  else if(changed&&!awaitingPasscode){message(live?'':'Audio will start when your host is ready.');status(live?'Listening':'Waiting for host',live?'live':'');}
+  else if(changed&&!awaitingPasscode){message(live?'':'');status(live?'Listening':'Waiting for host',live?'live':'');}
 }
 function closeDelivery(){secureDelivery?.close();secureDelivery=null;}
 function disposePeer(id){const p=peers.get(id);if(p){p.onconnectionstatechange=null;p.close();peers.delete(id);}pendingCandidates.delete(id);}
@@ -151,8 +156,8 @@ function closePeers(){closeDelivery();for(const id of peers.keys())disposePeer(i
 function updateModeControls(automatic=false){
   $('mode-live').checked=!pcm;$('mode-buffered').checked=pcm;
   $('mode-help').textContent=pcm
-    ?(automatic?'Live audio could not connect. Switched to Buffered audio automatically. ':'')+'More latency and data use.'
-    :'Live audio uses less delay. Switch to Buffered if the connection is unstable.';
+    ?(automatic?'Live could not connect. Using Buffered PCM.':'Buffered PCM adds delay and uses more data.')
+    :'Use Buffered PCM if audio breaks up.';
   $('quality').textContent=streamLabel();
 }
 function setMode(value,automatic=false){
@@ -160,7 +165,7 @@ function setMode(value,automatic=false){
   if(forcedPCM&&!value)return;pcm=value;connectionRetried=false;resetReception();clearTimeout(fallbackTimer);closePeers();audio?.reset();audio?.usePCM(pcm);send({type:'mode',mode:pcm?'pcm':'webrtc'});
   updateModeControls(automatic);
   $('transport').textContent=pcm?'PCM / tunnel':'Connecting…';
-  $('fourth-label').textContent=pcm?'BUFFER RESETS':'PACKET LOSS';$('fourth-value').textContent='—';
+  $('fourth-label').textContent=pcm?'Buffer resets':'Packet loss';$('fourth-value').textContent='—';
   if(!joined)return;
   if(pcm)message(automatic?'Switched to Buffered audio. Reconnecting…':'Switching to Buffered audio…');
   else{scheduleFallback();}
@@ -204,7 +209,7 @@ function connection(id,generation=crypto.randomUUID()){
       remoteElement=new Audio();remoteElement.autoplay=true;remoteElement.muted=true;remoteElement.defaultMuted=true;remoteElement.volume=0;remoteElement.setAttribute('muted','');remoteElement.setAttribute('playsinline','');remoteElement.srcObject=e.streams[0]||new MediaStream([e.track]);
       remoteElement.hidden=true;document.body.append(remoteElement);
       rtcSource=audio.context.createMediaStreamSource(remoteElement.srcObject);rtcSource.connect(audio.analyser);
-      remoteElement.play().catch(()=>{needsResume=true;if(live&&sourceAvailable)reportHealth('audio-blocked');message('Tap Resume audio to start listening.');$('connect').innerHTML='Resume audio <span>↗</span>';});
+      remoteElement.play().catch(()=>{needsResume=true;if(live&&sourceAvailable)reportHealth('audio-blocked');message('Tap Resume audio to start listening.');$('connect').innerHTML='Resume audio';});
       try{if('jitterBufferTarget' in e.receiver)e.receiver.jitterBufferTarget=40;}catch{}
     };
   }
@@ -255,10 +260,10 @@ async function onSignal(m){
     }
     if(!running||ws!==socket)return;
     waitingForApproval=false;
-    if(!studio)$('connect').innerHTML='Stop listening <span aria-hidden="true">■</span>';
+    if(!studio)$('connect').innerHTML='Stop listening';
     streamFormat=m.format||streamFormat;forcedPCM=streamFormat.codec==='pcm';if(forcedPCM)pcm=true;const monitoring=audio?.setChannels(streamFormat.channels);if(monitoring?.downmixed)message('Stereo monitoring on this output device. The source stream retains all channels.');
-    deliveryMode=m.delivery==='cloud'?'cloud':'direct';extraEncryption=m.encrypted===true;if(!studio){$('audio-security').hidden=false;$('audio-security').textContent=deliveryMode==='cloud'?(extraEncryption?'Cloud · end-to-end encrypted':'Cloud · connection encryption only'):(extraEncryption?'Direct · end-to-end encrypted':'Direct · connection encryption only');}if(!studio){$('audio-mode').hidden=deliveryMode==='cloud'||forcedPCM;if(deliveryMode==='cloud'){audio?.usePCM(true);$('transport').textContent=extraEncryption?'Cloud / encrypted':'Cloud / transport encryption';}}
-    if(!studio){updateModeControls();$('fourth-label').textContent=pcm||deliveryMode==='cloud'?'BUFFER RESETS':'PACKET LOSS';$('rtt-label').textContent=deliveryMode==='cloud'?'Host link RTT':'Network RTT';}
+    deliveryMode=m.delivery==='cloud'?'cloud':'direct';extraEncryption=m.encrypted===true;showSecurity(m);if(!studio){$('audio-mode').hidden=deliveryMode==='cloud'||forcedPCM;if(deliveryMode==='cloud'){audio?.usePCM(true);$('transport').textContent=extraEncryption?'Cloud / encrypted':'Cloud / transport encryption';}}
+    if(!studio){updateModeControls();$('fourth-label').textContent=pcm||deliveryMode==='cloud'?'Buffer resets':'Packet loss';$('rtt-label').textContent=deliveryMode==='cloud'?'Host link RTT':'Network RTT';}
     joined=true;if(!studio)$('listener-identity').hidden=true;if(!studio&&$('note-form'))$('note-form').hidden=true;connectionRetried=false;awaitingPasscode=false;$('passcode-form').hidden=true;$('connect').hidden=false;$('passcode').value='';$('passcode-error').textContent='';$('passcode').removeAttribute('aria-invalid');resetReception();
     reconnectAttempt=0;iceServers=m.iceServers;peerId=m.id;
     if(studio){live=true;send({type:'publishing',live:true,title:$('title').value});for(const id of m.peers||[])await offer(id);message('Broadcasting. Press Start streaming in the plugin, then play your project.');}
@@ -271,10 +276,10 @@ async function onSignal(m){
     if(!live||!sourceAvailable)reportHealth('ok');
     $('session-title').textContent=m.title;$('fourth-value').textContent=studio?String(m.listeners):$('fourth-value').textContent;
     if(m.format)streamFormat=m.format;$('quality').textContent=pcm&&streamFormat.codec==='opus'&&deliveryMode!=='cloud'?`PCM 32-bit float · ${channelLayouts[streamFormat.channels]}`:streamLabel();
-    if(m.audio){$('source-label').textContent=`${(m.audio.rate/1000).toFixed(1)} KHZ SOURCE · ${m.audio.channels} CHANNEL${m.audio.channels===1?'':'S'}${m.audio.channels>(audio?.context.destination.channelCount||2)?' · STEREO MONITORING':''}`;}
-    else $('source-label').textContent='WAITING FOR PLUGIN AUDIO';
+    if(m.audio){$('source-label').textContent=`${m.audio.rate/1000} kHz${m.audio.channels>(audio?.context.destination.channelCount||2)?' · Stereo monitoring':''}`;}
+    else $('source-label').textContent='Waiting for audio';
     if(studio){status(live&&m.audio?'Broadcasting live':live?'Waiting for plugin':'Sharing paused',live&&m.audio?'live':'');}
-    else if(!live){status('Waiting for host');message('Audio will start when your host is ready.');}
+    else if(!live){status('Waiting for host');message('');}
     else if(pcm||deliveryMode==='cloud'){status(m.audio?'Listening':'Waiting for audio',m.audio?'live':'');if(m.audio&&healthState==='ok')message('');}
     else if([...peers.values()].some(p=>p.connectionState==='connected')){status('Listening', 'live');}
 
@@ -328,13 +333,13 @@ function connectSocket(){
     waitingForApproval=false;
     if(e.code===4008&&awaitingPasscode){await stop(false);passcodePrompt();message('Too many passcode attempts. Wait a moment, then try again.',true);return;}
     audio?.reset();closePeers();live=false;status('Reconnecting');
-    message('Connection interrupted. Rejoining at the live audio.');
+    message('Reconnecting...');
     clearTimeout(reconnectTimer);reconnectTimer=setTimeout(connectSocket,Math.min(8000,500*2**reconnectAttempt++)+Math.random()*250);
   };
 }
 async function start(){
   if(expired||accessDenied||running||$('connect').disabled)return;
-  if(!studio&&!/^[a-f0-9]{48}$/.test(room)){message('Open the private invite your host sent you to join this session.',true);return;}
+  if(!studio&&!/^[a-f0-9]{48}$/.test(room)){message('Open the link your host sent you.',true);return;}
   if(!studio&&approvalRequired&&!accountRequired&&!$('listener-name').value.trim()){$('listener-identity').hidden=false;$('listener-name').focus();message('Enter a name for the host.');return;}
   $('connect').disabled=true;
   try{
@@ -382,7 +387,7 @@ async function stop(showMessage=true){
   idleButton();
   $('connect').classList.remove('stop');
   if(!accessDenied)status('Disconnected');$('transport').textContent='—';$('buffer').textContent='—';$('rtt').textContent='—';
-  if(showMessage)message(studio?'Broadcast stopped. Clients can no longer hear your audio.':'You have left the session.');
+  if(showMessage)message(studio?'Broadcast stopped. Clients can no longer hear your audio.':'Disconnected.');
   await closing?.context.close().catch(()=>{});
 }
 let lastReceived=null;
@@ -409,7 +414,7 @@ async function updateStats(){
   }
   const now=performance.now();
   if(!studio&&!pcm&&deliveryMode!=='cloud'){if(receivedPackets!==null&&packets>receivedPackets)lastProgress=now;receivedPackets=packets;}
-  if((studio||joined)&&audio&&['suspended','interrupted'].includes(audio.context.state)){status('Audio paused');message('Audio was paused by your browser. Tap Resume audio.');$('connect').innerHTML='Resume audio <span>↗</span>';}
+  if((studio||joined)&&audio&&['suspended','interrupted'].includes(audio.context.state)){status('Audio paused');message('Your browser paused audio. Tap Resume.');$('connect').innerHTML='Resume audio';}
   if(!studio&&running&&joined){
     // Incoming packets, rather than output level, distinguish a broken stream
     // from intentional mute, silent content, or the host pausing a broadcast.
@@ -441,9 +446,9 @@ $('connect').onclick=()=>{
       reportHealth('ok');
       if(!studio){
         status(live?'Listening':'Waiting for host',live?'live':'');
-        message(live?'':'Audio will start when your host is ready.');
+        message(live?'':'');
       }
-      $('connect').innerHTML=studio?'Stop broadcast <span>■</span>':'Stop listening <span aria-hidden="true">■</span>';
+      $('connect').innerHTML=studio?'Stop broadcast <span>■</span>':'Stop listening';
     }).catch(()=>message('Your browser paused audio. Tap Resume audio to try again.',true));
     return;
   }
@@ -507,7 +512,7 @@ if(studio){
   $('fourth-label').textContent='LISTENERS';
   $('connect').innerHTML='Start broadcast <span>↗</span>';message('Start the broadcast, then start streaming in SessionStream.');
   await refreshInvite();setInterval(refreshInvite,5000);
-}else if(!/^[a-f0-9]{48}$/.test(room)){message('You need a private invite from your host to join.',true);$('connect').disabled=true;}
+}else if(!/^[a-f0-9]{48}$/.test(room)){message('Open the link your host sent you.',true);$('connect').disabled=true;}
 else{
   // The invite stays in the fragment; no passcode is placed in a URL or stored.
   // Preflight never starts audio. The listener's click remains the user gesture
@@ -522,7 +527,7 @@ async function checkInvite(initial=false){
     if([403,404,410].includes(response.status)){reloadExpired();return true;}
     if(!response.ok)return false;
     const info=await response.json();
-    showHost(info.hostName);if(info.format){streamFormat=info.format;$('quality').textContent=streamLabel();}
+    showHost(info.hostName);showSecurity(info);if(info.format){streamFormat=info.format;$('quality').textContent=streamLabel();}
     if(info.accessDecision==='rejected'||info.accessDecision==='revoked'){accessBlocked(info.accessDecision);return true;}
     if(!running&&!accessDenied){
       const changed=initial||approvalRequired!==!!info.approvalRequired||accountRequired!==!!info.accountRequired;
@@ -629,3 +634,16 @@ function draw(){
 draw();
 // Diagnostics are read-only and contain no session credentials.
 window.sessionDiagnostics=()=>({running,pcm,live,muted,mono,dimmed,scopeMode,volumeDb:Number($('volume').value),context:audio?.context.state,connections:[...peers.values()].map(p=>p.connectionState),lastAudioAgeMs:lastBinary?performance.now()-lastBinary:null,listenerHealth:healthState,buffer:bufferStats,relayConfigured:iceServers.some(s=>[s.urls].flat().some(url=>/^turns?:/.test(url))),safety:{ceilingDbFS:-1,maxGainDb:6,lookaheadMs:5}});
+
+const connectionDisclosure=document.querySelector('.connection-details');
+if(connectionDisclosure){
+ const summary=connectionDisclosure.querySelector('summary');let motion=null,expanded=connectionDisclosure.open;
+ summary.addEventListener('click',event=>{
+  event.preventDefault();const current=connectionDisclosure.getBoundingClientRect().height;motion?.cancel();expanded=!expanded;summary.setAttribute('aria-expanded',String(expanded));
+  if(matchMedia('(prefers-reduced-motion: reduce)').matches){connectionDisclosure.open=expanded;connectionDisclosure.style.overflow='';return;}
+  connectionDisclosure.open=true;const collapsed=summary.getBoundingClientRect().height+1,target=expanded?connectionDisclosure.getBoundingClientRect().height:collapsed;connectionDisclosure.style.overflow='hidden';
+  motion=connectionDisclosure.animate([{height:current+'px'},{height:target+'px'}],{duration:200,easing:'ease-out'});
+  motion.onfinish=()=>{connectionDisclosure.open=expanded;connectionDisclosure.style.overflow='';motion=null;};
+ });
+ summary.setAttribute('aria-expanded',String(expanded));
+}

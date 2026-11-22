@@ -1,3 +1,4 @@
+import {PluginUpdater} from './plugin-updater.mjs';
 import {expiredPage} from './expired-page.mjs';
 import {StreamDelivery} from './stream-delivery.mjs';
 import {ListenerAdmission} from './listener-admission.mjs';
@@ -46,6 +47,7 @@ export async function createStreamServer(options = {}) {
   const udpPort = options.udpPort ?? Number(process.env.UDP_PORT || 49300);
   let controlQueue=Promise.resolve();
   let accountError='',reconnectFlow=null;
+  const updater=options.updater||new PluginUpdater({directory:path.join(options.runtimeDir||path.join(root,'.runtime'),'updates'),currentVersion:JSON.parse(await readFile(path.join(root,'package.json'),'utf8')).version,...options.updateOptions});
   let usageSequence=null,usageSource=null;
   // Test workers must never restore/rotate the user's real Keychain login.
   const testWorker=!!process.env.NODE_TEST_CONTEXT;
@@ -148,7 +150,13 @@ export async function createStreamServer(options = {}) {
       let publicURL = process.env.PUBLIC_URL || `http://127.0.0.1:${pub.address().port}`;
       if(options.managedTunnel)publicURL=(currentInvite&&tunnel.phase==='ready'?tunnel.url:'')||`http://127.0.0.1:${pub.address().port}`;
       else try { const stored = JSON.parse(await readFile(path.join(options.runtimeDir||path.join(root,'.runtime'),'public-url.json'),'utf8')); if (stored.url && !options.ignoreStoredURL) publicURL = stored.url; } catch {}
-      return reply(200,{account:account.status(),accountConnection:dashboard.status(),listenerAccess:admission.snapshot(),accountError, links:links.status(), receivers:Object.fromEntries([...receivers].map(([id,receiver])=>[id,receiver.status()])), featureProtocol:1, token, room, listenerURL:!!sharePrefix(new URL(publicURL).pathname)?publicURL:`${publicURL}/listen#${room}`,transportDiagnostics:native?.diagnostics(),controlProtocol:9,passcodeRequired:inviteAccess.required,listenerIssue:listenerHealth.issue(live),engineProtocol:native?1:0,enginePID:process.pid,tunnelPID:options.tunnelPID?.(),engineClients:lifetime.clients.size,publicSiteReady:options.managedTunnel?(tunnel.phase==='ready'&&currentInvite):publicURL.startsWith('https://'),tunnelPhase:options.managedTunnel?tunnel.phase:undefined,inviteRequest,iceServers:ice(), ...info()});
+      return reply(200,{account:account.status(),accountConnection:dashboard.status(),updater:await updater.status(),listenerAccess:admission.snapshot(),accountError, links:links.status(), receivers:Object.fromEntries([...receivers].map(([id,receiver])=>[id,receiver.status()])), featureProtocol:1, token, room, listenerURL:!!sharePrefix(new URL(publicURL).pathname)?publicURL:`${publicURL}/listen#${room}`,transportDiagnostics:native?.diagnostics(),controlProtocol:10,passcodeRequired:inviteAccess.required,listenerIssue:listenerHealth.issue(live),engineProtocol:native?1:0,enginePID:process.pid,tunnelPID:options.tunnelPID?.(),engineClients:lifetime.clients.size,publicSiteReady:options.managedTunnel?(tunnel.phase==='ready'&&currentInvite):publicURL.startsWith('https://'),tunnelPhase:options.managedTunnel?tunnel.phase:undefined,inviteRequest,iceServers:ice(), ...info()});
+    }
+    if(url.pathname==='/api/update'&&req.method==='POST'){
+      if(!studio||!native||!headerAuth(req)||req.headers.origin!==`http://${req.headers.host}`)return reply(403,{error:'Unauthorized'});
+      const body=await readJSON(req,512);if(body.error)return reply(body.status,{error:body.error});const value=body.value;
+      if(!value||!['download','install','cancel','dismiss'].includes(value.action)||Object.keys(value).some(k=>!['action','hostPID'].includes(k)))return reply(400,{error:'Invalid update action.'});
+      try{const result=value.action==='download'?await updater.prepare():value.action==='install'?await updater.install(value.hostPID):value.action==='cancel'?await updater.cancel():await updater.dismiss();return reply(200,{ok:true,...result});}catch(error){if(!['applying','waiting'].includes(updater.state?.phase))await updater.save({phase:'error',message:error.message}).catch(()=>{});return reply(400,{ok:false,error:error.message});}
     }
     if (url.pathname === '/api/links' && req.method === 'POST') {
       if(!studio||!headerAuth(req)||req.headers.origin!==`http://${req.headers.host}`)return reply(403,{error:'Unauthorized'});
@@ -261,7 +269,7 @@ export async function createStreamServer(options = {}) {
       if(!safeEqual(m?.room,room))return reply(403,{error:'Invalid invite'});
       if(sessionPolicy.expired)return reply(410,{error:'This invite has expired. Ask the host for a new link.'});
       const accessDecision=admission.decision(m.listenerCredential);
-      return reply(200,{...(accessDecision?{accessDecision}:{}),format:sessionPolicy.status().format,passcodeRequired:inviteAccess.required,approvalRequired:admission.approval,accountRequired:admission.requireAccount,...(hostName()?{hostName:hostName()}:{})});
+      return reply(200,{...(accessDecision?{accessDecision}:{}),format:sessionPolicy.status().format,delivery:deliveryMode,encrypted:extraEncryption,passcodeRequired:inviteAccess.required,approvalRequired:admission.approval,accountRequired:admission.requireAccount,...(hostName()?{hostName:hostName()}:{})});
     }
     if (url.pathname === '/api/engine' && req.method === 'POST') {
       if (!studio || !native || !headerAuth(req) || req.headers.origin !== `http://${req.headers.host}`) return reply(403,{error:'Unauthorized'});
@@ -527,7 +535,7 @@ export async function createStreamServer(options = {}) {
   return {instance,get customLinkSelection(){return links.selection();},get inviteRevision(){return room;},publicPort:pub.address().port, studioPort:local.address().port, udpPort:udp.address().port,
     setManagedIceServers(servers){managedIce=Array.isArray(servers)&&servers.length?servers:null;},
     setTunnelState(phase,url='',invite=room){tunnel={phase,url,invite};},
-    async close() {await delivery?.end();await dashboard.close();for(const receiver of receivers.values())receiver.close();account.close();native?.close();clearInterval(lifetimeTimer);clearInterval(statusTimer);clearInterval(heartbeat);for (const ws of wss.clients) ws.terminate();
+    async close() {await updater.close();await delivery?.end();await dashboard.close();for(const receiver of receivers.values())receiver.close();account.close();native?.close();clearInterval(lifetimeTimer);clearInterval(statusTimer);clearInterval(heartbeat);for (const ws of wss.clients) ws.terminate();
       await Promise.all([new Promise(r=>wss.close(r)),new Promise(r=>pub.close(r)),new Promise(r=>local.close(r)),new Promise(r=>udp.close(r))]);}};
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -38,6 +38,11 @@ for plugin in build/SessionStream_artefacts/Release/VST3/SessionStream.vst3 buil
   cp vendor/JIVE/LICENSE.md "$runtime/notices/JIVE-LICENSE.md"
   cp plugin/assets/Inter-LICENSE.txt "$runtime/notices/Inter-LICENSE.txt"
   cp plugin/assets/DMSans-OFL.txt plugin/assets/Manrope-OFL.txt "$runtime/notices/"
+  node --input-type=module - "$runtime/package.json" <<'JS'
+import {readFileSync,writeFileSync} from 'node:fs';
+const {version}=JSON.parse(readFileSync('package.json','utf8'));
+writeFileSync(process.argv[2],JSON.stringify({name:'sessionstream-runtime',version,private:true,type:'module'})+'\n');
+JS
   copy_tree server "$runtime/server"
   copy_tree web "$runtime/web"
   cp scripts/companion.mjs "$runtime/scripts/companion.mjs"

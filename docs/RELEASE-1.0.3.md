@@ -2,10 +2,13 @@
 
 Cloud streaming, account balances and explicit audio-format controls are packaged together in this refreshed 1.0.3 build. Reinstall the updated package if you already installed an earlier 1.0.3 build.
 
+- The opt-in updater downloads a newer stable release, verifies its published SHA-256 digest, and installs only after the hosting DAW and streaming helper exit. Downloads, cancellation and failures are handled in the plugin. Windows requests normal administrator approval. The refreshed 1.0.3 must be installed manually once to get this updater.
+- The listener page now keeps playback and monitoring in one panel, with transport settings under Connection and shorter, practical labels.
+- New Pro setups default to encrypted Cloud, Opus 320 kbps stereo. Explicit delivery choices are remembered across new instances and project restores; Free uses Direct. Exhausted Cloud allowance offers an explicit Direct fallback, with per-listener hour/data estimates before starting.
 - Format controls replace Studio/Balanced/Phone labels: Opus 96, 128, 192, 256, 320 or 510 kbps in mono/stereo; PCM 16/24-bit integer or 32-bit float in mono/stereo/5.1/7.1 at the DAW sample rate (44.1–192 kHz). Surround needs a matching DAW bus.
 - Direct and Cloud preserve the selected PCM layout and bit depth. Browser outputs with too few channels use labelled stereo monitoring.
 - A confirmed protected invite keeps its passcode after a lost creation response and helper restart.
-- Older project state remains readable. Protocol 9 updates idle older helpers before starting a new-format session.
+- Older project state remains readable. Protocol 10 updates idle older helpers before starting a new-format session.
 - Free accounts receive no monthly included Cloud hours. Current service policy requires active Pro for Cloud and top-up checkout. Purchased or administrator-granted credits are retained after a downgrade and become usable after Pro reactivation. Pro controls remain unavailable on Free.
 - Pro includes 300 Cloud hours per billing month by default. Its Cloud sessions are metered by data-weighted credits without a listener-count cap. Direct sessions allow eight listeners.
 - Billing-month renewals refill only included hours. Unused top-ups carry forward. Annual plans receive monthly refills on their billing anniversary.
@@ -16,7 +19,7 @@ Cloud streaming, account balances and explicit audio-format controls are package
 
 ## Verification
 
-- 335 automated tests passed, including account isolation, Free/Pro restrictions, quota and monthly renewal accounting, editable top-ups, encryption, decoding, reconnect and lifecycle behavior.
+- 346 automated tests passed, including account isolation, Free/Pro restrictions, quota and monthly renewal accounting, editable top-ups, encryption, decoding, reconnect and lifecycle behavior.
 - The exact macOS VST3 and AU bundles loaded in the native host probe with unchanged mono, stereo, 5.1 and 7.1 passthrough. The AU test registers the tested bundle under a process-local identity to avoid loading an older installed component.
 - Native processor tests cover UDP PCM, independent gain, state restoration, Receive output and prevention of re-broadcast loops. Opus negotiation passed at every exposed bitrate in mono and stereo. Native channel-routing tests preserve mono, stereo, 5.1 and 7.1 through the sender, project state and DAW receiver.
 - The packaged Node/runtime passed Direct and Cloud audio with encryption on and off, including pause/resume.

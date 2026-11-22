@@ -23,7 +23,7 @@ int main(int argc,char** argv){
         {UpdateChecker failure([]{return juce::String("404: Not Found");});require(!wait(failure).available,"failed check must stay quiet");}
         {UpdateChecker same([]{return juce::String(UpdateChecker::currentVersion);});const auto s=wait(same);require(s.latest==UpdateChecker::currentVersion&&!s.available,"installed version stays current");}
         {UpdateChecker future([]{return juce::String("1.1");});require(wait(future).available,"future version should show prompt");future.ignoreForSession();require(!future.status().available,"ignore prompt");future.check();juce::Thread::sleep(350);require(!future.status().available,"recheck must not nag");}
-        {UpdateChecker another([]{return juce::String("1.1");});require(!wait(another).available,"other instances should respect session ignore");}
+        {UpdateChecker another([]{return juce::String("1.1");});require(!wait(another).available,"other instances should respect session ignore");another.check(true);require(wait(another).available,"manual check can show a dismissed update again");}
         std::cout<<"PASS: dotted version comparison, malformed replies, background checks, update availability and session dismissal\n";
     }catch(const std::exception& e){std::cerr<<e.what()<<"\n";return 1;}
 }

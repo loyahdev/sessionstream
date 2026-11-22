@@ -14,7 +14,7 @@ public:
     using Fetch = std::function<juce::String()>;
     explicit UpdateChecker(Fetch reader=fetchVersion) : WorkerThread("SessionStream update check"), fetch(reader?std::move(reader):Fetch(fetchVersion)) { startThread(); }
     ~UpdateChecker() override { stopThread(); }
-    void check() { requested=true; notify(); }
+    void check(bool manual=false) { if(manual)ignored=false;{const juce::ScopedLock l(lock);current.checked=false;}requested=true; notify(); }
     void ignoreForSession() { ignored.store(true); }
     Status status() { const juce::ScopedLock l(lock);auto result=current;result.available=result.available&&!ignored.load();return result; }
     // Compare dotted version components as integers; trailing zeros are equal.

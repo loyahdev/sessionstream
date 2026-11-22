@@ -1,6 +1,6 @@
 import http from 'node:http';import {spawn} from 'node:child_process';import assert from 'node:assert/strict';
 const id='101',token='test-token',restart=process.argv.includes('--restart');let ready=false,rotations=0,posts=0,dropGET=false;
-const state={native:true,controlProtocol:9,quality:'balanced',format:{codec:'opus',channels:2,bitrate:320000},engineProtocol:1,token,owner:null,inviteSource:null,inviteRequest:null,live:false,listeners:0,tunnelPhase:'verifying',publicSiteReady:false,passcodeRequired:false,listenerURL:'https://not-ready.trycloudflare.com/listen#initial'};
+const state={native:true,controlProtocol:10,quality:'balanced',format:{codec:'opus',channels:2,bitrate:320000},engineProtocol:1,token,owner:null,inviteSource:null,inviteRequest:null,live:false,listeners:0,tunnelPhase:'verifying',publicSiteReady:false,passcodeRequired:false,listenerURL:'https://not-ready.trycloudflare.com/listen#initial'};
 const server=http.createServer(async(req,res)=>{
   const reply=(status,body)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(body));};
   if(req.url==='/api/studio'){if(dropGET){dropGET=false;if(restart)Object.assign(state,{token:'replacement-engine-token',owner:null,inviteSource:null,inviteRequest:null,listenerURL:'https://ready.trycloudflare.com/listen#replacement'});return reply(500,{error:'temporary read failure'});}state.publicSiteReady=ready;return reply(200,state);}

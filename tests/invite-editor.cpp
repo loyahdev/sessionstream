@@ -15,10 +15,11 @@ public:
         const bool isolated=configuredEndpoint.startsWith("http://127.0.0.1:")&&int(preview["udpPort"])>=1024&&int(preview["udpPort"])<=65535;
         const auto endpoint=isolated?configuredEndpoint:juce::SystemStats::getEnvironmentVariable("SESSIONSTREAM_EDITOR_ENDPOINT",{});
         const int udpPort=isolated?int(preview["udpPort"]):juce::SystemStats::getEnvironmentVariable("SESSIONSTREAM_EDITOR_UDP_PORT","49300").getIntValue();
-        processor=std::make_unique<StreamProcessor>([]{return juce::SystemStats::getEnvironmentVariable("SESSIONSTREAM_EDITOR_WORKFLOW",{})=="1"?juce::String("1.1"):juce::String(UpdateChecker::currentVersion);},udpPort);
-        if(endpoint.isNotEmpty())processor->controller=std::make_unique<StreamController>(processor->transport.getSourceId(),[this]{return processor->isSending();},endpoint);
+        processor=std::make_unique<StreamProcessor>([previewLatest=isolated?preview["latestVersion"].toString():juce::String{}]{return previewLatest.isNotEmpty()?previewLatest:juce::SystemStats::getEnvironmentVariable("SESSIONSTREAM_EDITOR_WORKFLOW",{})=="1"?juce::String("1.1"):juce::String(UpdateChecker::currentVersion);},udpPort);
+        if(endpoint.isNotEmpty())processor->controller=std::make_unique<StreamController>(processor->transport.getSourceId(),[this]{return processor->isSending();},endpoint,juce::File{},[]{return true;},std::function<void()>{},std::function<void()>{},isolated?previewFile.getSiblingFile("delivery-preferences.json"):juce::File{});
         if(juce::SystemStats::getEnvironmentVariable("SESSIONSTREAM_EDITOR_RECEIVE_PREVIEW",{})=="1")processor->setReceiveMode(true);
         if(juce::SystemStats::getEnvironmentVariable("SESSIONSTREAM_EDITOR_FORMAT_PREVIEW",{})=="1"){auto layout=processor->getBusesLayout();layout.inputBuses.set(0,juce::AudioChannelSet::create5point1());layout.outputBuses.set(0,juce::AudioChannelSet::create5point1());processor->setBusesLayout(layout);processor->streamQuality=7;processor->streamChannels=6;}
+        if(juce::SystemStats::getEnvironmentVariable("SESSIONSTREAM_EDITOR_WORKFLOW",{})=="1")processor->controller->cloudDelivery(false);
         processor->prepareToPlay(48000,480);
         buffer.setSize(processor->getMainBusNumInputChannels(),480);buffer.clear();
         window=std::make_unique<Window>();window->setContentOwned(processor->createEditor(),true);window->centreWithSize(window->getWidth(),window->getHeight());window->setVisible(true);
