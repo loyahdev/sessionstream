@@ -1,11 +1,11 @@
-/* Teaching room: a signal diagram, rather than unrelated studio photography. */
-.class-room{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:64px;align-items:center;padding:56px;background:var(--ss-surface-muted);border-top:2px solid var(--ss-accent-violet,#b7a4d0)}
-.class-copy h2{font-size:clamp(46px,5.1vw,76px);line-height:1.02;letter-spacing:-.055em;font-weight:750;margin:0 0 28px}
-.class-copy>p{font-size:18px;line-height:1.65;color:var(--muted);max-width:40ch}
+/* Real remote-production photography, with the teaching details below it. */
+.class-room{background:var(--ss-surface-muted);border-top:2px solid var(--ss-accent-violet,#b7a4d0)}
+.class-photo{margin:0;overflow:hidden;background:#101516}.class-photo img{display:block;width:100%;height:auto;aspect-ratio:3840/2025;object-fit:cover}
+.class-copy{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:64px;padding:48px 56px 56px;align-items:start}
+.class-copy h2{font-size:clamp(46px,5.1vw,76px);line-height:1.02;letter-spacing:-.055em;font-weight:750;margin:0}
+.class-details>p{font-size:18px;line-height:1.65;color:var(--muted);max-width:52ch}
 .class-controls{list-style:none;padding:0;margin:24px 0 32px;display:flex;gap:8px 18px;flex-wrap:wrap;font-size:13px;color:var(--ss-text)}
 .class-controls li{padding-left:12px;border-left:2px solid var(--ss-accent-violet,#b7a4d0)}
-.class-routing{margin:0;min-width:0;color:var(--ss-text)}.class-routing>svg{display:block;width:100%;height:auto;overflow:visible}.class-wave{stroke:var(--ss-brand,#315c3f);stroke-width:3}.class-cable{stroke:var(--ss-accent-violet,#b7a4d0)}.class-endpoints{stroke:var(--ss-control-border)}
-.class-routing figcaption{font-size:14px;line-height:1.6;color:var(--muted);max-width:44ch;margin:18px auto 0;text-align:center}
 .privacy-heading h2{font-size:clamp(36px,4vw,58px)}
-@media(max-width:900px){.class-room{gap:32px;padding:36px}.class-copy h2{font-size:52px}.class-copy>p{font-size:17px}}
-@media(max-width:650px){.class-room{grid-template-columns:1fr;padding:28px 24px;gap:36px}.class-copy h2{font-size:48px}.class-copy>p{max-width:none}.class-controls{margin-block:20px 24px}.class-routing{max-width:500px;margin:auto}.class-routing figcaption{font-size:13px}.class-routing svg text{font-size:24px}.class-copy .button{font-size:15px}}
+@media(max-width:900px){.class-copy{gap:32px;padding:36px}.class-copy h2{font-size:52px}.class-details>p{font-size:17px}}
+@media(max-width:650px){.class-photo img{aspect-ratio:3/2;object-position:51% center}.class-copy{grid-template-columns:1fr;padding:28px 24px 36px;gap:24px}.class-copy h2{font-size:48px}.class-details>p{max-width:none}.class-controls{margin-block:20px 24px}.class-copy .button{font-size:15px}}
