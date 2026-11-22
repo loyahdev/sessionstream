@@ -21,7 +21,7 @@ export class CloudTopups {
  async checkout(user,requestId,origin){
   if(typeof requestId!=='string'||!/^[a-f0-9]{32}$/.test(requestId))fail('Invalid payment request.');
   const query=this.sandbox?'topup_test':'topup';
-  const form=new URLSearchParams({mode:'payment','line_items[0][quantity]':'1','line_items[0][price_data][currency]':'usd','line_items[0][price_data][unit_amount]':'500','line_items[0][price_data][product_data][name]':'SessionStream: 300 Cloud listener-hours',client_reference_id:user.id,'metadata[account]':user.id,'metadata[purpose]':this.purpose,success_url:origin+'/dashboard/?'+query+'={CHECKOUT_SESSION_ID}',cancel_url:origin+'/dashboard/?'+query+'=cancelled'});
+  const form=new URLSearchParams({mode:'payment','line_items[0][quantity]':'1','line_items[0][price_data][currency]':'usd','line_items[0][price_data][unit_amount]':'500','line_items[0][price_data][product_data][name]':'SessionStream: 300 Cloud hours',client_reference_id:user.id,'metadata[account]':user.id,'metadata[purpose]':this.purpose,success_url:origin+'/dashboard/?'+query+'={CHECKOUT_SESSION_ID}',cancel_url:origin+'/dashboard/?'+query+'=cancelled'});
   const session=await this.stripe('checkout/sessions',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Idempotency-Key':'cloud-topup:'+(this.sandbox?'test:':'live:')+user.id+':'+requestId},body:form});
   let url;try{url=new URL(session.url);}catch{fail('Payment checkout was not created.',503);}
   if(url.protocol!=='https:'||url.hostname!=='checkout.stripe.com'||url.username||url.password)fail('Invalid payment checkout.',503);

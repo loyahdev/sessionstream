@@ -4,9 +4,10 @@ Cloud streaming, account balances and explicit audio-format controls are package
 
 - Format controls replace Studio/Balanced/Phone labels: Opus 96, 128, 192, 256, 320 or 510 kbps in mono/stereo; PCM 16/24-bit integer or 32-bit float in mono/stereo/5.1/7.1 at the DAW sample rate (44.1–192 kHz). Surround needs a matching DAW bus.
 - Direct and Cloud preserve the selected PCM layout and bit depth. Browser outputs with too few channels use labelled stereo monitoring.
-- Older project state remains readable. Protocol 8 updates idle older helpers before starting a new-format session.
+- A confirmed protected invite keeps its passcode after a lost creation response and helper restart.
+- Older project state remains readable. Protocol 9 updates idle older helpers before starting a new-format session.
 - Free accounts receive no monthly included Cloud hours. Current service policy requires active Pro for Cloud and top-up checkout. Purchased or administrator-granted credits are retained after a downgrade and become usable after Pro reactivation. Pro controls remain unavailable on Free.
-- Pro includes 300 Cloud listener-hours per billing month by default. Its Cloud sessions are metered by listener-hours without a listener-count cap. Direct sessions allow eight listeners.
+- Pro includes 300 Cloud hours per billing month by default. Its Cloud sessions are metered by data-weighted credits without a listener-count cap. Direct sessions allow eight listeners.
 - Billing-month renewals refill only included hours. Unused top-ups carry forward. Annual plans receive monthly refills on their billing anniversary.
 - Clerk private metadata supports `cloudMonthlyRenewHours` and administrator edits to `cloudTopupHoursRemaining`; `cloudNormalHoursRemaining` is calculated. The dashboard sums the buckets. The obsolete editable total is removed.
 - Tester accounts use separate Stripe sandbox checkout through the normal purchase button. Sandbox purchases fund Cloud only for authorized testers and never grant Pro features.
@@ -15,7 +16,7 @@ Cloud streaming, account balances and explicit audio-format controls are package
 
 ## Verification
 
-- 323 automated tests passed, including account isolation, Free/Pro restrictions, quota and monthly renewal accounting, editable top-ups, encryption, decoding, reconnect and lifecycle behavior.
+- 335 automated tests passed, including account isolation, Free/Pro restrictions, quota and monthly renewal accounting, editable top-ups, encryption, decoding, reconnect and lifecycle behavior.
 - The exact macOS VST3 and AU bundles loaded in the native host probe with unchanged mono, stereo, 5.1 and 7.1 passthrough. The AU test registers the tested bundle under a process-local identity to avoid loading an older installed component.
 - Native processor tests cover UDP PCM, independent gain, state restoration, Receive output and prevention of re-broadcast loops. Opus negotiation passed at every exposed bitrate in mono and stereo. Native channel-routing tests preserve mono, stereo, 5.1 and 7.1 through the sender, project state and DAW receiver.
 - The packaged Node/runtime passed Direct and Cloud audio with encryption on and off, including pause/resume.
@@ -30,3 +31,5 @@ The Mac build is ad-hoc signed and is **not Developer ID signed or notarized**; 
 Wine checks do not establish native Windows DAW compatibility. Fresh-machine installation, Intel Mac support, physical surround-interface mapping, physical Windows DAW execution and large real classroom/network tests were not performed. This release does not claim that every host/network combination has been verified. Top-up refunds and disputes require manual support handling.
 
 Close your DAW before installing or uninstalling. Supported release targets: Apple Silicon macOS 13.5+, and Windows 11 x64/ARM64.
+
+Cloud credits are weighted against Opus 320 kbps. PCM follows actual DAW sample rate, channel count and selected bit depth. Existing balances and purchased credits retain their value, with no retroactive re-rating of prior usage. Reinstall this refreshed package to use Cloud credit metering.

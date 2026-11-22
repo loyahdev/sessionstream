@@ -357,7 +357,7 @@ public:
         accountButton.onClick=[this]{
             if(s.reconnectRequired&&s.accountPhase=="signed-in"){p.controller->reconnectAccount();return;}
             if(s.accountPhase!="signed-in"){p.controller->account(s.accountPhase!="signing-in");return;}
-            juce::PopupMenu menu;menu.setLookAndFeel(&look);if(s.canCloud)menu.addSectionHeader("Cloud: "+juce::String(s.cloudHoursRemaining,1)+" listener-hours left");menu.addItem(1,"Sign out");menu.addItem(3,"Open account dashboard");if(s.planKnown&&s.plan=="pro"&&s.customName.isNotEmpty())menu.addItem(2,"Release custom link");
+            juce::PopupMenu menu;menu.setLookAndFeel(&look);if(s.canCloud)menu.addSectionHeader("Cloud: "+juce::String(s.cloudHoursRemaining,1)+" Cloud hours left");menu.addItem(1,"Sign out");menu.addItem(3,"Open account dashboard");if(s.planKnown&&s.plan=="pro"&&s.customName.isNotEmpty())menu.addItem(2,"Release custom link");
             const juce::Component::SafePointer<StreamEditor> safe(this);
             menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&accountButton).withParentComponent(this),[safe](int result){if(safe&&result==1)safe->p.controller->account(false);if(safe&&result==2)safe->p.controller->links("release");if(safe&&result==3)juce::URL("https://sessionstream.app/dashboard/").launchInDefaultBrowser();});
         };

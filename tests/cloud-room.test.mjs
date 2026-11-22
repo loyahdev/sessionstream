@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {CloudRoom} from '../services/tunnel-broker/cloud-room.mjs';
 import {CloudSFU} from '../services/tunnel-broker/cloud-sfu.mjs';
 class Storage{constructor(){this.values=new Map();}async get(k){return structuredClone(this.values.get(k));}async put(k,v){this.values.set(k,structuredClone(v));}async delete(k){this.values.delete(k);}async setAlarm(t){this.alarm=t;}async transaction(fn){const previous=structuredClone(this.values);try{return await fn(this);}catch(error){this.values=previous;throw error;}}}
-function fixture(){let now=Date.UTC(2026,10,21),number=0;const calls=[],storage=new Storage(),env={REALTIME_SFU_APP_ID:'app-test',REALTIME_SFU_BEARER_TOKEN:'private-test-secret',SFU_FETCH:async(url,options)=>{const body=options.body?JSON.parse(options.body):undefined;calls.push({url,method:options.method,body});if(env.reject)return Response.json({errorCode:'denied',errorDescription:'private-test-secret'},{status:503});if(url.endsWith('/sessions/new'))return Response.json({sessionId:'session-'+(++number)});if(url.endsWith('/datachannels/establish'))return Response.json({dataChannel:{id:0},sessionDescription:{type:'offer',sdp:'v=0\r\n'+'a'.repeat(20)}});if(url.endsWith('/datachannels/new'))return Response.json({dataChannels:[{id:2}]});if(url.endsWith('/datachannels/close'))return Response.json({dataChannels:body.dataChannels});return Response.json({});}},room=new CloudRoom(storage,env),base={device:'device-one',run:'a'.repeat(32)},request=(action,extra={})=>room.handle({...base,action,...extra},now);storage.values.set('cloud-entitlement',{plan:'pro',monthlySeconds:300*3600});return {room,storage,env,calls,base,request,setNow:value=>now=value,get now(){return now}};}
+function fixture(){let now=Date.UTC(2026,10,21),number=0;const calls=[],storage=new Storage(),env={REALTIME_SFU_APP_ID:'app-test',REALTIME_SFU_BEARER_TOKEN:'private-test-secret',SFU_FETCH:async(url,options)=>{const body=options.body?JSON.parse(options.body):undefined;calls.push({url,method:options.method,body});if(env.reject)return Response.json({errorCode:'denied',errorDescription:'private-test-secret'},{status:503});if(url.endsWith('/sessions/new'))return Response.json({sessionId:'session-'+(++number)});if(url.endsWith('/datachannels/establish'))return Response.json({dataChannel:{id:0},sessionDescription:{type:'offer',sdp:'v=0\r\n'+'a'.repeat(20)}});if(url.endsWith('/datachannels/new'))return Response.json({dataChannels:[{id:2}]});if(url.endsWith('/datachannels/close'))return Response.json({dataChannels:body.dataChannels});return Response.json({});}},room=new CloudRoom(storage,env),base={device:'device-one',run:'a'.repeat(32)},request=(action,extra={})=>room.handle({...base,action,...(action==='create'?{format:{codec:'opus',channels:2,bitrate:320000,sampleRate:48000}}:{}),...extra},now);storage.values.set('cloud-entitlement',{plan:'pro',monthlySeconds:300*3600});return {room,storage,env,calls,base,request,setNow:value=>now=value,get now(){return now}};}
 async function create(f){return (await f.request('create',{requestId:'b'.repeat(32)})).room;}
 async function connect(f,id,member='publisher'){await f.request('connect',{room:id,member});await f.request('answer',{room:id,member,sessionDescription:{type:'answer',sdp:'v=0\r\n'+'a'.repeat(20)}});await f.request('open',{room:id,member});await f.request('ready',{room:id,member});}
 test('Cloud rooms serialize one publisher, hide provider secrets and make create/open retries idempotent',async()=>{const f=fixture(),id=await create(f);assert.equal((await f.request('create',{requestId:'b'.repeat(32)})).room,id);await assert.rejects(f.request('create',{requestId:'c'.repeat(32)}),/existing/);await connect(f,id);const before=f.calls.length;await f.request('open',{room:id,member:'publisher'});assert.equal(f.calls.length,before);assert(!JSON.stringify(await f.request('status')).includes('private-test-secret'));assert(!JSON.stringify(await f.request('status')).includes('session-'));});
@@ -57,3 +57,39 @@ test('Free Cloud requests fail before SFU allocation even with stored purchased 
 
 test('downgrading an over-cap Pro room closes it and preserves top-up credit for Pro reactivation',async()=>{const f=fixture();await f.room.credit('cs_live_downgrade',1080000);const id=await create(f);await connect(f,id);for(let i=1;i<=4;i++)await f.request('connect',{room:id,member:String(i).repeat(32)});await f.room.setAllowance({plan:'free',monthlySeconds:1080000},f.now);const status=await f.request('status');assert.equal(status.room,null);assert.equal(status.listenerLimit,3);assert.equal(status.usage.includedSeconds,0);assert.equal(status.usage.purchasedRemainingSeconds,1080000);assert.equal(status.canCloud,false);});
 test('downgrading a small Pro Cloud room expires it without destroying unused credit',async()=>{const f=fixture();await f.room.credit('cs_live_small',1080000);const id=await create(f);await connect(f,id);await connect(f,id,'1'.repeat(32));await f.room.setAllowance({plan:'free',monthlySeconds:0},f.now);await f.room.expire(f.now);const state=await f.request('status');assert.equal(state.room,null);assert.equal(state.canCloud,false);assert.equal(state.usage.purchasedRemainingSeconds,1080000);});
+
+for(const [format,rate] of [
+ [{codec:'opus',channels:2,bitrate:320000,sampleRate:48000},1],
+ [{codec:'opus',channels:1,bitrate:128000,sampleRate:48000},.4],
+ [{codec:'opus',channels:2,bitrate:510000,sampleRate:48000},1.59375],
+ [{codec:'pcm',channels:2,bitDepth:24,sampleRate:48000},7.2],
+ [{codec:'pcm',channels:6,bitDepth:24,sampleRate:48000},21.6],
+ [{codec:'pcm',channels:8,bitDepth:24,sampleRate:48000},28.8],
+ [{codec:'pcm',channels:8,bitDepth:32,sampleRate:192000},153.6]
+])test(`data-based Cloud credits: ${JSON.stringify(format)}`,async()=>{
+ const f=fixture(),id=(await f.request('create',{requestId:'b'.repeat(32),format})).room;await connect(f,id);await connect(f,id,'1'.repeat(32));await connect(f,id,'2'.repeat(32));
+ f.setNow(f.now+10000);const status=await f.request('heartbeat',{room:id});assert(Math.abs(status.usage.creditSecondsUsed-20*rate)<1e-8);assert.equal(status.usage.actualListenerSeconds,20);assert.equal(status.room.creditsPerListenerHour,rate);
+ assert.equal((await f.request('heartbeat',{room:id})).usage.creditSecondsUsed,status.usage.creditSecondsUsed,'retry must not double-charge');
+});
+test('PCM rate changes settle the previous rate first and preserve top-up carryover',async()=>{
+ const f=fixture();await f.room.setAllowance({monthlySeconds:1});await f.room.credit('cs_live_weighted',1080000);
+ const format={codec:'pcm',channels:8,bitDepth:24,sampleRate:48000},id=(await f.request('create',{requestId:'b'.repeat(32),format})).room;await connect(f,id);await connect(f,id,'1'.repeat(32));
+ f.setNow(f.now+10000);await f.request('format',{room:id,format:{...format,sampleRate:96000}});assert.equal((await f.request('status')).usage.creditSecondsUsed,288);
+ f.setNow(f.now+10000);const state=await f.request('heartbeat',{room:id});assert.equal(state.usage.creditSecondsUsed,864);assert.equal(state.usage.actualListenerSeconds,20);assert.equal(state.usage.purchasedRemainingSeconds,1080000-863);
+ await f.request('end',{room:id});f.setNow(Date.UTC(2026,11,1));assert.equal((await f.request('status')).usage.purchasedRemainingSeconds,1080000-863);
+});
+test('weighted usage splits at renewal, and alarms use the weighted depletion rate',async()=>{
+ const f=fixture(),boundary=Date.UTC(2026,11,1),format={codec:'pcm',channels:8,bitDepth:24,sampleRate:48000};f.setNow(boundary-5000);
+ const id=(await f.request('create',{requestId:'b'.repeat(32),format})).room;await connect(f,id);await connect(f,id,'1'.repeat(32));f.setNow(boundary+5000);await f.request('heartbeat',{room:id});
+ assert.equal((await f.storage.get('cloud-usage:2026-11')).listenerSeconds,144);assert.equal((await f.storage.get('cloud-usage:2026-12')).listenerSeconds,144);
+ await f.storage.put('cloud-usage:2026-12',{listenerSeconds:300*3600-28.8});await f.room.save(await f.storage.get('cloud-room'),f.now);assert(f.storage.alarm<=f.now+1100,'one second of 7.1 must exhaust 28.8 remaining credits');
+ f.setNow(f.now+2000);await f.room.expire(f.now);assert.equal((await f.request('status')).room,null);
+});
+test('invalid and missing formats cannot start Cloud or silently fall back to baseline',async()=>{
+ const f=fixture();for(const format of [undefined,{codec:'pcm',channels:8,bitDepth:0,sampleRate:48000},{codec:'pcm',channels:8,bitDepth:24,sampleRate:1},{codec:'opus',channels:8,bitrate:320000,sampleRate:48000},{codec:'opus',channels:2,bitrate:1,sampleRate:48000}])await assert.rejects(f.request('create',{requestId:'b'.repeat(32),format}),/Update|Invalid/);
+ assert.equal(f.calls.length,0);
+ const id=await create(f);await assert.rejects(f.request('format',{room:id,format:{codec:'pcm',channels:8,bitDepth:24,sampleRate:48000}}),/new Cloud room/);
+});
+test('legacy room balances are preserved and unmetered old clients must reconnect with an update',async()=>{
+ const f=fixture();await f.storage.put('cloud-usage:2026-11',{listenerSeconds:123});await f.room.credit('cs_live_beforeweighting',1080000);const id=await create(f),room=await f.storage.get('cloud-room');delete room.format;await f.storage.put('cloud-room',room);await f.room.expire(f.now);const status=await f.request('status');assert.equal(status.room,null);assert.equal(status.usage.listenerSeconds,123);assert.equal(status.usage.purchasedRemainingSeconds,1080000);
+});

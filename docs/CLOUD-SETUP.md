@@ -21,7 +21,7 @@ Official provider setup: https://developers.cloudflare.com/realtime/sfu/get-star
 | --- | --- | --- |
 | Monthly included hours | None | 300 by default |
 | Direct listeners | 3 | 8 |
-| Cloud listeners | Unavailable | Metered by listener-hours; no count cap |
+| Cloud listeners | Unavailable | Metered by data-weighted Cloud hours; no count cap |
 | Cloud access | Unavailable, including accounts with stored credit | Included allowance and top-up credit |
 | Sender formats | Opus 320 kbps stereo | Opus 96–510 kbps mono/stereo; PCM 16/24/32-bit float, mono/stereo/5.1/7.1 |
 | Receive, reusable links, approval and feedback | Unavailable | Available |
@@ -67,3 +67,11 @@ Cloud sends a single encoded stereo stream from the host to the SFU. Listener en
 Pause closes Cloud media allocations and metering; resume creates fresh allocations and keys while preserving the invite. Expired leases, quota exhaustion and ended sessions close the publication. Allocation time is metered, including listeners that omit their ready acknowledgment.
 
 See `CLOUD-TOPUPS.md` for Stripe setup and refund handling. Automated/native-runtime checks are documented in the release validation; fresh-machine installations, native Windows DAW execution and large real classrooms remain distinct validation steps.
+
+## Data-based Cloud credits
+
+A credit-hour is 320,000 bits/second for one listener for an hour, or 144 MB of audio payload. Opus uses the selected bitrate divided by 320,000. PCM uses sample rate × channels × bit depth divided by 320,000. Rates exclude encryption/transport overhead and are not invoice byte counters.
+
+Existing allowance and top-up metadata fields keep their names and balances. Their hours now represent baseline credit-hours. Prior usage is preserved without retroactive re-rating. `usage.listenerSeconds` remains the compatibility storage field for credit-seconds used; `usage.actualListenerSeconds` tracks elapsed listener time separately. The dashboard activity metrics remain elapsed time.
+
+Updated companions report a validated format on room creation and confirm PCM sample-rate changes before publishing new-rate audio. Protocol 9 retires idle older helpers. Older clients without a format must update before creating a new Cloud room; old active rooms are closed on their next heartbeat/alarm. Direct streaming is unchanged.

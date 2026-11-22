@@ -204,7 +204,7 @@ private:
                 const auto authorization=data["links"]["authorizationURL"].toString();
                 if(authorization.startsWith("https://clerk.sessionstream.app/")&&authorization!=lastLinkAuthorization&&static_cast<juce::int64>(data["links"]["authorizationSource"])==source){lastLinkAuthorization=authorization;juce::URL(authorization).launchInDefaultBrowser();}
                 lifetimeSupported=static_cast<int>(data["engineProtocol"])>=1;
-                if(!lifetimeSupported||static_cast<int>(data["controlProtocol"])<8){
+                if(!lifetimeSupported||static_cast<int>(data["controlProtocol"])<9){
                     next.message=bool(data["live"])?"Stop the old SessionStream session to update its engine.":"Updating streaming engine...";
                     if(!bool(data["live"]))launch(true);
                     publish(next);wait(250);continue;
@@ -233,6 +233,10 @@ private:
                 const bool wasOwned=owned;
                 owned=!data["inviteSource"].isVoid()&&static_cast<juce::int64>(data["inviteSource"])==source;
                 const bool ownedElsewhere=!data["inviteSource"].isVoid()&&!owned;
+                // A lost Generate response may have ended the pending UI state.
+                // The engine's matching request ID still confirms its passcode.
+                if(owned&&requestId.isNotEmpty()&&data["inviteRequest"].toString()==requestId)
+                    sessionPasscode=requestPasscode;
                 if(wasOwned&&ownedElsewhere){if(onYielded)onYielded();}
                 next.hasSession=owned;if(owned){cloudDelivery(next.delivery=="cloud");encryptAudio(next.encrypted);}
                 next.activeElsewhere=ownedElsewhere;
@@ -264,7 +268,7 @@ private:
                     const bool ownsInvite=!data["inviteSource"].isVoid()&&static_cast<juce::int64>(data["inviteSource"])==source;
                     const bool readyNow=link.startsWith("https://")&&(!modern||bool(data["publicSiteReady"]));
                     next.ready=true;
-                    if(generating&&acknowledged&&ownsInvite&&readyNow&&(!modern||data["inviteRequest"].toString()==requestId)){generating=false;owned=true;sessionPasscode=requestPasscode;requestPasscode.clear();}
+                    if(generating&&acknowledged&&ownsInvite&&readyNow&&(!modern||data["inviteRequest"].toString()==requestId)){generating=false;owned=true;sessionPasscode=requestPasscode;}
                     // A UI Start can queue a protected invite while this poll
                     // is already in flight. Consume that request before audio
                     // starts, rather than creating a temporary open invite.

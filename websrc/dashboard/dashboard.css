@@ -54,3 +54,5 @@ dialog{width:min(520px,calc(100% - 32px));padding:36px;border:1px solid var(--ss
 .listener-hours-content thead th{color:var(--ss-muted);font-size:12px;font-weight:500}
 .listener-hours-content .listener-hours-note{color:var(--ss-muted);font-size:13px}
 @media(prefers-reduced-motion:reduce){.listener-hours-help summary>span{transition:none}}
+
+@media(max-width:600px){.listener-hours-content table{font-size:12px}.listener-hours-content th,.listener-hours-content td{padding:12px 4px}.listener-hours-content thead th{font-size:11px}.listener-hours-content th:first-child{width:32%}}
