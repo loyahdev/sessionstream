@@ -21,12 +21,12 @@ Official provider setup: https://developers.cloudflare.com/realtime/sfu/get-star
 | --- | --- | --- |
 | Monthly included hours | None | 300 by default |
 | Direct listeners | 3 | 8 |
-| Cloud listeners | 3 | Metered by listener-hours; no count cap |
-| Cloud access | Purchased or administrator top-up credit | Included allowance and top-up credit |
+| Cloud listeners | Unavailable | Metered by listener-hours; no count cap |
+| Cloud access | Unavailable, including accounts with stored credit | Included allowance and top-up credit |
 | Presets | Balanced | Studio, Balanced, Phone |
 | Receive, reusable links, approval and feedback | Unavailable | Available |
 
-A Free account with top-up credit remains Free. Legacy monthly metadata cannot grant it monthly included hours. A Pro downgrade removes included hours, preserves carried-over credit, and closes any Cloud room exceeding three listeners. Registered and currently authorized installations are required to host Cloud sessions.
+A Free account with stored credit cannot host Cloud or purchase more top-ups. Credits are retained for Pro reactivation. Legacy monthly metadata cannot grant Free accounts Cloud access or included hours. A Pro downgrade removes included hours, preserves carried-over credit, and closes Cloud media through the existing entitlement-expiry checks. Registered and currently authorized installations are required to host Cloud sessions.
 
 ## Clerk private metadata
 
@@ -46,7 +46,7 @@ In Clerk, open **Users → account → Private metadata**. Merge into `sessionst
 - `cloudMonthlyRenewHours`: editable Pro monthly refill amount. Defaults to 300. It does not give Free accounts a monthly allowance.
 - `cloudTopupHoursRemaining`: editable carried-over balance. Use a non-negative JSON number. A dashboard refresh applies a saved edit immediately; active plugin reporting checks within 15 seconds. This changes only carried-over credit, never normal included hours or payment receipts. Administrator increases are tracked separately from paid and sandbox purchases.
 - `cloudNormalHoursRemaining`: calculated included hours left in the current billing month. Do not edit this readout.
-- `billingTester`: a strict boolean. Authorized testers use Stripe sandbox checkout from the normal purchase button and can spend their test credits through Cloud. Removing the flag excludes remaining sandbox credit but preserves paid/admin credit and never grants Pro features.
+- `billingTester`: a strict boolean. Authorized Pro testers use Stripe sandbox checkout from the normal purchase button and can spend their test credits through Cloud only with active Pro. Removing the flag excludes remaining sandbox credit but preserves paid/admin credit and never grants Pro features.
 
 The dashboard calculates the total from the buckets. The obsolete `cloudHoursRemaining` field is deleted automatically and cannot reset balances. `cloudMonthlyHours` is a legacy Pro refill fallback only; prefer the new refill field.
 

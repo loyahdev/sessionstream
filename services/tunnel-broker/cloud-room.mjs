@@ -29,7 +29,7 @@ export class CloudRoom {
  async allowance(){return (await this.storage.get('cloud-entitlement'))?.monthlySeconds||0;}
  async snapshot(now=Date.now()){
   const period=await this.period(now),limitSeconds=await this.allowance(),room=await this.storage.get('cloud-room'),usage=await this.storage.get('cloud-usage:'+period.key)||{listenerSeconds:0},credit=await this.storage.get('cloud-credit')||{remainingSeconds:0},admin=(await this.storage.get('cloud-admin-credit'))?.remainingSeconds||0,adjustment=(await this.storage.get('cloud-included-adjustment:'+period.key))?.seconds||0,tester=(await this.storage.get('cloud-entitlement'))?.billingTester===true,sandbox=tester?(await this.storage.get('cloud-test-credit'))?.remainingSeconds||0:0;
-  return {configured:this.sfu.configured,canCloud:Math.max(0,limitSeconds+adjustment-usage.listenerSeconds)+credit.remainingSeconds+sandbox+admin>0,listenerLimit:(await this.storage.get('cloud-entitlement'))?.plan==='pro'?null:3,room:room?{id:room.id,phase:room.phase,listeners:Object.values(room.members).filter(m=>m.ready).length,expiresAt:room.expiresAt}:null,usage:{period:period.key,renewsAt:Number.isFinite(period.end)?period.end:null,listenerSeconds:usage.listenerSeconds,includedSeconds:limitSeconds,includedRemainingSeconds:Math.max(0,limitSeconds+adjustment-usage.listenerSeconds),purchasedRemainingSeconds:credit.remainingSeconds,sandboxRemainingSeconds:sandbox,adminRemainingSeconds:admin,remainingSeconds:Math.max(0,limitSeconds+adjustment-usage.listenerSeconds)+credit.remainingSeconds+sandbox+admin}};
+  return {configured:this.sfu.configured,canCloud:(await this.storage.get('cloud-entitlement'))?.plan==='pro'&&(Math.max(0,limitSeconds+adjustment-usage.listenerSeconds)+credit.remainingSeconds+sandbox+admin>0),listenerLimit:(await this.storage.get('cloud-entitlement'))?.plan==='pro'?null:3,room:room?{id:room.id,phase:room.phase,listeners:Object.values(room.members).filter(m=>m.ready).length,expiresAt:room.expiresAt}:null,usage:{period:period.key,renewsAt:Number.isFinite(period.end)?period.end:null,listenerSeconds:usage.listenerSeconds,includedSeconds:limitSeconds,includedRemainingSeconds:Math.max(0,limitSeconds+adjustment-usage.listenerSeconds),purchasedRemainingSeconds:credit.remainingSeconds,sandboxRemainingSeconds:sandbox,adminRemainingSeconds:admin,remainingSeconds:Math.max(0,limitSeconds+adjustment-usage.listenerSeconds)+credit.remainingSeconds+sandbox+admin}};
  }
  // Set only carried-over credit. Included allowance and purchase receipts are untouched.
  async setTopupRemaining(seconds,command,now=Date.now()){
@@ -73,7 +73,7 @@ export class CloudRoom {
  async expire(now=Date.now()){
   const room=await this.storage.get('cloud-room');if(!room)return;
   await this.settle(room,now);await this.storage.put('cloud-room',room);
-  if(room.phase==='ending'||room.expiresAt<=now||(await this.snapshot(now)).usage.remainingSeconds<=0)await this.end(room);
+  if(room.phase==='ending'||room.expiresAt<=now||!(await this.snapshot(now)).canCloud)await this.end(room);
   else await this.save(room);
  }
  async credit(purchase,seconds,{sandbox=false}={}){if(typeof purchase!=='string'||!/^cs_(test_|live_)?[A-Za-z0-9]{1,200}$/.test(purchase)||seconds!==1080000)fail('Invalid Cloud purchase.');return this.storage.transaction(async tx=>{const prefix=sandbox?'cloud-test-':'cloud-',key=prefix+'purchase:'+purchase;if(await tx.get(key))return {ok:true,duplicate:true};const credit=await tx.get(prefix+'credit')||{remainingSeconds:0};credit.remainingSeconds+=seconds;if(!Number.isFinite(credit.remainingSeconds)||credit.remainingSeconds<0||credit.remainingSeconds>Number.MAX_SAFE_INTEGER)fail('Invalid Cloud balance.');await tx.put(prefix+'credit',credit);await tx.put(key,{seconds,at:Date.now()});return {ok:true};});}
@@ -84,6 +84,7 @@ export class CloudRoom {
   if(!validId(body.run))fail('Invalid Cloud installation run.');
   await this.expire(now);
   if(body.action==='status')return this.snapshot(now);
+  if((await this.storage.get('cloud-entitlement'))?.plan!=='pro')fail('SessionStream Pro is required for Cloud streaming.',403);
   if(!this.sfu.configured)fail('Cloud streaming is not configured.',503);
   let room=await this.storage.get('cloud-room');
   if(body.action==='create'){

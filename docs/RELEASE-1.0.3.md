@@ -2,7 +2,7 @@
 
 Cloud streaming, account balances and the redesigned plugin are packaged together in this release.
 
-- Free accounts receive no monthly included Cloud hours. Purchased or administrator-granted top-ups enable Cloud with Balanced quality and up to three listeners. Pro controls remain unavailable on Free.
+- Free accounts receive no monthly included Cloud hours. Current service policy requires active Pro for Cloud and top-up checkout. Purchased or administrator-granted credits are retained after a downgrade and become usable after Pro reactivation. Pro controls remain unavailable on Free.
 - Pro includes 300 Cloud listener-hours per billing month by default. Its Cloud sessions are metered by listener-hours without a listener-count cap. Direct sessions allow eight listeners.
 - Billing-month renewals refill only included hours. Unused top-ups carry forward. Annual plans receive monthly refills on their billing anniversary.
 - Clerk private metadata supports `cloudMonthlyRenewHours` and administrator edits to `cloudTopupHoursRemaining`; `cloudNormalHoursRemaining` is calculated. The dashboard sums the buckets. The obsolete editable total is removed.

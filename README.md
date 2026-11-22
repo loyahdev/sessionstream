@@ -52,7 +52,7 @@ SessionStream is a VST3 and Audio Units (AU) plugin for producers who teach, col
 | **Simple invitations** | Share a private link: Free up to three listeners; Pro up to eight direct listeners or Cloud metered by listener-hours. Generate a new invitation to invalidate the previous one. |
 | **Browser playback** | Listeners install nothing. They get a waveform, a dB volume control with up to +6 dB boost, mute without disconnecting, and live audio and connection details. |
 | **Buffered audio** | Automatic PCM fallback through the HTTPS tunnel when a direct WebRTC connection cannot be established. |
-| **Cloud hours** | Pro includes 300 listener-hours per billing month. Optional $5 / 300-hour top-ups work on Free too and do not expire at renewal. Free receives no monthly allowance. |
+| **Cloud hours** | Pro includes 300 listener-hours per billing month. Optional $5 / 300-hour top-ups require Pro and do not expire at renewal. Free has Direct streaming only. Unused credits remain stored after a downgrade and become usable after reactivation. |
 | **Bundled engine** | The streaming engine and tunnel ship with the plugin. No separate Node install, Cloudflare login, or SessionStream subscription. |
 
 ## Quick start

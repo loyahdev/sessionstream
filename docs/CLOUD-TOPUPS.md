@@ -1,6 +1,6 @@
 # One-time Cloud top-ups
 
-Pro subscriptions continue through Clerk. Top-ups use Stripe Checkout in payment mode: USD $5 buys 300 listener-hours. Free accounts may buy hours without upgrading. Free has no monthly allowance and allows up to three Cloud listeners. There is no separate subscription and no Pro entitlement from a purchase. Test purchases grant Cloud usage only, just like paid top-ups.
+Pro subscriptions continue through Clerk. Top-ups use Stripe Checkout in payment mode: USD $5 buys 300 listener-hours. An active Pro subscription is required for Cloud streaming and top-up checkout. Free accounts retain unused credits but cannot spend them until Pro is active again. There is no separate subscription and no Pro entitlement from a purchase. Test purchases grant Cloud usage only, just like paid top-ups.
 
 ## Connect Stripe
 
