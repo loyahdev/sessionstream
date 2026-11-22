@@ -18,6 +18,7 @@ struct SetupView: View {
         switch setup.phase {
         case .ready: setup.isUninstaller ? "Uninstall SessionStream?" : "Install plug-in"
         case .working: setup.isUninstaller ? "Uninstalling" : "Installing"
+        case .account: "Sign in"
         case .complete: setup.isUninstaller ? "Uninstall complete" : "Ready to stream"
         case .failed: setup.isUninstaller ? "Uninstall interrupted" : "Installation interrupted"
         }
@@ -122,6 +123,13 @@ struct SetupView: View {
         case .working:
             Text("Audio Units + VST3")
                 .foregroundStyle(muted)
+        case .account:
+            Text("A free account includes 15 streaming hours each month. Your sign-in is saved for the plug-in.")
+                .foregroundStyle(muted)
+                .fixedSize(horizontal: false, vertical: true)
+            if !setup.keychainMessage.isEmpty {
+                Text(setup.keychainMessage).font(.system(size: 12)).foregroundStyle(muted)
+            }
         case .complete:
             Text(setup.isUninstaller
                  ? setup.log
@@ -156,7 +164,7 @@ struct SetupView: View {
             installMeter
         } else {
             Button {
-                if setup.phase == .complete { NSApp.terminate(nil) } else { setup.start() }
+                if setup.phase == .complete { NSApp.terminate(nil) } else if setup.phase == .account { setup.signIn() } else { setup.start() }
             } label: {
                 HStack {
                     Text(actionTitle)
@@ -165,6 +173,7 @@ struct SetupView: View {
                         .accessibilityHidden(true)
                 }
             }
+            .disabled(setup.signingIn)
             .buttonStyle(InstallSwitchStyle(lime: lime, ink: ink))
             .keyboardShortcut(setup.isUninstaller && setup.phase != .complete ? nil : .defaultAction)
         }
@@ -172,6 +181,7 @@ struct SetupView: View {
 
     private var actionTitle: String {
         switch setup.phase {
+        case .account: setup.signingIn ? "Waiting for sign-in…" : "Sign in"
         case .complete: "Done"
         case .failed: "Try Again"
         default: setup.isUninstaller ? "Uninstall" : "Install"

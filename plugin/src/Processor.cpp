@@ -328,6 +328,7 @@ public:
             }
             const auto status=p.controller->status();
             if(p.isSending()){p.setSending(false);return;}
+            if(status.accountPhase!="signed-in"){if(status.accountPhase!="restoring"&&status.accountPhase!="signing-in")p.controller->account(true);return;}
             if(status.handoffReady&&p.isHostEnabled()&&!status.ending&&(status.streamChannels<=2||status.streamChannels==p.getMainBusNumInputChannels())){p.streamChannels=status.streamChannels;p.streamQuality=status.streamQuality;p.controller->sessionSettings(p.streamQuality,0,p.streamChannels);
                 p.controller->handoff();
                 p.setSending(true);
@@ -719,7 +720,7 @@ private:
         accountButton.setTitle(accountButton.getButtonText());
         layoutAccountButton();
         accountButton.setEnabled(s.available&&s.accountPhase!="restoring");
-        accountButton.setTooltip(signedIn?"Account & subscription":s.accountMessage.isNotEmpty()?s.accountMessage:s.accountConfigured?"Optional account sign-in":"Account sign-in is not configured yet.");
+        accountButton.setTooltip(signedIn?"Account & subscription":s.accountMessage.isNotEmpty()?s.accountMessage:s.accountConfigured?"Sign in to start streaming":"Account sign-in is not configured yet.");
 
         if(s.available&&s.planKnown&&!pro&&p.isReceiveMode())p.setReceiveMode(false);
         if(!pro)showingPeople=false;
@@ -800,8 +801,10 @@ private:
         qrOverlay.refresh(s.link);
 
         if(p.isSending()&&!p.isHostEnabled()&&p.shouldKeepSession())s.message="DAW render paused streaming. Audio resumes with playback.";
+        if(!signedIn&&!receiving){toggle.setEnabled(s.available&&s.accountConfigured&&s.accountPhase!="restoring"&&s.accountPhase!="signing-in");}
         toggle.setIcon(canHandoff?studio::ModernButton::Icon::swap:studio::ModernButton::Icon::play);
         toggle.setButtonText(s.ending?"Ending session...":p.isSending()?(s.live?"Pause streaming":"Starting... | Pause"):canHandoff?"Stream from this track":sessionLatched?"Resume streaming":"Start streaming");
+        if(!signedIn&&!receiving)toggle.setButtonText(s.accountPhase=="restoring"?"Signing in...":s.accountPhase=="signing-in"?"Finish sign-in in browser":"Sign in to stream");
         toggle.setColour(juce::TextButton::buttonColourId,p.isSending()?juce::Colour(0xff263129):studio::accent);
         toggle.setColour(juce::TextButton::textColourOffId,p.isSending()?studio::text:juce::Colour(0xff171e14));
 
@@ -811,7 +814,8 @@ private:
             toggle.setIcon(studio::ModernButton::Icon::play);
             toggle.setEnabled(s.available&&(p.isReceiving()||receiveTarget.getText().isNotEmpty()));
             toggle.setButtonText(receiveFailed?"Retry connection":p.isReceiving()?"Disconnect":"Connect");
-            toggle.setColour(juce::TextButton::buttonColourId,(p.isReceiving()&&!receiveFailed)?juce::Colour(0xff263129):studio::accent);
+            if(!signedIn&&!receiving)toggle.setButtonText(s.accountPhase=="restoring"?"Signing in...":s.accountPhase=="signing-in"?"Finish sign-in in browser":"Sign in to stream");
+        toggle.setColour(juce::TextButton::buttonColourId,(p.isReceiving()&&!receiveFailed)?juce::Colour(0xff263129):studio::accent);
             toggle.setColour(juce::TextButton::textColourOffId,(p.isReceiving()&&!receiveFailed)?studio::text:juce::Colour(0xff171e14));
             generate.setVisible(p.isReceiving()&&!s.receiving);
             generate.setEnabled(p.isReceiving());

@@ -284,6 +284,7 @@ export async function createStreamServer(options = {}) {
       const body=await readJSON(req,2048);if(body.error)return reply(body.status,{error:body.error});const m=body.value;
       if(!Number.isInteger(m?.source)||m.source<0||m.source>0xffffffff)return reply(400,{error:'Invalid source'});
       if(!['generate','start','stop','lease','end','handoff'].includes(m.action))return reply(400,{error:'Unknown action'});
+      if(dashboard.enabled&&['generate','start','handoff'].includes(m.action)&&account.status().phase!=='signed-in')return reply(401,{error:'Sign in to SessionStream before starting a session.'});
       if(m.requestId!==undefined&&(typeof m.requestId!=='string'||!/^[a-f0-9-]{32,36}$/.test(m.requestId)))return reply(400,{error:'Invalid request ID'});
       if(!validPasscode(m.passcode))return reply(400,{error:'Passcode must be at most 64 characters.'});
       if(m.delivery!==undefined&&!['direct','cloud'].includes(m.delivery)||m.encrypted!==undefined&&typeof m.encrypted!=='boolean')return reply(400,{error:'Invalid audio delivery settings.'});

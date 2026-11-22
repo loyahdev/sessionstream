@@ -22,7 +22,7 @@ test('native invites enforce quality, expiry, existing-listener disconnect and e
  }finally{ws?.terminate();await app.close();}
 });
 
-test('signed-out and Free accounts use Balanced only; Pro retains Studio and Phone',async()=>{
+test('signed-out hosts cannot stream; Free uses Balanced and Pro retains other formats',async()=>{
  for(const mode of ['signed-out','free','pro']){
   let plan=mode==='pro'?'pro':'free',clock=Date.now();const saved=new Map();
   const account={identity:mode==='signed-out'?null:{sub:mode},ready:Promise.resolve(),accessCredential:()=> 'test-only',status:()=>({phase:mode==='signed-out'?'signed-out':'signed-in'}),close(){}};
@@ -30,11 +30,11 @@ test('signed-out and Free accounts use Balanced only; Pro retains Studio and Pho
   const base=`http://127.0.0.1:${app.studioPort}`;const status=async()=>(await fetch(base+'/api/studio')).json();const initial=await status();
   const command=async body=>fetch(base+'/api/control',{method:'POST',headers:{Origin:base,Authorization:`Bearer ${initial.token}`},body:JSON.stringify({source:98765,...body})});
   try{
-   assert.equal((await command({action:'generate'})).status,200);
+   assert.equal((await command({action:'generate'})).status,mode==='signed-out'?401:200);
    assert.equal((await status()).quality,'balanced');
    for(const quality of ['studio','phone']){
-    assert.equal((await command({action:'generate',quality})).status,mode==='pro'?200:403);
-    assert.equal((await command({action:'start',quality})).status,mode==='pro'?200:403);
+    assert.equal((await command({action:'generate',quality})).status,mode==='signed-out'?401:mode==='pro'?200:403);
+    assert.equal((await command({action:'start',quality})).status,mode==='signed-out'?401:mode==='pro'?200:403);
     if(mode==='pro')await command({action:'stop'});
    }
    if(mode==='pro'){

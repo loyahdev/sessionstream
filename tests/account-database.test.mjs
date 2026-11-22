@@ -46,3 +46,30 @@ test('stored top-up credit stays unavailable on Free and becomes usable on Pro',
 
 test('sandbox tester credit cannot bypass Pro Cloud access',async()=>{const {account,db}=database();try{await call(account,'cloud-topup-test',{purchase:'cs_test_existing',seconds:1080000});let state=await(await call(account,'snapshot',{},alice,{plan:'free',cloudPolicy:{monthlySeconds:0}})).json();assert.equal(state.cloud.canCloud,false);state=await(await call(account,'snapshot',{},alice,{plan:'free',cloudPolicy:{monthlySeconds:0,billingTester:true}})).json();assert.equal(state.cloud.canCloud,false);assert.equal(state.cloud.usage.remainingSeconds,1080000);assert.equal(state.cloud.usage.purchasedRemainingSeconds,0);assert.equal(state.cloud.usage.sandboxRemainingSeconds,1080000);}finally{db.close();}});
 test('signed top-up dispatch avoids unrelated Clerk and legacy lookups',async()=>{let payload;const hub=new AccountHub({storage:{}},{PUBLIC_ORIGIN:origin,ACCOUNT_STATE:{idFromName:name=>name,get:()=>({fetch:async request=>{payload=await request.json();return Response.json({ok:true});}})}});hub.billing=async()=>{throw Error('Billing unavailable');};hub.cloudPolicy=async()=>{throw Error('Metadata unavailable');};assert.deepEqual(await hub.accountState(alice,'cloud-topup-test',{purchase:'cs_test_fast',seconds:1080000}),{ok:true});assert.equal(payload.user.id,'alice');assert.equal(payload.action,'cloud-topup-test');assert.equal(payload.cloudPolicy,undefined);});
+
+
+test('Free 15-hour quota persists at exhaustion, rejects retries, resets by calendar month and excludes Pro time',async()=>{
+ const {account,db}=database();try{
+  const secret=await enroll(account),today=new Date().toISOString().slice(0,10);
+  db.prepare('INSERT INTO free_usage VALUES(?,?)').run(today,53995);age(db);
+  const r=report(secret);r.totals[0]={date:today,seconds:5,listenerSeconds:15,bytes:200000};
+  let response=await call(account,'report',r);assert.equal(response.status,403);
+  let body=await response.json();assert.equal(body.broadcast.remainingSeconds,0);
+  assert.equal(db.prepare('SELECT seconds FROM free_usage WHERE date=?').get(today).seconds,54000);
+  assert.equal((await call(account,'report',r)).status,403);
+  assert.equal(db.prepare('SELECT seconds FROM free_usage WHERE date=?').get(today).seconds,54000);
+  assert.equal(db.prepare('SELECT count(*) AS n FROM active_session').get().n,0);
+  assert.equal((await call(account,'report',report(secret,1,2),alice,{plan:'pro'})).status,409); // counters cannot decrease
+  const upgraded={...r,sequence:2};assert.equal((await call(account,'report',upgraded,alice,{plan:'pro'})).status,200);
+  assert.equal(account.broadcastAllowance(Date.now(),'pro').limitSeconds,null);
+  const next=account.broadcastAllowance(Date.now()).resetsAt;
+  assert.equal(account.broadcastAllowance(next).remainingSeconds,54000);
+  assert.equal((await(await call(account,'snapshot')).json()).broadcast.remainingSeconds,0);
+ }finally{db.close()}
+});
+test('Pro streaming does not spend Free allowance when the account later downgrades',async()=>{
+ const {account,db}=database();try{const secret=await enroll(account);age(db);const r=report(secret);r.totals[0].seconds=10;
+ assert.equal((await call(account,'report',r,alice,{plan:'pro'})).status,200);
+ assert.equal((await(await call(account,'snapshot')).json()).broadcast.remainingSeconds,54000);
+ }finally{db.close()}
+});

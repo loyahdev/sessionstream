@@ -42,10 +42,10 @@ test('revocation blocks reporting and streaming until explicit reconnect with a 
 test('device/session limits never fall back to anonymous or silently enroll another device',async()=>{
  for(const stage of ['enroll','start']){const f=fixture();if(stage==='start')await f.client.tick();f.fail(409);assert(!(await f.client.authorizeStart()).ok);assert(f.client.blocked);const n=f.requests.length;await f.client.authorizeStart();assert.equal(f.requests.length,n);}
 });
-test('account scoping, process runs and anonymous Free streaming',async()=>{
+test('account scoping, process runs and required Free sign-in',async()=>{
  const f=fixture();await f.client.authorizeStart();await f.client.stopped();const run=f.client.run;
  f.account.identity={sub:'user_b'};await f.client.tick();assert(f.secrets.has('user_a'));assert(f.secrets.has('user_b'));assert.notEqual(f.client.run,run);
- f.account.identity=null;await f.client.tick();const count=f.requests.length;assert((await f.client.authorizeStart()).ok);assert.equal(f.requests.length,count);assert.equal(f.client.listenerLimit,3);
+ f.account.identity=null;await f.client.tick();const count=f.requests.length;assert.equal((await f.client.authorizeStart()).status,401);assert.equal(f.requests.length,count);assert.equal(f.client.listenerLimit,3);
 });
 test('pending live retry is followed by a new stop report; lease timeout stops audio',async()=>{
  const f=fixture(),c=f.client;await c.authorizeStart();f.advance(15000);f.fail('network');await c.tick();const failed=f.requests.at(-1).body;
@@ -60,3 +60,9 @@ test('lost enrollment response retries original ID after process restart',async(
 test('Cloud calls reuse Pro authentication and the installation credential, never caller-provided device identity',async()=>{const f=fixture();try{await f.client.cloud('status',{device:'forged',deviceCredential:'forged',run:'forged'});const request=f.requests.find(r=>r.url.endsWith('/cloud'));assert(request);const body=JSON.parse(request.body);assert.notEqual(body.device,'forged');assert.match(body.deviceCredential,/^[a-f0-9]{64}$/);assert.equal(body.run,f.client.run);assert.equal(request.authorization,'Bearer oauth-access');}finally{await f.client.close();}});
 
 test('Free accounts can use granted Cloud hours without gaining any Pro entitlement',async()=>{const f=fixture();f.client.fetch=async url=>Response.json(url.endsWith('/enroll')?{deviceCredential:'a'.repeat(64)}:url.endsWith('/cloud')?{canCloud:true,usage:{remainingSeconds:36000}}:{plan:'free',listeners:3,cloud:{available:true,canCloud:true,usage:{remainingSeconds:36000}}});try{assert.equal((await f.client.cloud('status')).ok,true);assert.equal(f.client.plan,'free');assert.equal(f.client.status().cloud.canCloud,true);assert.equal((await f.client.requirePro()).ok,false);f.account.identity=null;assert.equal(f.client.status().cloud,null);}finally{await f.client.close();}});
+
+test('Free allowance stops on accepted audio time, not listener count, and sends a final usage report',async()=>{
+ const f=fixture(),c=f.client,original=c.fetch;c.fetch=async(url,opt)=>{const res=await original(url,opt);if(url.endsWith('/enroll'))return res;return Response.json({...await res.json(),plan:'free',listeners:3,broadcast:{remainingSeconds:2,limitSeconds:54000}})};
+ assert((await c.authorizeStart()).ok);c.audio(1,3,120000);assert(c.live);c.audio(1,3,120000);assert.equal(c.live,false);assert.equal(f.denied.length,1);await c.queue;
+ const last=JSON.parse(f.requests.at(-1).body);assert.equal(last.live,false);assert.equal(last.totals.reduce((n,t)=>n+t.seconds,0),2);assert.equal(last.totals.reduce((n,t)=>n+t.listenerSeconds,0),6);
+});

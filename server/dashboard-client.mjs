@@ -12,8 +12,8 @@ export class DashboardClient {
     this.timer=autoTimer&&enabled?setInterval(()=>void this.tick(),1000):null; this.timer?.unref();
     if(autoTimer&&enabled)Promise.resolve(account?.ready).then(()=>{if(!this.closed)void this.tick();}).catch(()=>{});
   }
-  reset() {this.run=randomBytes(16).toString('hex');this.sequence=0;this.totals=new Map();this.pending=null;this.next=0;this.backoff=1000;this.lastAck=0;this.planKnown=false;this.cloudAccess=null;this.blocked=false;this.blockedStatus=0;this.message='';this.record=null;this.enrollingId=null;this.unsaved=null;}
-  status(){const cloudValid=!this.blocked&&this.sub===this.account.identity?.sub&&this.account.status().phase==='signed-in';return {cloud:cloudValid?this.cloudAccess:null,plan:this.plan,planKnown:this.planKnown&&!this.blocked&&this.sub===this.account.identity?.sub,listeners:this.listenerLimit,connected:!!this.record&&!this.blocked,message:this.message,reconnectRequired:!this.connectingAfterSignIn&&this.blocked&&this.sub===this.account.identity?.sub};}
+  reset() {this.run=randomBytes(16).toString('hex');this.sequence=0;this.totals=new Map();this.pending=null;this.next=0;this.backoff=1000;this.lastAck=0;this.planKnown=false;this.cloudAccess=null;this.broadcast=null;this.broadcastAck=0;this.blocked=false;this.blockedStatus=0;this.message='';this.record=null;this.enrollingId=null;this.unsaved=null;}
+  status(){const cloudValid=!this.blocked&&this.sub===this.account.identity?.sub&&this.account.status().phase==='signed-in';return {broadcast:cloudValid?this.broadcast:null,cloud:cloudValid?this.cloudAccess:null,plan:this.plan,planKnown:this.planKnown&&!this.blocked&&this.sub===this.account.identity?.sub,listeners:this.listenerLimit,connected:!!this.record&&!this.blocked,message:this.message,reconnectRequired:!this.connectingAfterSignIn&&this.blocked&&this.sub===this.account.identity?.sub};}
   serial(fn){const task=this.queue.then(fn);this.queue=task.catch(()=>{});return task;}
   async syncAccount(){
     if(!this.enabled)return false;
@@ -60,6 +60,7 @@ export class DashboardClient {
     let end=this.now(),start=end-seconds*1000;
     while(start<end){const date=new Date(start).toISOString().slice(0,10),boundary=Date.parse(`${date}T00:00:00Z`)+86400000,until=Math.min(end,boundary),elapsed=(until-start)/1000;
       const t=this.totals.get(date)||{date,seconds:0,listenerSeconds:0,bytes:0};t.seconds+=elapsed;t.listenerSeconds+=elapsed*listeners;t.bytes+=elapsed*bytesPerSecond;this.totals.set(date,t);start=until;}
+    if(this.plan==='free'&&this.broadcast&&Number.isFinite(this.broadcast.remainingSeconds)&&[...this.totals.values()].reduce((sum,t)=>sum+t.seconds,0)-this.broadcastAck>=this.broadcast.remainingSeconds){this.live=false;this.onDenied('Your 15 Free streaming hours are used for this month. Upgrade to Pro or wait for the monthly reset.');void this.serial(()=>this.flush(false));}
   }
   async flush(live=this.live){
     if(!await this.syncAccount())return {ok:true};
@@ -69,6 +70,7 @@ export class DashboardClient {
       if(!this.pending)this.pending=JSON.stringify({...this.record,run:this.run,sequence:++this.sequence,live,...(this.mode==='cloud'?{mode:'cloud'}:{}),version:this.version,totals:this.totalsForReport()});
       const sent=JSON.parse(this.pending),result=await this.request('report',this.pending);
       if(!result.ok)return this.failure(result);
+      if(result.broadcast){this.broadcast=result.broadcast;this.broadcastAck=sent.totals.reduce((sum,t)=>sum+t.seconds,0);}
       if(result.cloud&&typeof result.cloud.canCloud==='boolean')this.cloudAccess=result.cloud;
       this.pending=null;this.backoff=1000;this.next=this.now()+15000;this.message='';
       if(!result.duplicate)this.lastAck=this.now();
@@ -80,11 +82,11 @@ export class DashboardClient {
       return {ok:true};
     }catch(error){if(error.code==='SECURE_STORAGE_AUTH_REQUIRED'){const result={ok:false,status:423,error:'Saved installation needs Keychain approval. Use Sign in to reconnect.'};this.deny(result.error,result.status);return result;}return this.failure({ok:false,status:503,error:'Account connection unavailable. Retrying automatically.'});}
   }
-  failure(result){if(this.mode==='cloud'&&result.status===403&&result.error==='Cloud listener-hours are required.'){this.live=false;this.mode='direct';this.pending=null;this.onDenied(result.error);this.next=this.now()+1000;return result;}this.message=result.error||'Account reporting failed.';
+  failure(result){if(result.broadcast?.remainingSeconds===0){this.broadcast=result.broadcast;this.live=false;this.pending=null;this.message=result.error;this.next=this.now()+15000;this.onDenied(result.error);return result;}if(this.mode==='cloud'&&result.status===403&&result.error==='Cloud listener-hours are required.'){this.live=false;this.mode='direct';this.pending=null;this.onDenied(result.error);this.next=this.now()+1000;return result;}this.message=result.error||'Account reporting failed.';
     if([400,403,409,426].includes(result.status))this.deny(this.message,result.status);
     this.next=this.now()+this.backoff;this.backoff=Math.min(15000,this.backoff*2);return result;
   }
-  authorizeStart(){return this.serial(async()=>{await this.syncAccount();if(!this.sub)return {ok:true};if(!this.record){const initial=await this.flush(false);if(!initial.ok)return initial;}const result=await this.flush(true);if(result.ok)this.live=true;return result;});}
+  authorizeStart(){if(!this.enabled)return Promise.resolve({ok:true});return this.serial(async()=>{await this.syncAccount();if(!this.sub)return {ok:false,status:401,error:'Sign in to SessionStream before starting a session.'};if(!this.record){const initial=await this.flush(false);if(!initial.ok)return initial;}const result=await this.flush(true);if(result.ok)this.live=true;return result;});}
   async cloud(action,payload={}){
     return this.serial(async()=>{
       await this.syncAccount();if(!this.sub)return {ok:false,status:401,error:'Sign in to use your Cloud listener-hours.'};

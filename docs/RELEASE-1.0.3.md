@@ -39,3 +39,11 @@ Wine checks do not establish native Windows DAW compatibility. Fresh-machine ins
 Close your DAW before installing or uninstalling. Supported release targets: Apple Silicon macOS 13.5+, and Windows 11 x64/ARM64.
 
 Cloud credits are weighted against Opus 320 kbps. PCM follows actual DAW sample rate, channel count and selected bit depth. Existing balances and purchased credits retain their value, with no retroactive re-rating of prior usage. Reinstall this refreshed package to use Cloud credit metering.
+
+## Required host accounts and Free allowance
+
+- Hosts sign in during the custom installer or inside the plugin. Sign-out stops streaming; browser listeners can still join without an account unless the host requires one.
+- Free has 15 broadcasting hours per UTC calendar month, shared across the account's computers. Accepted audio frames count once regardless of listener count. Paused/stopped sessions do not consume time. Pro Direct streaming does not spend Free hours. Cloud credits remain separate.
+- The account database persists Free daily counters and checks the allowance on authorization and every report. The companion also stops at the remaining acknowledged audio allowance and reports its final usage. Network failures retain the existing 30-second fail-closed lease.
+- Existing older anonymous plugin builds cannot be remotely made to require authentication. Use this updated installer; this is account-based metering, not tamper-proof DRM.
+- The Recording Connection photo is staged locally only and is excluded from the public site build pending permission.

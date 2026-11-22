@@ -1,0 +1,7 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {setupSignIn} from '../server/setup-sign-in.mjs';
+function fixture(message=''){let closed=false;const account={pending:null,begin(uri){this.pending={state:'private-state'};return {url:'https://example.test/authorize?redirect_uri='+encodeURIComponent(uri)}},async callback(params){assert.equal(params.get('code'),'one-use-code');return true},status:()=>({phase:'signed-in',message}),close(){closed=true}};return {account,closed:()=>closed}}
+test('installer OAuth rejects an unsolicited callback and saves login through the shared account flow',async()=>{const f=fixture();const ok=await setupSignIn({account:f.account,openBrowser:async url=>{const uri=new URL(url).searchParams.get('redirect_uri');assert.equal((await fetch(uri+'?state=wrong&code=one-use-code')).status,400);const result=await fetch(uri+'?state=private-state&code=one-use-code');assert.match(await result.text(),/signed in/);}});assert.equal(ok,true);assert(f.closed())});
+test('installer does not finish when login could not be saved for the plugin',async()=>{const f=fixture('Signed in for this session.');assert.equal(await setupSignIn({account:f.account,openBrowser:async url=>{await fetch(new URL(url).searchParams.get('redirect_uri')+'?state=private-state&code=one-use-code')}}),false);assert(f.closed())});
+test('installer sign-in times out and closes its callback listener',async()=>{const f=fixture();assert.equal(await setupSignIn({account:f.account,timeout:10,openBrowser:async()=>{}}),false);assert(f.closed())});

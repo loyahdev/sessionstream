@@ -6,6 +6,9 @@
 Var SetupTitleFont
 Var SetupMonoFont
 Var SetupHighContrast
+Var SetupSignInButton
+Var SetupSignInResult
+Var SetupSignInBusy
 
 !macro SetupColor handle text background
   ${If} $SetupHighContrast == 0
@@ -83,8 +86,8 @@ FunctionEnd
 
 Function SetupFinish
   IfAbort setupFailed
-  Push "Ready to stream"
-  Push "Reopen your DAW and add SessionStream to a track or your master bus."
+  Push "Sign in"
+  Push "Free includes 15 streaming hours each month."
   Push "Done"
   Call SetupPage
   Return
@@ -105,7 +108,7 @@ Function SetupPage
   ${NSD_SetText} $0 $5
   ${If} $5 != "Continue"
     GetDlgItem $0 $HWNDPARENT 2
-    ShowWindow $0 ${SW_HIDE}
+    ShowWindow $0 ${SW_SHOW}
     GetDlgItem $0 $HWNDPARENT 3
     ShowWindow $0 ${SW_HIDE}
   ${EndIf}
@@ -130,10 +133,47 @@ Function SetupPage
     !insertmacro SetupText 0 5u 304u 28u "$7" ${SetupInk} ${SetupSurface} $SetupTitleFont
     !insertmacro SetupText 0 38u 304u 16u "$6" ${SetupMuted} ${SetupSurface} 0
     ${If} $5 == "Done"
-      !insertmacro SetupText 0 64u 304u 25u "Start streaming in the plugin, then share the invite link." ${SetupMuted} ${SetupSurface} 0
+      !insertmacro SetupText 0 61u 304u 24u "Sign in to connect the plugin to your account. You can switch accounts in the plugin." ${SetupMuted} ${SetupSurface} 0
+      ${NSD_CreateButton} 0 94u 130u 25u "Sign in"
+      Pop $SetupSignInButton
+      ${NSD_OnClick} $SetupSignInButton SetupSignIn
+      GetDlgItem $0 $HWNDPARENT 1
+      EnableWindow $0 0
     ${EndIf}
   ${EndIf}
   nsDialogs::Show
+FunctionEnd
+
+Function SetupSignIn
+  ${If} $SetupSignInBusy == 1
+    Return
+  ${EndIf}
+  InitPluginsDir
+  StrCpy $SetupSignInResult "$PLUGINSDIR\account-result"
+  Delete $SetupSignInResult
+  StrCpy $SetupSignInBusy 1
+  EnableWindow $SetupSignInButton 0
+  ${NSD_SetText} $SetupSignInButton "Waiting for browser…"
+  Exec '"$INSTDIR\Contents\Resources\runtime\bin\node.exe" "$INSTDIR\Contents\Resources\runtime\server\setup-sign-in.mjs" --result "$SetupSignInResult"'
+  ${NSD_CreateTimer} SetupCheckSignIn 1000
+FunctionEnd
+
+Function SetupCheckSignIn
+  IfFileExists $SetupSignInResult 0 setupSignInPending
+  ${NSD_KillTimer} SetupCheckSignIn
+  StrCpy $SetupSignInBusy 0
+  FileOpen $0 $SetupSignInResult r
+  FileRead $0 $1
+  FileClose $0
+  ${If} $1 == "signed-in"
+    ${NSD_SetText} $SetupSignInButton "Signed in"
+    GetDlgItem $0 $HWNDPARENT 1
+    EnableWindow $0 1
+  ${Else}
+    EnableWindow $SetupSignInButton 1
+    ${NSD_SetText} $SetupSignInButton "Try sign-in again"
+  ${EndIf}
+  setupSignInPending:
 FunctionEnd
 
 Function un.SetupFrame
