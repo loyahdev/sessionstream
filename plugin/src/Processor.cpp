@@ -121,6 +121,8 @@ void StreamProcessor::getStateInformation(juce::MemoryBlock& state) {
         ?(controller->listenerPreferences()&3)|(controller->sharesHostName()?4:0)|(controller->requiresPasscode()?8:0)|(controller->prefersCustomLink()?16:0)
         :0;
     if(controller&&(controller->listenerPreferences()&4)!=0)flags|=1024;
+    flags|=32768; // Saved link choice is distinct from the account default.
+    if(controller&&controller->hasCustomLinkPreference())flags|=65536;
     flags|=16384; // New state records whether delivery was explicitly chosen.
     if(controller&&controller->hasDeliveryPreference())flags|=8192;
     if(controller&&(controller->hasDeliveryPreference()?controller->preferredCloudDelivery():controller->usesCloud()))flags|=2048;
@@ -155,7 +157,7 @@ void StreamProcessor::setStateInformation(const void* data,int size) {
                 controller->restoreListenerPreferences((flags&3)|((flags&1024)?4:0));
                 controller->shareHostName((flags&4)!=0);
                 controller->requirePasscode((flags&8)!=0);
-                controller->preferCustomLink((flags&16)!=0);
+                controller->restoreCustomLink((flags&16)!=0,(flags&32768)!=0?(flags&65536)!=0:(flags&16)!=0);
             }
         }
     }
@@ -764,7 +766,7 @@ private:
         claimLink.setButtonText(s.linkBusy?"Saving...":"Save name");
         level.setTooltip(receiving?"Adjusts received audio output in this DAW.":"Adjusts stream output only. DAW output is unchanged.");
 
-        const bool customReady=!custom||(pro&&!s.customName.isEmpty()&&!s.linkBusy&&s.linkAuthorized);
+        const bool customReady=!(pro&&s.linkBusy)&&(!custom||(pro&&!s.customName.isEmpty()&&!s.linkBusy&&s.linkAuthorized));
         const bool needsPlan=p.controller->listenerPreferences()!=0||p.controller->prefersCustomLink()||p.streamQuality.load()!=1||p.streamChannels.load()!=2;
         const bool planReady=(s.accountPhase!="signed-in"||s.planKnown)&&(!needsPlan||s.planKnown||s.accountPhase=="signed-out");
         const bool matchingBus=p.streamChannels.load()<=2||p.getMainBusNumInputChannels()==p.streamChannels.load();

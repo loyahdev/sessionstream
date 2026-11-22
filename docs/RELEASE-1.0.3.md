@@ -4,6 +4,7 @@ Cloud streaming, account balances and explicit audio-format controls are package
 
 - The opt-in updater downloads a newer stable release, verifies its published SHA-256 digest, and installs only after the hosting DAW and streaming helper exit. Downloads, cancellation and failures are handled in the plugin. Windows requests normal administrator approval. The refreshed 1.0.3 must be installed manually once to get this updater.
 - The listener page now keeps playback and monitoring in one panel, with transport settings under Connection and shorter, practical labels.
+- New sessions default to the account’s saved custom link, whether reserved in the plugin or dashboard. Accounts without one use a random code; users can still choose a random code explicitly.
 - New Pro setups default to encrypted Cloud, Opus 320 kbps stereo. Explicit delivery choices are remembered across new instances and project restores; Free uses Direct. Exhausted Cloud allowance offers an explicit Direct fallback, with per-listener hour/data estimates before starting.
 - Format controls replace Studio/Balanced/Phone labels: Opus 96, 128, 192, 256, 320 or 510 kbps in mono/stereo; PCM 16/24-bit integer or 32-bit float in mono/stereo/5.1/7.1 at the DAW sample rate (44.1–192 kHz). Surround needs a matching DAW bus.
 - Direct and Cloud preserve the selected PCM layout and bit depth. Browser outputs with too few channels use labelled stereo monitoring.
@@ -20,7 +21,7 @@ Cloud streaming, account balances and explicit audio-format controls are package
 
 ## Verification
 
-- 346 automated tests passed, including account isolation, Free/Pro restrictions, quota and monthly renewal accounting, editable top-ups, encryption, decoding, reconnect and lifecycle behavior.
+- 347 automated tests passed, including account isolation, Free/Pro restrictions, quota and monthly renewal accounting, editable top-ups, encryption, decoding, reconnect and lifecycle behavior.
 - The exact macOS VST3 and AU bundles loaded in the native host probe with unchanged mono, stereo, 5.1 and 7.1 passthrough. The AU test registers the tested bundle under a process-local identity to avoid loading an older installed component.
 - Native processor tests cover UDP PCM, independent gain, state restoration, Receive output and prevention of re-broadcast loops. Opus negotiation passed at every exposed bitrate in mono and stereo. Native channel-routing tests preserve mono, stereo, 5.1 and 7.1 through the sender, project state and DAW receiver.
 - The packaged Node/runtime passed Direct and Cloud audio with encryption on and off, including pause/resume.

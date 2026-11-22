@@ -38,7 +38,9 @@ public:
     void restoreListenerPreferences(int bits){listenerPreferenceBits.store(bits&7);}
     void requirePasscode(bool enabled){passcodePreference.store(enabled);}
     bool requiresPasscode()const{return passcodePreference.load();}
-    void preferCustomLink(bool enabled){customLinkPreference.store(enabled);}
+    void preferCustomLink(bool enabled){customLinkChoice.store(enabled?1:0);customLinkPreference.store(enabled);}
+    void restoreCustomLink(bool value,bool chosen){customLinkChoice.store(chosen?(value?1:0):-1);customLinkPreference.store(value);}
+    bool hasCustomLinkPreference()const{return customLinkChoice.load()>=0;}
     bool prefersCustomLink()const{return customLinkPreference.load();}
     void updatePlugin(int action){updateRequested.store(action);prepared=true;notify();}
     void wake(){notify();}
@@ -66,6 +68,7 @@ private:
     }
     uint32_t source;std::function<bool()> wantsAudio,hostEnabled;std::function<void()> onExpired,onYielded;juce::String base;juce::File runtimeOverride,deliveryPrefs;
     std::atomic<int> updateRequested{0},accountRequested{0},sessionQuality{1},sessionHours{0},sessionChannels{2},inputChannels{2},ownedChannels{0};
+    std::atomic<int> customLinkChoice{-1};
     std::atomic<bool> showHostName{false},passcodePreference{false},customLinkPreference{false};
     std::atomic<int> listenerPreferenceBits{0};
     std::atomic<bool> generateRequested{false},endRequested{false},handoffRequested{false},prepared{false};juce::CriticalSection lock;Status current;juce::String linkAction,linkValue,lastLinkAuthorization,receiveError;juce::String pendingPasscode,memoryPasscode,receiveTarget,receivePasscode;bool receiveDesired=false,receiveLowLatency=false;int receivePort=0;uint64_t receiveRevision=0;
@@ -226,6 +229,7 @@ private:
                     if((intent==1||intent==3)&&target.startsWith("https://"))juce::URL(target).launchInDefaultBrowser();
                 }
                 next.customName=data["links"]["name"].toString();next.linkMode=data["links"]["mode"].toString();next.linkMessage=data["links"]["error"].toString();next.linkBusy=bool(data["links"]["busy"]);next.linkAuthorized=bool(data["links"]["authorized"]);
+                if(customLinkChoice.load()<0)customLinkPreference.store(next.accountPhase=="signed-in"&&next.customName.isNotEmpty());
                 juce::String pendingLinkAction,pendingLinkValue;{const juce::ScopedLock l(lock);pendingLinkAction=linkAction;pendingLinkValue=linkValue;linkAction.clear();linkValue.clear();}
                 if(pendingLinkAction.isNotEmpty()){
                     auto* command=new juce::DynamicObject();command->setProperty("action",pendingLinkAction);command->setProperty("value",pendingLinkValue);command->setProperty("source",static_cast<juce::int64>(source));const auto result=request("/api/links",juce::var(command));next.linkBusy=bool(result["ok"]);if(pendingLinkAction=="release"&&next.linkBusy)preferCustomLink(false);if(result["error"].toString().isNotEmpty())next.linkMessage=result["error"].toString();
@@ -295,7 +299,7 @@ private:
                     // acknowledged by GET and repeated requests never rotate twice.
                     if(generating&&modern&&owned&&data["inviteRequest"].toString()==requestId)acknowledged=true;
                     const bool needsPlan=listenerPreferences()!=0||prefersCustomLink()||sessionQuality.load()!=1||sessionChannels.load()!=2;
-                    const bool planReady=(next.accountPhase!="signed-in"||next.planKnown)&&(!needsPlan||next.planKnown||next.accountPhase=="signed-out");
+                    const bool planReady=!(pro&&next.linkBusy)&&(next.accountPhase!="signed-in"||next.planKnown)&&(!needsPlan||next.planKnown||next.accountPhase=="signed-out");
                     if(generating&&!acknowledged&&planReady){acknowledged=action("generate",requestId,requestPasscode,pro);if(!acknowledged&&controlError.isNotEmpty()){generating=false;generateRequested=false;if(desired&&onExpired)onExpired();}}
                     if(generating&&acknowledged){const auto refreshed=request("/api/studio");if(refreshed.isObject()){data=refreshed;link=data["listenerURL"].toString();}}
                     const bool ownsInvite=!data["inviteSource"].isVoid()&&static_cast<juce::int64>(data["inviteSource"])==source;

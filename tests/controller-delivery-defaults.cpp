@@ -20,6 +20,8 @@ int main(int argc,char** argv){
   if(!controller->usesCloud()||controller->hasDeliveryPreference()||!controller->encryptsAudio())return 8;
   if(scenario=="exhausted-pro"&&controller->status().canCloud)return 9;
  }
+ if(scenario=="saved-custom"&&!controller->prefersCustomLink())return 11;
+ if(scenario=="custom-random-choice"){controller->preferCustomLink(false);juce::Thread::sleep(500);if(controller->prefersCustomLink())return 12;}
  if(scenario!="exhausted-pro"){
   controller->generate();
   if(!waitFor([&]{const auto s=controller->status();return s.hasSession&&!s.generating&&s.link.isNotEmpty();}))return 10;

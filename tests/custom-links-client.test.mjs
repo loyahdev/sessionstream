@@ -21,16 +21,16 @@ test('signed-out state keeps random sending available and cannot select the save
  await client.action('mode','custom');assert.match(client.error,/Sign in/);assert.equal(requests,0);
 });
 
-test('fresh helpers default to random codes despite a legacy custom preference, without releasing the saved name',async()=>{
+test('fresh helpers default to the saved account name, including dashboard names, without releasing it',async()=>{
  const {mkdtemp,writeFile,readFile,rm}=await import('node:fs/promises');const {tmpdir}=await import('node:os');const path=await import('node:path');
  const dir=await mkdtemp(path.join(tmpdir(),'sessionstream-link-default-'));const preferences=path.join(dir,'link-preferences.json');let deletes=0;
  try{
   await writeFile(preferences,JSON.stringify({mode:'custom'}));
   const request=async(_url,options)=>{if(options.method==='DELETE')deletes++;return Response.json({name:'my-studio'});};
   const first=new LinkClient(signedAccount,auth,{preferences,request});await first.refresh();
-  assert.equal(first.status().mode,'random');assert.equal(first.name,'my-studio');assert.equal(first.selection(),null);
+  assert.equal(first.status().mode,'custom');assert.equal(first.name,'my-studio');assert.equal(first.selection().name,'my-studio');
   await first.action('mode','custom');assert.equal(first.selection().name,'my-studio');
-  const second=new LinkClient(signedAccount,auth,{preferences,request});await second.refresh();assert.equal(second.status().mode,'random');assert.equal(second.name,'my-studio');assert.equal(deletes,0);
+  const second=new LinkClient(signedAccount,auth,{preferences,request});await second.refresh();assert.equal(second.status().mode,'custom');assert.equal(second.name,'my-studio');assert.equal(deletes,0);
   assert.equal(JSON.parse(await readFile(preferences,'utf8')).mode,'custom');
  }finally{await rm(dir,{recursive:true,force:true});}
 });
@@ -39,4 +39,11 @@ test('changing accounts resets custom mode so the next account starts with a ran
  const account={identity:{sub:'first-user'},status:()=>({phase:account.identity?'signed-in':'signed-out'})};
  const client=new LinkClient(account,auth,{request:async()=>Response.json({name:'my-studio'})});await client.refresh();await client.action('mode','custom');assert.equal(client.status().mode,'custom');
  account.identity=null;assert.equal(client.status().mode,'random');account.identity={sub:'second-user'};assert.equal(client.status().mode,'random');
+});
+
+test('no reserved name uses a random code, and an explicit random choice survives refresh',async()=>{
+ let name='';const client=new LinkClient(signedAccount,auth,{request:async()=>Response.json({name})});
+ await client.refresh();assert.equal(client.status().mode,'random');assert.equal(client.selection(),null);
+ name='saved-on-site';await client.refresh();assert.equal(client.selection().name,name);
+ await client.action('mode','random');await client.refresh();assert.equal(client.status().mode,'random');assert.equal(client.selection(),null);
 });
