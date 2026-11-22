@@ -1,8 +1,9 @@
-import {StereoPeakLimiter} from '../web/peak-limiter.mjs';
+import {pcmInfo,pcmSample,stereoSample} from '../web/pcm-format.mjs';
+import {StereoPeakLimiter,MultichannelPeakLimiter} from '../web/peak-limiter.mjs';
 import {test} from 'node:test';import assert from 'node:assert/strict';import vm from 'node:vm';import {readFile} from 'node:fs/promises';import {tonePacket} from '../server/protocol.mjs';
 async function player(targetMs=10){let C;class Base{constructor(){this.port={postMessage(){}};}}
-const context=vm.createContext({StereoPeakLimiter,AudioWorkletProcessor:Base,sampleRate:48000,Float32Array,DataView,Math,Number,registerProcessor:(n,c)=>{if(n==='session-pcm')C=c;}});
-vm.runInContext((await readFile(new URL('../web/pcm-worklet.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/,''),context);return new C({processorOptions:{targetMs}});}
+const context=vm.createContext({pcmInfo,pcmSample,stereoSample,MultichannelPeakLimiter,StereoPeakLimiter,AudioWorkletProcessor:Base,sampleRate:48000,Float32Array,DataView,Math,Number,registerProcessor:(n,c)=>{if(n==='session-pcm')C=c;}});
+vm.runInContext((await readFile(new URL('../web/pcm-worklet.mjs',import.meta.url),'utf8')).replace(/^import .*;\n/gm,''),context);return new C({processorOptions:{targetMs}});}
 function push(p,b){p.push(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength));}
 function render(p){const l=new Float32Array(128),r=new Float32Array(128);p.process([] ,[[l,r]]);return [l,r];}
 test('stereo playback retains separate channels and recovers from underruns',async()=>{

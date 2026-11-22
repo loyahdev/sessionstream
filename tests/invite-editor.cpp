@@ -18,8 +18,9 @@ public:
         processor=std::make_unique<StreamProcessor>([]{return juce::SystemStats::getEnvironmentVariable("SESSIONSTREAM_EDITOR_WORKFLOW",{})=="1"?juce::String("1.1"):juce::String(UpdateChecker::currentVersion);},udpPort);
         if(endpoint.isNotEmpty())processor->controller=std::make_unique<StreamController>(processor->transport.getSourceId(),[this]{return processor->isSending();},endpoint);
         if(juce::SystemStats::getEnvironmentVariable("SESSIONSTREAM_EDITOR_RECEIVE_PREVIEW",{})=="1")processor->setReceiveMode(true);
+        if(juce::SystemStats::getEnvironmentVariable("SESSIONSTREAM_EDITOR_FORMAT_PREVIEW",{})=="1"){auto layout=processor->getBusesLayout();layout.inputBuses.set(0,juce::AudioChannelSet::create5point1());layout.outputBuses.set(0,juce::AudioChannelSet::create5point1());processor->setBusesLayout(layout);processor->streamQuality=7;processor->streamChannels=6;}
         processor->prepareToPlay(48000,480);
-        buffer.setSize(2,480);
+        buffer.setSize(processor->getMainBusNumInputChannels(),480);buffer.clear();
         window=std::make_unique<Window>();window->setContentOwned(processor->createEditor(),true);window->centreWithSize(window->getWidth(),window->getHeight());window->setVisible(true);
         if(juce::SystemStats::getEnvironmentVariable("SESSIONSTREAM_EDITOR_WORKFLOW",{})=="1")workflow=std::make_unique<EditorWorkflow>();
         startTimer(10);
@@ -48,6 +49,7 @@ private:
             try{workflow->run(*processor,*static_cast<juce::AudioProcessorEditor*>(window->getContentComponent()));if(workflow->done){quit();return;}if(ticks>6000)throw std::runtime_error("Editor workflow timed out at stage "+std::to_string(workflow->stage));}
             catch(const std::exception& error){std::cerr<<"UI_QA_FAILED: "<<error.what()<<std::endl;setApplicationReturnValue(1);quit();}return;
         }
+        if(ticks==150&&juce::SystemStats::getEnvironmentVariable("SESSIONSTREAM_EDITOR_FORMAT_PREVIEW",{})=="1")if(auto* b=dynamic_cast<juce::Button*>(window->getContentComponent()->findChildWithID("session-setup")))b->triggerClick();
         if(ticks==200){
             const auto path=juce::SystemStats::getEnvironmentVariable("SESSIONSTREAM_EDITOR_SNAPSHOT",{});
             if(path.isNotEmpty()){

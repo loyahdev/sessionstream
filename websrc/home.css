@@ -5234,3 +5234,7 @@ dialog::backdrop {
  .hero-copy h1{text-box-trim:trim-both;text-box-edge:cap alphabetic}
  .hero-composition{--hero-overlap:calc(var(--hero-title-size) * .01)}
 }
+
+/* Technical format options stay legible without turning into a preset dashboard. */
+.quality-overview .format-note{grid-column:1/-1;max-width:86ch;color:var(--ss-inverse-muted);font-size:14px;line-height:1.6;margin:0}
+@media(max-width:600px){.quality-options article{display:block}.quality-options p{white-space:normal;margin-top:8px}.quality-overview .format-note{font-size:13px}}

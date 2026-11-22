@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {SessionPolicy,qualities,validSessionSettings} from '../server/session-policy.mjs';
 test('quality presets have distinct stereo bitrates and reject unsupported settings',()=>{
- assert.deepEqual(qualities,{studio:510000,balanced:320000,phone:96000});
+ assert.deepEqual(qualities,{studio:510000,balanced:320000,phone:96000,opus128:128000,opus192:192000,opus256:256000,pcm16:0,pcm24:0,pcm32:0});
  for(const q of Object.keys(qualities))for(const h of [0,1,24,168])assert(validSessionSettings(q,h));
  for(const [q,h] of [['bad',24],['studio',2],['phone',-1],['studio','24'],['__proto__',24]])assert(!validSessionSettings(q,h));
 });

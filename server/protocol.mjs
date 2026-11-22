@@ -1,12 +1,6 @@
+import {pcmInfo} from '../web/pcm-format.mjs';
 export const HEADER_BYTES = 24;
-export function parsePacket(b) {
-  if (b.length < HEADER_BYTES || b.toString('ascii', 0, 4) !== 'STRM') return null;
-  const sequence = b.readUInt32LE(4), rate = b.readUInt32LE(8);
-  const frames = b.readUInt16LE(12), channels = b.readUInt16LE(14);
-  if (b.readUInt32LE(20) !== 1 || ![44100, 48000, 88200, 96000, 176400, 192000].includes(rate)
-      || channels !== 2 || frames < 1 || frames > 256 || b.length !== HEADER_BYTES + frames * 8) return null;
-  return {sequence, rate, frames, channels, source: b.readUInt32LE(16)};
-}
+export function parsePacket(b) {const info=pcmInfo(b);if(!info)return null;const {view,...metadata}=info;return metadata;}
 export function tonePacket(sequence, frames = 256, rate = 48000, source = 12345) {
   const b = Buffer.alloc(HEADER_BYTES + frames * 8);
   b.write('STRM'); b.writeUInt32LE(sequence >>> 0, 4); b.writeUInt32LE(rate, 8);

@@ -6,7 +6,7 @@ const expectedCode = 'protected-recovery-code';
 let engine = 1, generation = 0, dropGET = false, initialRestart = false, finalRestart = false;
 let starts = 0, protectedGenerations = 0, unprotectedGenerations = 0, detaches = 0;
 const failures = [], requests = new Map();
-const state = {native: true, controlProtocol: 5, engineProtocol: 1, token: 'engine-1', owner: null, inviteSource: null, inviteRequest: null, live: false, listeners: 0, passcodeRequired: false, listenerIssue: null, publicSiteReady: true, tunnelPhase: 'ready', listenerURL: 'https://ready.trycloudflare.com/listen#initial'};
+const state = {native: true, controlProtocol: 8, engineProtocol: 1, token: 'engine-1', owner: null, inviteSource: null, inviteRequest: null, live: false, listeners: 0, passcodeRequired: false, listenerIssue: null, publicSiteReady: true, tunnelPhase: 'ready', listenerURL: 'https://ready.trycloudflare.com/listen#initial'};
 function replaceEngine(next) {
   engine = next;
   Object.assign(state, {token: `engine-${engine}`, owner: null, inviteSource: null, inviteRequest: null, live: false, passcodeRequired: false, listenerURL: `https://ready.trycloudflare.com/listen#new-engine-${engine}`});

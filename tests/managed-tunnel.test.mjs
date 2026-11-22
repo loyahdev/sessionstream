@@ -69,7 +69,7 @@ test('six-digit listener paths load assets, embed current invite, upgrade socket
   app.setTunnelState('ready','https://sessionstream.app/123456');
   const studio=await fetch(local+'/api/studio').then(r=>r.json());assert.equal(studio.listenerURL,'https://sessionstream.app/123456');assert(studio.publicSiteReady);
   const page=await fetch(publicBase+'/123456').then(r=>r.text());assert(page.includes(`data-room="${studio.room}"`));assert(page.includes('src="/123456/app.mjs"'));assert(page.includes('href="/123456/style.css"'));
-  for(const file of ['app.mjs','audio.mjs','pcm-worklet.mjs','style.css','health'])assert.equal((await fetch(`${publicBase}/123456/${file}`)).status,200,file);
+  for(const file of ['app.mjs','audio.mjs','pcm-worklet.mjs','pcm-format.mjs','vendor/cloud-decoder.mjs','style.css','health'])assert.equal((await fetch(`${publicBase}/123456/${file}`)).status,200,file);
   assert.equal((await fetch(publicBase+'/654321')).status,410);assert.equal((await fetch(publicBase+'/123456/api/studio')).status,404);
   const socket=new WebSocket(`ws://127.0.0.1:${app.publicPort}/123456/signal`,{origin:publicBase});t.after(()=>socket.terminate());await new Promise((resolve,reject)=>{socket.once('open',resolve);socket.once('error',reject);});
   await fetch(local+'/api/rotate',{method:'POST',headers:{Origin:local,Authorization:`Bearer ${studio.token}`}});

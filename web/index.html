@@ -28,7 +28,7 @@
 
         <div id="studio-settings" hidden>
           <label for="title">Session name</label><input id="title" value="Studio session" maxlength="80">
-          <label for="bitrate">Quality</label><select id="bitrate"><option value="510000">Studio · 510 kbps stereo</option><option value="320000">Balanced · 320 kbps stereo</option><option value="96000">Phone · 96 kbps stereo</option></select>
+          <label for="bitrate">Opus bitrate</label><select id="bitrate"><option value="96000">96 kbps stereo</option><option value="128000">128 kbps stereo</option><option value="192000">192 kbps stereo</option><option value="256000">256 kbps stereo</option><option value="320000" selected>320 kbps stereo</option><option value="510000">510 kbps stereo</option></select>
         </div>
 
         <section id="listener-identity" class="passcode-form" hidden>
@@ -107,7 +107,7 @@
 
         <details class="connection-details"><summary>Connection details</summary><dl class="metrics">
           <div><dt>Connection</dt><dd id="transport">—</dd></div>
-          <div><dt>Network RTT</dt><dd id="rtt">—</dd></div>
+          <div><dt id="rtt-label">Network RTT</dt><dd id="rtt">—</dd></div>
           <div><dt>Audio buffer</dt><dd id="buffer">—</dd></div>
           <div><dt id="fourth-label">Packet loss</dt><dd id="fourth-value">—</dd></div>
         </dl></details>

@@ -1,3 +1,4 @@
+import {pcmInfo,pcmSample} from '../web/pcm-format.mjs';
 import {StereoPeakLimiter} from '../web/peak-limiter.mjs';
 // Bounded stereo FIFO. Resampling follows the DAW clock instead of periodically
 // dropping a whole block; a short reservoir absorbs large Ableton callbacks.
@@ -8,13 +9,13 @@ export class AudioBuffer {
     if(this.source!==p.source||this.rate!==p.rate){this.reset();this.source=p.source;this.rate=p.rate;}
     if(this.seq!==null){const gap=(p.sequence-this.seq-1)>>>0;if(gap>0x80000000)return;if(gap>8){this.read=this.write;this.primed=false;}else for(let i=0;i<gap*this.previousFrames;i++)this.put(0,0);}
     this.seq=p.sequence;this.previousFrames=p.frames;
-    for(let i=0;i<p.frames;i++)this.put(packet.readFloatLE(24+i*8),packet.readFloatLE(28+i*8));
+    const info=pcmInfo(packet);if(!info)return;let at=24;const sample=ch=>pcmSample(info.view,at+ch*info.width,info.encoding);for(let i=0;i<p.frames;i++,at+=p.channels*info.width){let l=sample(0),r=p.channels===1?l:sample(1);if(p.channels>=6){l+=Math.SQRT1_2*(sample(2)+sample(4)+(p.channels===8?sample(6):0));r+=Math.SQRT1_2*(sample(2)+sample(5)+(p.channels===8?sample(7):0));}this.put(l,r);}
     const target=this.rate*this.targetMs/1000;
     if(this.write-this.read>Math.min(this.capacity-512,target+this.rate*.12)){this.read=this.write-target;this.primed=false;this.trims++;}
   }
   put(l,r){const i=this.write++%this.capacity;this.l[i]=Number.isFinite(l)?l:0;this.r[i]=Number.isFinite(r)?r:0;}
   render(){
-    const samples=new Int16Array(960),target=this.rate*this.targetMs/1000,queued=this.write-this.read;
+    const channels=this.outputChannels===1?1:2,samples=new Int16Array(480*channels),target=this.rate*this.targetMs/1000,queued=this.write-this.read;
     if(!this.primed&&queued>=target)this.primed=true;
     const step=this.rate/48000*(1+Math.max(-.005,Math.min(.005,(queued-target)/this.rate*.08)));
     for(let i=0;i<480;i++){
@@ -28,9 +29,9 @@ export class AudioBuffer {
         this.lastL*=.9;this.lastR*=.9;l=this.lastL;r=this.lastR;
       }
       this.limiter.sample(l,r);
-      samples[2*i]=Math.round(this.limiter.outL*32767);samples[2*i+1]=Math.round(this.limiter.outR*32767);
+      if(channels===1)samples[i]=Math.round((this.limiter.outL+this.limiter.outR)*.5*32767);else{samples[2*i]=Math.round(this.limiter.outL*32767);samples[2*i+1]=Math.round(this.limiter.outR*32767);}
     }
-    return {samples,sampleRate:48000,bitsPerSample:16,channelCount:2,numberOfFrames:480};
+    return {samples,sampleRate:48000,bitsPerSample:16,channelCount:channels,numberOfFrames:480};
   }
   stats(){return {bufferMs:(this.write-this.read)/this.rate*1000,underruns:this.underruns,trims:this.trims};}
 }

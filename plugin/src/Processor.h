@@ -11,7 +11,7 @@ class StreamProcessor final : public juce::AudioProcessor {
 public:
     explicit StreamProcessor(UpdateChecker::Fetch reader={},int streamPort=49300);
     ~StreamProcessor() override { releaseResources(); controller.reset(); }
-    void prepareToPlay(double rate, int) override { ++prepareCount; currentRate = static_cast<uint32_t>(rate); loudness.prepare(rate); localMonitor.reset(rate,.01);localMonitor.setCurrentAndTargetValue(1.f);gain.reset(rate,.02); gain.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(gainParameter->get())); hostActivity.prepare(); if(controller){controller->sessionSettings(streamQuality,linkExpiryHours);controller->wake();} }
+    void prepareToPlay(double rate, int) override { ++prepareCount; currentRate = static_cast<uint32_t>(rate); loudness.prepare(rate); localMonitor.reset(rate,.01);localMonitor.setCurrentAndTargetValue(1.f);gain.reset(rate,.02); gain.setCurrentAndTargetValue(juce::Decibels::decibelsToGain(gainParameter->get())); hostActivity.prepare(); if(controller){controller->inputLayout(getMainBusNumInputChannels());controller->sessionSettings(streamQuality,linkExpiryHours,streamChannels);controller->wake();} }
     void releaseResources() override { ++releaseCount; receiver.enabled=false;receiver.flush();hostActivity.deactivate(); transport.enabled=false; transport.resetPending(); if(controller)controller->wake(); }
     // VST3 setProcessing(false) calls reset when a host flushes audio (e.g.
     // seeking). The component is still active; keep its lease and invite.
@@ -52,7 +52,7 @@ public:
     bool isSending() const { return sendParameter->get()&&!receiveMode.load(); }
     std::unique_ptr<StreamController> controller;
     UpdateChecker updates;
-    std::atomic<int> streamQuality{1},linkExpiryHours{0},receiveBufferIndex{0},uiScaleIndex{0};
+    std::atomic<int> streamQuality{1},streamChannels{2},linkExpiryHours{0},receiveBufferIndex{0},uiScaleIndex{0};
     std::atomic<bool> receiveLowLatency{false},sendLimiterActive{false};
     bool localMuted()const {return muteParameter->get();}
     void setLocalMuted(bool value){muteParameter->setValueNotifyingHost(value?1.f:0.f);}

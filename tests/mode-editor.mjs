@@ -11,7 +11,7 @@ await writeFile(path.join(directory,'links.json'),JSON.stringify({mode:'custom'}
 let signedIn=true;
 const account={identity:{sub:'preview-user'},ready:Promise.resolve(),accessCredential:()=>signedIn?'preview-token':null,status:()=>({configured:true,phase:signedIn?'signed-in':'signed-out',name:signedIn?'Jaxon':''}),close(){}};
 const dashboardStore=new Map();
-const dashboardOptions={enabled:true,autoTimer:true,storeFactory:sub=>({read:async()=>dashboardStore.get(sub)||null,write:async v=>dashboardStore.set(sub,v),clear:async()=>dashboardStore.delete(sub)}),fetchImpl:async url=>Response.json(url.endsWith('/enroll')?{deviceCredential:'c'.repeat(64)}:{plan:'pro',listeners:8})};
+const dashboardOptions={enabled:true,autoTimer:true,storeFactory:sub=>({read:async()=>dashboardStore.get(sub)||null,write:async v=>dashboardStore.set(sub,v),clear:async()=>dashboardStore.delete(sub)}),fetchImpl:async url=>Response.json(url.endsWith('/enroll')?{deviceCredential:'c'.repeat(64)}:{plan:signedIn?'pro':'free',listeners:signedIn?8:3,cloud:{canCloud:signedIn,configured:true,usage:{remainingSeconds:signedIn?1080000:0}}})};
 const app=await createStreamServer({nativeSender:true,managedTunnel:true,publicPort:0,studioPort:0,udpPort:0,account,dashboardOptions,linkStore:{read:async()=>null,write:async()=>{},clear:async()=>{}},linkOptions:{preferences:path.join(directory,'links.json')}});
 app.setTunnelState('ready','https://ui-preview.invalid');
 try{

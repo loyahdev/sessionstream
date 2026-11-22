@@ -23,3 +23,15 @@ export class StereoPeakLimiter {
     this.outR=n<this.delay?0:Math.max(-this.ceiling,Math.min(this.ceiling,this.right[at]*this.gain));
   }
 }
+
+// One linked gain envelope across the full channel layout.
+export class MultichannelPeakLimiter {
+ constructor(rate=48000,channels=8){this.channels=channels;this.ceiling=10**(-1/20);this.delay=Math.max(1,Math.round(rate*.005));this.size=this.delay+2;this.audio=Array.from({length:channels},()=>new Float64Array(this.size));this.peaks=new Float64Array(this.size);this.indices=new Float64Array(this.size);this.output=new Float32Array(channels);this.release=Math.exp(-1/(rate*.1));this.head=0;this.tail=0;this.frame=0;this.gain=1;}
+ sample(values){const n=this.frame++,slot=n%this.size;let peak=0;for(let ch=0;ch<this.channels;ch++){const value=Number.isFinite(values[ch])?values[ch]:0;this.audio[ch][slot]=value;peak=Math.max(peak,Math.abs(value));}
+  while(this.head!==this.tail&&this.indices[this.head]<n-this.delay)this.head=(this.head+1)%this.size;
+  while(this.head!==this.tail&&this.peaks[(this.tail+this.size-1)%this.size]<=peak)this.tail=(this.tail+this.size-1)%this.size;
+  this.peaks[this.tail]=peak;this.indices[this.tail]=n;this.tail=(this.tail+1)%this.size;
+  const maximum=this.peaks[this.head],target=maximum>this.ceiling?this.ceiling/maximum:1;this.gain=target<this.gain?target:target+(this.gain-target)*this.release;const at=(n-this.delay+this.size)%this.size;
+  for(let ch=0;ch<this.channels;ch++)this.output[ch]=n<this.delay?0:Math.max(-this.ceiling,Math.min(this.ceiling,this.audio[ch][at]*this.gain));
+ }
+}

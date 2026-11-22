@@ -6,6 +6,7 @@
 class SpectrumView final : public juce::Component {
 public:
     SpectrumView(){setInterceptsMouseClicks(false,false);}
+    void setLayout(const juce::String& value){layout=value;}
     void setReceiving(bool value){if(receivingMode!=value){receivingMode=value;repaint();}}
     void update(SignalCapture& capture,double sampleRate){
         rate=sampleRate;bool fresh=false;
@@ -54,7 +55,7 @@ public:
             g.setFont(font(11.5f,true));
             g.drawText(receivingMode?"Waiting for incoming stream":"Play audio in your DAW",badge.toNearestInt(),juce::Justification::centred,false);
         }
-        g.setColour(muted);g.setFont(font(14,true));g.drawText("Spectrum",0,6,150,20,juce::Justification::left);g.setFont(font(9.5f));g.drawText(juce::String(rate/1000,1)+juce::String::fromUTF8(" kHz  \xC2\xB7  Stereo"),getWidth()-170,8,162,16,juce::Justification::right);
+        g.setColour(muted);g.setFont(font(14,true));g.drawText("Spectrum",0,6,150,20,juce::Justification::left);g.setFont(font(9.5f));g.drawText(juce::String(rate/1000,1)+juce::String::fromUTF8(" kHz  \xC2\xB7  ")+layout,getWidth()-230,8,222,16,juce::Justification::right);
 
     }
 private:
@@ -62,5 +63,5 @@ private:
     juce::dsp::FFT fft{14};juce::dsp::WindowingFunction<float> window{size,juce::dsp::WindowingFunction<float>::hann,false};
     std::array<float,size> left{},right{};std::array<float,size*2> data{};std::array<float,size/2+1> power{};
     std::array<float,points> trace=[] {std::array<float,points> a{};a.fill(-84);return a;}();
-    int cursor=0;double rate=48000;float idleAlpha=1.f;bool receivingMode=false;
+    int cursor=0;double rate=48000;float idleAlpha=1.f;bool receivingMode=false;juce::String layout="Stereo";
 };

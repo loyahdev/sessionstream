@@ -68,7 +68,7 @@ StreamProcessor::StreamProcessor(UpdateChecker::Fetch reader,int streamPort)
 }
 
 bool StreamProcessor::isBusesLayoutSupported(const BusesLayout& l) const {
-    return l.getMainInputChannelSet()==l.getMainOutputChannelSet()&&(l.getMainInputChannelSet()==juce::AudioChannelSet::stereo()||l.getMainInputChannelSet()==juce::AudioChannelSet::mono());
+    return l.getMainInputChannelSet()==l.getMainOutputChannelSet()&&(l.getMainInputChannelSet()==juce::AudioChannelSet::stereo()||l.getMainInputChannelSet()==juce::AudioChannelSet::mono()||l.getMainInputChannelSet()==juce::AudioChannelSet::create5point1()||l.getMainInputChannelSet()==juce::AudioChannelSet::create7point1());
 }
 
 void StreamProcessor::processBlock(juce::AudioBuffer<float>& b, juce::MidiBuffer&) {
@@ -85,7 +85,7 @@ void StreamProcessor::processBlock(juce::AudioBuffer<float>& b, juce::MidiBuffer
     if(isReceiveMode()){
         transport.enabled=false;transport.resetPending();sendLimiterActive.store(false,std::memory_order_relaxed);
         receiver.enabled=isReceiving()&&!isSuspended();
-        receiver.render(b.getWritePointer(0),b.getNumChannels()>1?b.getWritePointer(1):nullptr,n,currentRate,first,step);
+        receiver.render(b.getArrayOfWritePointers(),b.getNumChannels(),n,currentRate,first,step);
     }
     signalCapture.push(b.getReadPointer(0),b.getReadPointer(r),n,isReceiveMode()?1.f:first,isReceiveMode()?0.f:step);
     float lPeak=0,rPeak=0;
@@ -100,7 +100,7 @@ void StreamProcessor::processBlock(juce::AudioBuffer<float>& b, juce::MidiBuffer
     if(!receiving&&juce::jmax(lPeak,rPeak)>=.89125f)sendLimiterActive.store(true,std::memory_order_relaxed);
     else if(!receiving)sendLimiterActive.store(false,std::memory_order_relaxed);
     transport.leftPeak.store(juce::jmax(lPeak,transport.leftPeak.load()));transport.rightPeak.store(juce::jmax(rPeak,transport.rightPeak.load()));
-    if(!isReceiveMode()&&transport.enabled.load())transport.push(b.getReadPointer(0),b.getReadPointer(r),n,currentRate,first,step);else transport.resetPending();
+    if(!isReceiveMode()&&transport.enabled.load())transport.push(b.getArrayOfReadPointers(),b.getNumChannels(),controller&&controller->hasProAudio()?controller->audioChannels(streamChannels.load()):2,n,currentRate,first,step);else transport.resetPending();
     localMonitor.setTargetValue(localMuted()&&isSending()&&!isReceiveMode()?0.f:1.f);
     const auto monitorFirst=localMonitor.getCurrentValue(),monitorLast=localMonitor.skip(n);
     b.applyGainRamp(0,n,monitorFirst,monitorLast);
@@ -126,23 +126,23 @@ void StreamProcessor::getStateInformation(juce::MemoryBlock& state) {
     if(receiveLowLatency.load())flags|=32;
     flags|=((receiveBufferIndex.load()&3)<<6);
     flags|=((uiScaleIndex.load()&3)<<8);
-    stream.writeInt(flags);
+    stream.writeInt(flags);stream.writeInt(streamChannels.load());
 }
 
 void StreamProcessor::setStateInformation(const void* data,int size) {
     // Keep legacy gain-only projects compatible. Save the mode, never a
     // connection activation, passcode, or account credential. Restoring the
     // same mode during render must leave the current session running.
-    if(size!=4&&size!=9&&size!=17)return;
+    if(size!=4&&size!=9&&size!=17&&size!=21)return;
     juce::MemoryInputStream stream(data,static_cast<size_t>(size),false);
     const auto db=stream.readFloat();
     if(std::isfinite(db))setGainDb(juce::jlimit(-60.f,12.f,db));
     if(size>=9&&stream.readInt()==0x53535231){
         const bool mode=stream.readBool();
         if(mode!=isReceiveMode())setReceiveMode(mode);
-        if(size==17){
-            streamQuality=juce::jlimit(0,2,stream.readInt());
-            const auto flags=stream.readInt();
+        if(size>=17){
+            streamQuality=juce::jlimit(0,8,stream.readInt());
+            const auto flags=stream.readInt();const auto channels=size>=21?stream.readInt():2;streamChannels=streamformat::validChannels(channels)?channels:2;if(!streamformat::pcm(streamQuality)&&streamChannels>2)streamChannels=2;
             linkExpiryHours=0;
             receiveLowLatency.store((flags&32)!=0);
             setReceiveBufferIndex((flags>>6)&3);
@@ -157,7 +157,7 @@ void StreamProcessor::setStateInformation(const void* data,int size) {
             }
         }
     }
-    if(controller)controller->sessionSettings(streamQuality,linkExpiryHours);
+    if(controller)controller->sessionSettings(streamQuality,linkExpiryHours,streamChannels);
 }
 
 // Keep QR content owned by the editor, so host removal destroys it together
@@ -247,7 +247,7 @@ public:
         localMute.setComponentID("mute-local");localMute.setIcon(studio::ModernButton::Icon::speaker);localMute.setTooltip("Silences this plugin's local DAW output while streaming. Listeners still hear the stream.");localMute.onClick=[this]{p.setLocalMuted(!p.localMuted());timerCallback();};
         setupOverlay.onDelivery=[this](bool cloud){if(sessionLatched||p.isSending()||s.generating||s.ending)return;p.controller->cloudDelivery(cloud);inviteSettingsDirty=true;};
         setupOverlay.onEncryption=[this](bool value){if(sessionLatched||p.isSending()||s.generating||s.ending)return;p.controller->encryptAudio(value);inviteSettingsDirty=true;};
-        setupOverlay.setComponentID("setup-panel");addChildComponent(setupOverlay);setupOverlay.onChange=[this](int q){if(sessionLatched||p.isSending()||s.generating||s.ending)return;if(q!=p.streamQuality){p.streamQuality=q;p.linkExpiryHours=0;p.controller->sessionSettings(q,0);inviteSettingsDirty=true;}};
+        setupOverlay.setComponentID("setup-panel");addChildComponent(setupOverlay);setupOverlay.onChange=[this](int q,int channels){if(sessionLatched||p.isSending()||s.generating||s.ending)return;if(q!=p.streamQuality||channels!=p.streamChannels){p.streamQuality=q;p.streamChannels=channels;p.linkExpiryHours=0;p.controller->sessionSettings(q,0,channels);inviteSettingsDirty=true;}};
         addChildComponent(showHostName);
         showHostName.setButtonText("Show my name to listeners");
         studio::syncToggleState(showHostName,p.controller->sharesHostName());
@@ -281,7 +281,7 @@ public:
         receiveMode.onClick=[this]{if(!p.isSending()&&!p.isReceiving()&&!p.isReceiveMode()){p.setReceiveMode(true);timerCallback();}};
 
         rxLiveMode.setButtonText("Live WebRTC");rxLiveMode.setTooltip("Low-latency Opus stereo over WebRTC (falls back to PCM automatically).");
-        rxPcmMode.setButtonText("Lossless PCM");rxPcmMode.setTooltip("Bit-accurate uncompressed float32 stereo over tunnel.");
+        rxPcmMode.setButtonText("Lossless PCM");rxPcmMode.setTooltip("Uncompressed PCM with the source channel layout and bit depth.");
         rxLiveMode.onClick=[this]{if(!p.isReceiving()){p.receiveLowLatency=true;timerCallback();}};
         rxPcmMode.onClick=[this]{if(!p.isReceiving()){p.receiveLowLatency=false;timerCallback();}};
 
@@ -323,7 +323,7 @@ public:
             }
             const auto status=p.controller->status();
             if(p.isSending()){p.setSending(false);return;}
-            if(status.handoffReady&&p.isHostEnabled()&&!status.ending){
+            if(status.handoffReady&&p.isHostEnabled()&&!status.ending&&(status.streamChannels<=2||status.streamChannels==p.getMainBusNumInputChannels())){p.streamChannels=status.streamChannels;p.streamQuality=status.streamQuality;p.controller->sessionSettings(p.streamQuality,0,p.streamChannels);
                 p.controller->handoff();
                 p.setSending(true);
                 return;
@@ -419,7 +419,7 @@ public:
         copyWithPasscode.setBounds(602,208,224,26);
         generate.setBounds(750,98,76,26);
 
-        setupOverlay.setBounds(602,136,224,126);
+        setupOverlay.setBounds(602,136,224,130);
         linkKind.setBounds(602,272,224,28);
         customName.setBounds(602,306,140,28);
         claimLink.setBounds(750,306,76,28);
@@ -523,14 +523,14 @@ public:
                 g.drawHorizontalLine(184,602.f,826.f);
                 g.drawHorizontalLine(216,602.f,826.f);
                 const auto headline=s.receivePhase=="approval"?juce::String("Waiting for host approval")
-                    :s.receiving?juce::String("Receiving stereo stream")
+                    :s.receiving?juce::String("Receiving audio stream")
                     :s.receiveMessage.isNotEmpty()?s.receiveMessage:juce::String("Connecting to host...");
                 label(headline,612,144,204,18,11.f,s.receivePhase=="approval"?accent:text,true);
                 label(s.receivePhase=="approval"?"Audio starts automatically when accepted.":receiveTarget.getText(),612,162,204,16,9.5f,muted);
                 label("Transport",612,188,80,22,10.f,muted);
                 label(s.receiveTransport=="webrtc"?"Live WebRTC":"Lossless PCM",692,188,124,22,10.5f,text,true,juce::Justification::centredRight);
                 label("Source",612,220,80,22,10.f,muted);
-                label(s.receiving?juce::String::fromUTF8("Stereo \xC2\xB7 Active"):juce::String("Waiting"),692,220,124,22,10.5f,s.receiving?accent:muted,true,juce::Justification::centredRight);
+                label(s.receiving?streamformat::layout(s.receiveChannels)+juce::String::fromUTF8(" \xC2\xB7 Active"):juce::String("Waiting"),692,220,124,22,10.5f,s.receiving?accent:muted,true,juce::Justification::centredRight);
                 label("Target buffer",602,262,224,15,10,muted);
                 insetTrack({602.f,278.f,224.f,28.f});
                 g.setColour(muted);g.setFont(font(10.5f));
@@ -544,14 +544,15 @@ public:
             label("Listening link",602,142,224,16,11,muted);
             g.setColour(line);g.drawHorizontalLine(286,602.f,826.f);
             const auto quality=pro?p.streamQuality.load():1;
-            label("Quality",602,296,70,20,11,muted);
-            label(quality==0?"Studio - 510 kbps":quality==1?"Balanced - 320 kbps":"Phone - 96 kbps",672,296,154,20,11,text,false,juce::Justification::centredRight);
+            label("Format",602,296,60,20,11,muted);
+            label(streamformat::names[juce::jlimit(0,8,quality)],672,296,154,20,11,text,false,juce::Justification::centredRight);
+            label(streamformat::layout(pro?p.streamChannels.load():2),602,374,224,20,11,muted);
             if(!pro)label(juce::String(s.listeners)+((s.hasSession?s.delivery=="cloud":p.controller->usesCloud())?" Cloud":" / "+juce::String(s.listenerLimit)),750,72,76,20,10.5f,muted,false,juce::Justification::centredRight);
             label("Delivery",602,322,70,20,11,muted);label((s.hasSession?s.delivery=="cloud":p.controller->usesCloud())?"Cloud":"Direct",672,322,154,20,11,text,false,juce::Justification::centredRight);
             label("Encryption",602,348,80,20,11,muted);label((s.hasSession?s.encrypted:p.controller->encryptsAudio())?"End to end":"Connection only",692,348,134,20,11,text,false,juce::Justification::centredRight);
             if(endConfirmTicks>0)label("Confirm end",704,439,122,20,11,warm,true,juce::Justification::centredRight);
         }
-        g.setColour(line);g.drawHorizontalLine(416,602.f,826.f);
+        if(!showingSetup){g.setColour(line);g.drawHorizontalLine(416,602.f,826.f);}
 
         // Bottom-Left Audio Monitor Card (16, 362, 556, 110)
         // Zone 1: Stereo Meter + dB Scale + Limiter Indicator
@@ -590,12 +591,12 @@ public:
         label(receiving?"Receive gain":"Stream gain",252,371,100,16,10.f,muted,false,juce::Justification::centred);
 
         // Zone 3: Short-Term Loudness + Relocated Monitor Mute
-        label("Short-term",372,371,130,15,11.f,muted);
+        label((receiving?s.receiveChannels:p.streamChannels.load())>2?"Short-term / front L-R":"Short-term",372,371,178,15,10.f,muted);
         const auto lufs=p.loudness.lufs();
         label(std::isfinite(lufs)?juce::String(lufs,1)+" LUFS":juce::String::fromUTF8("\xE2\x80\x94 LUFS"),372,389,116,24,16.5f,text);
         if(receiving){
             label(juce::String(p.receiveBufferMs())+" ms buf",490,392,66,18,10.5f,muted,false,juce::Justification::centredRight);
-            label("Stereo DAW input",372,433,184,22,10.5f,muted);
+            label("DAW input",372,433,184,22,10.5f,muted);
         }else{
             label("Local audio",372,430,130,22,10.5f,muted);
         }
@@ -683,7 +684,7 @@ private:
         if(s.inviteExpired&&!s.generating&&!waitingInviteSettings&&p.isSending())p.setSending(false);
 
         const bool previouslyHadSession=sessionLatched;
-        if(s.hasSession)sessionLatched=true;
+        if(s.hasSession){sessionLatched=true;p.streamQuality=s.streamQuality;p.streamChannels=s.streamChannels;}
         else if(s.available&&!s.generating&&!s.ending&&!p.isSending())sessionLatched=false;
         if(previouslyHadSession&&!sessionLatched&&!s.ending){passcode.clear();waitingInviteSettings=false;inviteSettingsDirty=false;}
         if(!sessionLatched)studio::syncToggleState(usePasscode,p.controller->requiresPasscode());
@@ -703,7 +704,7 @@ private:
         if(s.available&&s.planKnown&&!pro&&p.isReceiveMode())p.setReceiveMode(false);
         if(!pro)showingPeople=false;
         const bool receiving=pro&&p.isReceiveMode();
-        spectrum.setReceiving(receiving);
+        spectrum.setReceiving(receiving);const int sourceChannels=receiving?s.receiveChannels:pro?p.streamChannels.load():2;spectrum.setLayout(streamformat::layout(sourceChannels)+(sourceChannels>2?" / front L-R":""));
         if(!signedIn&&wasSignedIn){nameDirty=false;lastClaimedName.clear();customName.setText({},false);}wasSignedIn=signedIn;
 
         // Free plugin strictly hides Pro-only controls until planKnown confirms Pro
@@ -746,9 +747,10 @@ private:
         level.setTooltip(receiving?"Adjusts received audio output in this DAW.":"Adjusts stream output only. DAW output is unchanged.");
 
         const bool customReady=!custom||(pro&&!s.customName.isEmpty()&&!s.linkBusy&&s.linkAuthorized);
-        const bool needsPlan=p.controller->listenerPreferences()!=0||p.controller->prefersCustomLink()||p.streamQuality.load()!=1;
+        const bool needsPlan=p.controller->listenerPreferences()!=0||p.controller->prefersCustomLink()||p.streamQuality.load()!=1||p.streamChannels.load()!=2;
         const bool planReady=!needsPlan||s.planKnown||s.accountPhase=="signed-out";
-        const bool canGenerate=(!p.controller->usesCloud()||s.canCloud)&&settingsEditable&&p.isHostEnabled()&&s.ready&&customReady&&planReady;
+        const bool matchingBus=p.streamChannels.load()<=2||p.getMainBusNumInputChannels()==p.streamChannels.load();
+        const bool canGenerate=matchingBus&&(!p.controller->usesCloud()||s.canCloud)&&settingsEditable&&p.isHostEnabled()&&s.ready&&customReady&&planReady;
 
         if(waitingInviteSettings&&!s.generating&&s.link.isNotEmpty()){waitingInviteSettings=false;inviteSettingsDirty=false;}
         if(sessionLatched&&!s.ending&&s.link.isNotEmpty()&&!inviteSettingsDirty&&!waitingInviteSettings)studio::syncToggleState(usePasscode,s.passcodeRequired);
@@ -762,8 +764,8 @@ private:
         copyWithPasscode.setVisible(false);includePasscode.setVisible(canCopyWithPass);includePasscode.setEnabled(canCopyWithPass);
         copyWithPasscode.setEnabled(canCopyWithPass);
 
-        const bool canHandoff=!receiving&&s.handoffReady&&p.isHostEnabled()&&!s.ending;
-        toggle.setEnabled(!s.ending&&(p.isSending()||canHandoff||(p.isHostEnabled()&&s.ready&&!s.generating&&customReady&&((s.link.isNotEmpty()&&!inviteSettingsDirty)||(hasPasscode&&planReady)))));
+        const bool canHandoff=!receiving&&s.handoffReady&&p.isHostEnabled()&&!s.ending&&(s.streamChannels<=2||s.streamChannels==p.getMainBusNumInputChannels());
+        toggle.setEnabled(!s.ending&&(p.isSending()||canHandoff||(matchingBus&&p.isHostEnabled()&&s.ready&&!s.generating&&customReady&&((s.link.isNotEmpty()&&!inviteSettingsDirty)||(hasPasscode&&planReady)))));
         generate.setEnabled(canGenerate&&hasPasscode);
         usePasscode.setEnabled(settingsEditable&&!s.linkBusy);
         passcode.setEnabled(settingsEditable&&usePasscode.getToggleState());
@@ -818,7 +820,8 @@ private:
 
         showHostName.setVisible(!receiving&&showingSetup&&signedIn);showHostName.setEnabled(settingsEditable);
         studio::syncToggleState(showHostName,p.controller->sharesHostName());
-        setupOverlay.setVisible(!receiving&&showingSetup);setupOverlay.configure(pro?p.streamQuality.load():1,settingsEditable,pro);setupOverlay.configureDelivery(p.controller->usesCloud(),p.controller->encryptsAudio(),s.canCloud);
+        if(!pro&&s.planKnown&&!sessionLatched&&!p.isSending()){p.streamQuality=1;p.streamChannels=2;p.controller->sessionSettings(1,0,2);}
+        setupOverlay.setVisible(!receiving&&showingSetup);setupOverlay.configure(pro?p.streamQuality.load():1,pro?p.streamChannels.load():2,p.getMainBusNumInputChannels(),settingsEditable,pro);setupOverlay.configureDelivery(p.controller->usesCloud(),p.controller->encryptsAudio(),s.canCloud);
 
         endButton.setVisible(onSessionTab);
         endButton.setEnabled(!s.ending&&(sessionLatched||p.isSending()||s.generating));

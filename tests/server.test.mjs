@@ -42,3 +42,5 @@ test('listener branding uses the website mark and serves bundled fonts locally',
   for(const name of ['DMSans','Manrope']){const response=await fetch(base+`/fonts/${name}.woff`);assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'font/woff');assert((await response.arrayBuffer()).byteLength>10000);}
   const mark=await fetch(base+'/brand-mark.svg').then(r=>r.text());const {readFile}=await import('node:fs/promises');assert.equal(mark,await readFile(new URL('../websrc/assets/logo.svg',import.meta.url),'utf8'));
 });
+
+test('root listener serves its offline decoder and PCM module as assets, not custom invites',async t=>{const app=await createStreamServer({publicPort:0,studioPort:0,udpPort:0});t.after(()=>app.close());const base=`http://127.0.0.1:${app.publicPort}`;for(const asset of ['vendor/cloud-decoder.mjs','pcm-format.mjs']){const response=await fetch(base+'/'+asset);assert.equal(response.status,200);assert.match(response.headers.get('content-type'),/javascript/);assert((await response.text()).length>100);}});

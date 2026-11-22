@@ -1,4 +1,5 @@
 import {ListenerDelivery} from './listener-delivery.mjs';
+import {channelLayouts} from './pcm-format.mjs';
 import {createAudio,musicSDP} from './audio.mjs';
 const $=id=>document.getElementById(id),studio=document.documentElement.dataset.mode==='studio';
 const themeButton=$('theme-toggle');
@@ -57,6 +58,8 @@ function reloadExpired(){
   url.hash='';
   location.replace(url);
 }
+let streamFormat={codec:'opus',channels:2,bitrate:320000,bitDepth:16},forcedPCM=false;
+const streamLabel=()=>`${streamFormat.codec==='pcm'?'PCM '+streamFormat.bitDepth+'-bit'+(streamFormat.bitDepth===32?' float':''):'Opus '+Math.round(streamFormat.bitrate/1000)+' kbps'} · ${channelLayouts[streamFormat.channels]||'Stereo'}`;
 let audio=null,ws=null,running=false,reconnectTimer=null,reconnectAttempt=0,session=null,iceServers=[],peerId=null;
 let deliveryMode='direct',extraEncryption=false,secureDelivery=null;
 let pcm=false,live=false,lastBinary=0,statsTimer=null,fallbackTimer=null,pingTimer=null,rtcSource=null,remoteElement=null,needsResume=false;
@@ -150,11 +153,11 @@ function updateModeControls(automatic=false){
   $('mode-help').textContent=pcm
     ?(automatic?'Live audio could not connect. Switched to Buffered audio automatically. ':'')+'More latency and data use.'
     :'Live audio uses less delay. Switch to Buffered if the connection is unstable.';
-  $('quality').textContent='STEREO';
+  $('quality').textContent=streamLabel();
 }
 function setMode(value,automatic=false){
   if(deliveryMode==='cloud')return;
-  pcm=value;connectionRetried=false;resetReception();clearTimeout(fallbackTimer);closePeers();audio?.reset();audio?.usePCM(pcm);send({type:'mode',mode:pcm?'pcm':'webrtc'});
+  if(forcedPCM&&!value)return;pcm=value;connectionRetried=false;resetReception();clearTimeout(fallbackTimer);closePeers();audio?.reset();audio?.usePCM(pcm);send({type:'mode',mode:pcm?'pcm':'webrtc'});
   updateModeControls(automatic);
   $('transport').textContent=pcm?'PCM / tunnel':'Connecting…';
   $('fourth-label').textContent=pcm?'BUFFER RESETS':'PACKET LOSS';$('fourth-value').textContent='—';
@@ -191,7 +194,7 @@ function connection(id,generation=crypto.randomUUID()){
     }else if(pc.connectionState==='disconnected'&&!studio){status('Recovering connection');scheduleFallback();}
   };
   if(!studio){
-    if(deliveryMode==='cloud'||extraEncryption){closeDelivery();secureDelivery=new ListenerDelivery({iceServers,decode:async()=>{const {CloudAudioDecoder}=await import('./vendor/cloud-decoder.mjs');const decoder=new CloudAudioDecoder();await decoder.ready;return decoder;},onFrame:raw=>{if(!running||!live)return;lastBinary=performance.now();audio?.usePCM(true);audio?.feed(raw);},onError:e=>{if(!running||!live)return;message(e.message,true);ws?.close();}});pc.ondatachannel=event=>secureDelivery?.attach(event.channel);}
+    if(deliveryMode==='cloud'||extraEncryption){closeDelivery();secureDelivery=new ListenerDelivery({iceServers,decode:async()=>{const {CloudAudioDecoder}=await import('./vendor/cloud-decoder.mjs');const decoder=new CloudAudioDecoder();await decoder.ready;return decoder;},onFrame:raw=>{if(!running||!live)return;lastBinary=performance.now();audio?.usePCM(true);audio?.feed(raw);},onError:e=>{if(!running||!live)return;console.warn('Secure audio playback:',e.message);message(e.message,true);ws?.close();}});pc.ondatachannel=event=>secureDelivery?.attach(event.channel);}
     pc.ontrack=e=>{
       if(new URLSearchParams(location.search).has('audio-test'))console.debug('track',e.track.kind,e.track.readyState,e.track.muted,e.track.enabled);
       if(pcm||!running||!audio||peers.get(id)!==pc)return;
@@ -253,7 +256,9 @@ async function onSignal(m){
     if(!running||ws!==socket)return;
     waitingForApproval=false;
     if(!studio)$('connect').innerHTML='Stop listening <span aria-hidden="true">■</span>';
-    deliveryMode=m.delivery==='cloud'?'cloud':'direct';extraEncryption=m.encrypted===true;if(!studio){$('audio-security').hidden=false;$('audio-security').textContent=deliveryMode==='cloud'?(extraEncryption?'Cloud · end-to-end encrypted':'Cloud · connection encryption only'):(extraEncryption?'Direct · end-to-end encrypted':'Direct · connection encryption only');}if(!studio){$('audio-mode').hidden=deliveryMode==='cloud';if(deliveryMode==='cloud'){audio?.usePCM(true);$('transport').textContent=extraEncryption?'Cloud / encrypted':'Cloud / transport encryption';}}
+    streamFormat=m.format||streamFormat;forcedPCM=streamFormat.codec==='pcm';if(forcedPCM)pcm=true;const monitoring=audio?.setChannels(streamFormat.channels);if(monitoring?.downmixed)message('Stereo monitoring on this output device. The source stream retains all channels.');
+    deliveryMode=m.delivery==='cloud'?'cloud':'direct';extraEncryption=m.encrypted===true;if(!studio){$('audio-security').hidden=false;$('audio-security').textContent=deliveryMode==='cloud'?(extraEncryption?'Cloud · end-to-end encrypted':'Cloud · connection encryption only'):(extraEncryption?'Direct · end-to-end encrypted':'Direct · connection encryption only');}if(!studio){$('audio-mode').hidden=deliveryMode==='cloud'||forcedPCM;if(deliveryMode==='cloud'){audio?.usePCM(true);$('transport').textContent=extraEncryption?'Cloud / encrypted':'Cloud / transport encryption';}}
+    if(!studio){updateModeControls();$('fourth-label').textContent=pcm||deliveryMode==='cloud'?'BUFFER RESETS':'PACKET LOSS';$('rtt-label').textContent=deliveryMode==='cloud'?'Host link RTT':'Network RTT';}
     joined=true;if(!studio)$('listener-identity').hidden=true;if(!studio&&$('note-form'))$('note-form').hidden=true;connectionRetried=false;awaitingPasscode=false;$('passcode-form').hidden=true;$('connect').hidden=false;$('passcode').value='';$('passcode-error').textContent='';$('passcode').removeAttribute('aria-invalid');resetReception();
     reconnectAttempt=0;iceServers=m.iceServers;peerId=m.id;
     if(studio){live=true;send({type:'publishing',live:true,title:$('title').value});for(const id of m.peers||[])await offer(id);message('Broadcasting. Press Start streaming in the plugin, then play your project.');}
@@ -265,7 +270,8 @@ async function onSignal(m){
     if(sourceAvailable&&!wasAvailable)resetReception();
     if(!live||!sourceAvailable)reportHealth('ok');
     $('session-title').textContent=m.title;$('fourth-value').textContent=studio?String(m.listeners):$('fourth-value').textContent;
-    if(m.audio){$('source-label').textContent=`${(m.audio.rate/1000).toFixed(1)} KHZ SOURCE · 2 CHANNELS`;}
+    if(m.format)streamFormat=m.format;$('quality').textContent=pcm&&streamFormat.codec==='opus'&&deliveryMode!=='cloud'?`PCM 32-bit float · ${channelLayouts[streamFormat.channels]}`:streamLabel();
+    if(m.audio){$('source-label').textContent=`${(m.audio.rate/1000).toFixed(1)} KHZ SOURCE · ${m.audio.channels} CHANNEL${m.audio.channels===1?'':'S'}${m.audio.channels>(audio?.context.destination.channelCount||2)?' · STEREO MONITORING':''}`;}
     else $('source-label').textContent='WAITING FOR PLUGIN AUDIO';
     if(studio){status(live&&m.audio?'Broadcasting live':live?'Waiting for plugin':'Sharing paused',live&&m.audio?'live':'');}
     else if(!live){status('Waiting for host');message('Audio will start when your host is ready.');}
@@ -279,7 +285,7 @@ async function onSignal(m){
   else if(m.type==='offer'&&!studio&&(!pcm||extraEncryption||deliveryMode==='cloud')){
     const pc=connection(m.from,m.generation);await pc.setRemoteDescription(m.sdp);
     await flushCandidates(m.from,pc);
-    const answer=musicSDP(await pc.createAnswer(),510000);await pc.setLocalDescription(answer);
+    const answer=musicSDP(await pc.createAnswer(),streamFormat.bitrate||510000,streamFormat.channels);await pc.setLocalDescription(answer);
     send({type:'answer',sdp:pc.localDescription,generation:pc.generation});scheduleFallback();
   }else if(m.type==='answer'&&studio){const pc=peers.get(m.from);if(pc&&pc.generation===m.generation&&pc.signalingState==='have-local-offer'){await pc.setRemoteDescription(m.sdp);await flushCandidates(m.from,pc);}}
   else if(m.type==='candidate'){
@@ -357,7 +363,7 @@ async function prepareAudio(attempt){
       if(data.type==='stats'&&(studio||pcm)){
         bufferStats={bufferMs:data.bufferMs,targetMs:data.targetMs,underruns:data.underruns,trims:data.trimmed};
         $('buffer').textContent=`${Math.round(data.bufferMs)} ms`;
-        if(!studio){$('fourth-value').textContent=String(data.trimmed+data.underruns);$('quality').textContent='UNCOMPRESSED STEREO';}
+        if(!studio){$('fourth-value').textContent=String(data.trimmed+data.underruns);$('quality').textContent=streamLabel();}
       }
     };
     // Expose audio only when an explicit local test opt-in is present.
@@ -387,7 +393,7 @@ async function updateStats(){
     for(const s of stats.values()){
       if(s.type==='candidate-pair'&&s.state==='succeeded'&&s.nominated){
         $('rtt').textContent=s.currentRoundTripTime===undefined?'—':`${Math.round(s.currentRoundTripTime*1000)} ms`;
-        if(!studio){const candidate=stats.get(s.remoteCandidateId);$('transport').textContent=candidate?.candidateType==='relay'?'WebRTC / relay':'WebRTC / direct';}
+        if(!studio){const candidate=stats.get(s.remoteCandidateId);$('transport').textContent=deliveryMode==='cloud'?(extraEncryption?'Cloud / encrypted':'Cloud / transport encryption'):forcedPCM?(extraEncryption?'PCM / encrypted':'PCM / tunnel'):candidate?.candidateType==='relay'?'WebRTC / relay':'WebRTC / direct';}
       }
       if(!studio&&s.type==='inbound-rtp'&&s.kind==='audio'){
         const received=s.packetsReceived||0,lost=s.packetsLost||0;
@@ -397,7 +403,7 @@ async function updateStats(){
           $('buffer').textContent=`${Math.round(1000*(s.jitterBufferDelay-lastReceived.delay)/(s.jitterBufferEmittedCount-lastReceived.count))} ms`;
         }
         lastReceived={count:s.jitterBufferEmittedCount,delay:s.jitterBufferDelay};
-        const codec=stats.get(s.codecId);if(codec)$('quality').textContent='HIGH-QUALITY STEREO';
+        const codec=stats.get(s.codecId);if(codec)$('quality').textContent=streamLabel();
       }
     }
   }
@@ -516,7 +522,7 @@ async function checkInvite(initial=false){
     if([403,404,410].includes(response.status)){reloadExpired();return true;}
     if(!response.ok)return false;
     const info=await response.json();
-    showHost(info.hostName);
+    showHost(info.hostName);if(info.format){streamFormat=info.format;$('quality').textContent=streamLabel();}
     if(info.accessDecision==='rejected'||info.accessDecision==='revoked'){accessBlocked(info.accessDecision);return true;}
     if(!running&&!accessDenied){
       const changed=initial||approvalRequired!==!!info.approvalRequired||accountRequired!==!!info.accountRequired;

@@ -110,3 +110,7 @@ target_include_directories(receive-audio PRIVATE plugin/src)
 add_executable(local-monitor tests/local-monitor.cpp)
 target_link_libraries(local-monitor PRIVATE SessionStream juce::juce_audio_utils)
 target_include_directories(local-monitor PRIVATE plugin/src)
+
+add_executable(channel-routing tests/channel-routing.cpp)
+target_link_libraries(channel-routing PRIVATE SessionStream juce::juce_audio_utils)
+target_include_directories(channel-routing PRIVATE plugin/src)

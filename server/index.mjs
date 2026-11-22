@@ -17,11 +17,12 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { WebSocketServer, WebSocket } from 'ws';
+import {convertPCM} from '../web/pcm-format.mjs';
 import { parsePacket } from './protocol.mjs';
 import {EngineLifetime} from './engine-lifetime.mjs';
 import {InviteAccess, JoinAttempts, validPasscode} from './invite-access.mjs';
 import {ListenerHealth} from './listener-health.mjs';
-import {SessionPolicy,validSessionSettings} from './session-policy.mjs';
+import {audioFormat,freeAudioFormat,SessionPolicy,validSessionSettings} from './session-policy.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const mime = {'.html':'text/html; charset=utf-8','.css':'text/css','.mjs':'text/javascript','.js':'text/javascript','.svg':'image/svg+xml','.woff':'font/woff'};
 const safeEqual = (a, b) => typeof a === 'string' && typeof b === 'string' && /^[a-f0-9]+$/.test(a) && a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
@@ -147,7 +148,7 @@ export async function createStreamServer(options = {}) {
       let publicURL = process.env.PUBLIC_URL || `http://127.0.0.1:${pub.address().port}`;
       if(options.managedTunnel)publicURL=(currentInvite&&tunnel.phase==='ready'?tunnel.url:'')||`http://127.0.0.1:${pub.address().port}`;
       else try { const stored = JSON.parse(await readFile(path.join(options.runtimeDir||path.join(root,'.runtime'),'public-url.json'),'utf8')); if (stored.url && !options.ignoreStoredURL) publicURL = stored.url; } catch {}
-      return reply(200,{account:account.status(),accountConnection:dashboard.status(),listenerAccess:admission.snapshot(),accountError, links:links.status(), receivers:Object.fromEntries([...receivers].map(([id,receiver])=>[id,receiver.status()])), featureProtocol:1, token, room, listenerURL:!!sharePrefix(new URL(publicURL).pathname)?publicURL:`${publicURL}/listen#${room}`,transportDiagnostics:native?.diagnostics(),controlProtocol:7,passcodeRequired:inviteAccess.required,listenerIssue:listenerHealth.issue(live),engineProtocol:native?1:0,enginePID:process.pid,tunnelPID:options.tunnelPID?.(),engineClients:lifetime.clients.size,publicSiteReady:options.managedTunnel?(tunnel.phase==='ready'&&currentInvite):publicURL.startsWith('https://'),tunnelPhase:options.managedTunnel?tunnel.phase:undefined,inviteRequest,iceServers:ice(), ...info()});
+      return reply(200,{account:account.status(),accountConnection:dashboard.status(),listenerAccess:admission.snapshot(),accountError, links:links.status(), receivers:Object.fromEntries([...receivers].map(([id,receiver])=>[id,receiver.status()])), featureProtocol:1, token, room, listenerURL:!!sharePrefix(new URL(publicURL).pathname)?publicURL:`${publicURL}/listen#${room}`,transportDiagnostics:native?.diagnostics(),controlProtocol:8,passcodeRequired:inviteAccess.required,listenerIssue:listenerHealth.issue(live),engineProtocol:native?1:0,enginePID:process.pid,tunnelPID:options.tunnelPID?.(),engineClients:lifetime.clients.size,publicSiteReady:options.managedTunnel?(tunnel.phase==='ready'&&currentInvite):publicURL.startsWith('https://'),tunnelPhase:options.managedTunnel?tunnel.phase:undefined,inviteRequest,iceServers:ice(), ...info()});
     }
     if (url.pathname === '/api/links' && req.method === 'POST') {
       if(!studio||!headerAuth(req)||req.headers.origin!==`http://${req.headers.host}`)return reply(403,{error:'Unauthorized'});
@@ -260,7 +261,7 @@ export async function createStreamServer(options = {}) {
       if(!safeEqual(m?.room,room))return reply(403,{error:'Invalid invite'});
       if(sessionPolicy.expired)return reply(410,{error:'This invite has expired. Ask the host for a new link.'});
       const accessDecision=admission.decision(m.listenerCredential);
-      return reply(200,{...(accessDecision?{accessDecision}:{}),passcodeRequired:inviteAccess.required,approvalRequired:admission.approval,accountRequired:admission.requireAccount,...(hostName()?{hostName:hostName()}:{})});
+      return reply(200,{...(accessDecision?{accessDecision}:{}),format:sessionPolicy.status().format,passcodeRequired:inviteAccess.required,approvalRequired:admission.approval,accountRequired:admission.requireAccount,...(hostName()?{hostName:hostName()}:{})});
     }
     if (url.pathname === '/api/engine' && req.method === 'POST') {
       if (!studio || !native || !headerAuth(req) || req.headers.origin !== `http://${req.headers.host}`) return reply(403,{error:'Unauthorized'});
@@ -280,7 +281,9 @@ export async function createStreamServer(options = {}) {
       if(m.delivery!==undefined&&!['direct','cloud'].includes(m.delivery)||m.encrypted!==undefined&&typeof m.encrypted!=='boolean')return reply(400,{error:'Invalid audio delivery settings.'});
       if(!validSessionSettings(m.quality,m.expiresInHours))return reply(400,{error:'Invalid session settings.'});
       const requestedQuality=m.quality||(['start','handoff'].includes(m.action)&&sessionPolicy.created?sessionPolicy.quality:'balanced');
-      if(['generate','start','handoff'].includes(m.action)&&requestedQuality!=='balanced'){if(account.status().phase!=='signed-in')return reply(403,{error:'SessionStream Pro is required for this quality preset.'});const access=await dashboard.requirePro();if(!access.ok)return reply(403,{error:access.error});}
+      const requestedChannels=m.channels??(['start','handoff'].includes(m.action)&&sessionPolicy.created?sessionPolicy.channels:2);let requestedFormat;try{requestedFormat=audioFormat(requestedQuality,requestedChannels);}catch(e){return reply(400,{error:e.message});}
+      if(['generate','start','handoff'].includes(m.action)&&m.inputChannels!==undefined&&(![1,2,6,8].includes(m.inputChannels)||requestedChannels>2&&requestedChannels!==m.inputChannels))return reply(409,{error:'The selected surround layout requires a matching DAW bus.'});
+      if(['generate','start','handoff'].includes(m.action)&&!freeAudioFormat(requestedQuality,requestedChannels)){if(account.status().phase!=='signed-in')return reply(403,{error:'SessionStream Pro is required for this audio format.'});const access=await dashboard.requirePro();if(!access.ok)return reply(403,{error:access.error});}
       if((m.action==='start'||m.action==='handoff')&&sessionPolicy.expired)return reply(410,{error:'This invite has expired. Create a new invite.'});
       if(m.action==='end'){
         if(inviteSource!==null&&inviteSource!==m.source)return reply(403,{error:'Only the session host can end this session.'});
@@ -325,13 +328,13 @@ export async function createStreamServer(options = {}) {
           return reply(409,{error:'Claim or authorize your custom link first.'});
         owner=m.source;lease=Date.now();
         if(creating){
-          const mode=m.delivery||'direct';if(mode==='cloud'){const status=await dashboard.cloud('status');if(!status.ok||!status.canCloud||!status.configured)return reply(status.status||402,{error:status.error||'Add Cloud listener-hours before using Cloud.'});}
-          await delivery?.configure({mode,encrypted:m.encrypted===true,quality:requestedQuality});deliveryMode=mode;admission.uncapped=mode==='cloud';extraEncryption=m.encrypted===true;native.needsControl=mode==='cloud'||extraEncryption;native.cloudMode=mode==='cloud';dashboard.mode=mode;
+          const mode=m.delivery||'direct';if(mode==='cloud'){const access=await dashboard.requirePro();if(!access.ok)return reply(403,{error:access.error});const status=await dashboard.cloud('status');if(!status.ok||!status.canCloud||!status.configured)return reply(status.status||402,{error:status.error||'Add Cloud listener-hours before using Cloud.'});}
+          await delivery?.configure({mode,encrypted:m.encrypted===true,quality:requestedQuality,channels:requestedChannels});deliveryMode=mode;admission.uncapped=mode==='cloud';extraEncryption=m.encrypted===true;native.needsControl=mode==='cloud'||extraEncryption;native.cloudMode=mode==='cloud';dashboard.mode=mode;
           if(hasPreferences||accessOwner!==m.source){
             admission.configure({approval:m.listenerApproval===true,requireAccount:m.listenerAccounts===true,feedback:m.listenerFeedback===true});
             accessOwner=m.source;
           }
-          hostNameAccount=m.showHostName===true&&account.status().phase==='signed-in'?account.identity?.sub:null;inviteSource=m.source;inviteRequest=m.requestId||null;native.stop();live=false;stopReporting();listenerHealth.clear();for(const p of peers.values())p.close(4003,'Invite changed');admission.reset();for(const p of waiting.values())p.close(4003,'Invite changed');waiting.clear();room=randomBytes(24).toString('hex');inviteAccess.set(m.passcode);sessionPolicy.create(m.quality,m.expiresInHours);native.setQuality(sessionPolicy.quality);}
+          hostNameAccount=m.showHostName===true&&account.status().phase==='signed-in'?account.identity?.sub:null;inviteSource=m.source;inviteRequest=m.requestId||null;native.stop();live=false;stopReporting();listenerHealth.clear();for(const p of peers.values())p.close(4003,'Invite changed');admission.reset();for(const p of waiting.values())p.close(4003,'Invite changed');waiting.clear();room=randomBytes(24).toString('hex');inviteAccess.set(m.passcode);sessionPolicy.create(requestedQuality,m.expiresInHours,requestedChannels);native.setQuality(sessionPolicy.quality,requestedChannels);}
         if(m.action==='start'&&!live){if(admission.approval||admission.requireAccount||admission.feedback||links.mode==='custom'){const access=await dashboard.requirePro();if(!access.ok)return reply(403,{error:access.error});}const approval=await dashboard.authorizeStart();if(!approval.ok){accountError=approval.error;return reply(approval.status||409,{error:approval.error});}accountError='';sessionPolicy.start();await beginStreaming(m.source);}
       }
       if(m.action==='generate'||m.action==='start')options.onInviteRequested?.();
@@ -342,7 +345,7 @@ export async function createStreamServer(options = {}) {
       for (const p of peers.values()) p.close(4003,'Invite changed');
       admission.reset();for(const p of waiting.values())p.close(4003,'Invite changed');waiting.clear(); room = randomBytes(24).toString('hex'); inviteRequest = null; inviteAccess.clear();sessionPolicy.create(); listenerHealth.clear(); options.onInviteRequested?.(); return reply(200,{ok:true});
     }
-    const allowed = ['/theme-init.js','/brand-mark.svg','/fonts/DMSans.woff','/fonts/Manrope.woff','/app.mjs','/cloud-peer.mjs','/cloud-crypto.mjs','/listener-delivery.mjs','/vendor/cloud-decoder.mjs','/audio.mjs','/pcm-worklet.mjs','/peak-limiter.mjs','/style.css','/favicon.svg'];
+    const allowed = ['/theme-init.js','/brand-mark.svg','/fonts/DMSans.woff','/fonts/Manrope.woff','/app.mjs','/cloud-peer.mjs','/cloud-crypto.mjs','/listener-delivery.mjs','/vendor/cloud-decoder.mjs','/audio.mjs','/pcm-worklet.mjs','/pcm-format.mjs','/peak-limiter.mjs','/style.css','/favicon.svg'];
     const isPage = url.pathname === '/' || url.pathname === '/listen' || (studio && url.pathname === '/studio');
     if (req.method !== 'GET' || (!isPage && !allowed.includes(url.pathname))) return reply(404,{error:'Not found'});
     try {
@@ -380,7 +383,7 @@ export async function createStreamServer(options = {}) {
     if(ws.readyState!==WebSocket.OPEN||ws.requestRoom!==room)return;
     if(peers.size>=listenerLimit()){ws.close(4009,'Session is full');return;}
     waiting.delete(ws.id);ws.role='listener';peers.set(ws.id,ws);clearTimeout(ws.joinTimer);
-    send(ws,{type:'joined',id:ws.id,iceServers:ice(),delivery:deliveryMode,encrypted:extraEncryption});if(native?.needsControl||ws.mode!=='pcm')notifyHost({type:'peer-joined',id:ws.id});send(ws,info());broadcastStatus();
+    send(ws,{type:'joined',id:ws.id,iceServers:ice(),delivery:deliveryMode,encrypted:extraEncryption,format:sessionPolicy.status().format});if(native?.needsControl||ws.mode!=='pcm')notifyHost({type:'peer-joined',id:ws.id});send(ws,info());broadcastStatus();
   }
   wss.on('connection',(ws,studio)=>{
     ws.isAlive = true; ws.role = null; ws.id = randomBytes(8).toString('hex'); ws.mode = 'webrtc';
@@ -407,7 +410,7 @@ export async function createStreamServer(options = {}) {
             if (!attempts.allow() || !joinAttempts.allow()) return ws.close(4008,'Too many passcode attempts. Try again shortly.');
             return send(ws,{type:'passcode-required',invalid:typeof m.passcode==='string'&&m.passcode.length>0});
           }
-          ws.requestRoom=room;ws.mode=m.mode==='pcm'?'pcm':'webrtc';
+          ws.requestRoom=room;ws.mode=sessionPolicy.status().format.codec==='pcm'||m.mode==='pcm'?'pcm':'webrtc';
           let identity;
           if(admission.requireAccount||m.listenerTicket){
             if(typeof m.listenerTicket!=='string'){send(ws,{type:'sign-in-required'});return;}
@@ -462,7 +465,7 @@ export async function createStreamServer(options = {}) {
         }).catch(()=>{});return;
       }
       if (m.type === 'mode' && ws.role === 'listener') {
-        const nextMode = m.mode === 'pcm' ? 'pcm' : 'webrtc';
+        const nextMode = sessionPolicy.status().format.codec==='pcm'||m.mode==='pcm'?'pcm':'webrtc';
         if (nextMode === ws.mode) return;
         if(native?.needsControl&&nextMode==='pcm'){ws.mode=nextMode;notifyHost({type:'renegotiate',id:ws.id});return;}
         ws.mode = nextMode;
@@ -491,19 +494,21 @@ export async function createStreamServer(options = {}) {
   udp.on('message',(data)=>{
     const p = parsePacket(data); if (!p) return;
     if(native&&(!live||p.source!==owner))return;
+    if(native&&p.channels!==sessionPolicy.channels){native.error='DAW channel layout changed. End the session and choose a matching layout.';return;}
     if (source !== null && source !== p.source && Date.now()-lastAudio < 2000) return;
     source = p.source; lastAudio = Date.now(); audio = p; ++packets;
     if (!live || (!publisher&&!native)) return;
     const connected=[...peers.values()].filter(ws=>ws.mode==='pcm'||native?.peers.get(ws.id)?.connectionState==='connected');
     const fresh=usageSource!==p.source||usageSequence===null||((p.sequence-usageSequence)>>>0)>0&&((p.sequence-usageSequence)>>>0)<0x80000000;
-    if(fresh){dashboard.audio(p.frames/p.rate,connected.length,connected.reduce((sum,ws)=>sum+(ws.mode==='pcm'?p.rate*8:(native?.bitrate||510000)/8),0));usageSequence=p.sequence;usageSource=p.source;}
+    if(fresh){dashboard.audio(p.frames/p.rate,connected.length,connected.reduce((sum,ws)=>sum+(ws.mode==='pcm'?p.rate*p.channels*p.width:(native?.bitrate||510000)/8),0));usageSequence=p.sequence;usageSource=p.source;}
     native?.feed(data,p);
-    if(deliveryMode==='cloud')return;
+    if(deliveryMode==='cloud'){delivery.rawFrame(data);return;}
+    const wire=delivery?.format?.codec==='pcm'?Buffer.from(convertPCM(data,delivery.format.bitDepth)):data;
     // Keep socket queues bounded. Slow clients reconnect at the live edge.
     for (const ws of [...(publisher?[publisher]:[]),...[...peers.values()].filter(p=>p.mode === 'pcm')]) {
       if (ws.readyState !== WebSocket.OPEN) continue;
       if (ws.bufferedAmount > 65536) { ++drops; ws.close(4010,'Audio connection too slow; reconnecting'); continue; }
-      if(extraEncryption&&ws.role==='listener'){void delivery.buffered(ws.id,data).catch(e=>log('audio',e.message));}else ws.send(data,{binary:true});
+      if(extraEncryption&&ws.role==='listener'){void delivery.buffered(ws.id,wire).catch(e=>log('audio',e.message));}else ws.send(wire,{binary:true});
     }
   });
   if(options.nativeSender){const {NativeSender}=await import('./native-sender.mjs');native=new NativeSender((id,m)=>send(peers.get(id),m),ice);delivery=new StreamDelivery({PeerConnection:native.PeerConnection,iceServers:ice,api:(action,body)=>dashboard.cloud(action,body),allowed:id=>peers.has(id),sendControl:(id,m)=>native.sendControl(id,m),sendBinary:(id,raw)=>{const ws=peers.get(id);if(ws?.readyState===WebSocket.OPEN&&ws.bufferedAmount<65536)ws.send(raw,{binary:true});},onError:e=>{accountError=e.message;native.pause();live=false;stopReporting();broadcastStatus();}});native.onControlOpen=id=>{void delivery.join(id).catch(e=>{accountError=e.message;});};native.onControl=(id,m)=>delivery.control(id,m);native.onAudio=samples=>{if(live&&deliveryMode==='cloud')delivery.frame(samples);};}

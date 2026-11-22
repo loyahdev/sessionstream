@@ -42,13 +42,13 @@ test('protected invites authenticate before signaling or audio and preserve gene
     assert.equal((await control({action: 'generate', requestId, passcode})).status, 200);
     return {...await status(), requestId};
   };
-  assert.equal(initial.controlProtocol, 7); assert.equal(initial.passcodeRequired, false);
+  assert.equal(initial.controlProtocol, 8); assert.equal(initial.passcodeRequired, false);
   const protectedInvite = await generate('mix 123 🎧');
   assert(protectedInvite.passcodeRequired); assert.equal(protectedInvite.listenerIssue, null);
   assert(!JSON.stringify(protectedInvite).includes('mix 123 🎧'));
   assert.equal(protectedInvite.listenerURL.split('#')[1], protectedInvite.room);
   const lookup = await invitation(protectedInvite.room);
-  assert.equal(lookup.status, 200); assert.deepEqual(await lookup.json(), {passcodeRequired: true,approvalRequired:false,accountRequired:false});
+  assert.equal(lookup.status, 200); assert.deepEqual(await lookup.json(), {format:{codec:'opus',bitrate:320000,bitDepth:16,channels:2},passcodeRequired: true,approvalRequired:false,accountRequired:false});
   const invalid = await invitation('0'.repeat(48));
   assert.equal(invalid.status, 403); assert.deepEqual(await invalid.json(), {error: 'Invalid invite'});
   assert.equal((await control({action: 'generate', passcode: 'x'.repeat(65)})).status, 400);
@@ -108,7 +108,7 @@ test('protected invites authenticate before signaling or audio and preserve gene
   join(oldCode, replacement.room, 'new passcode'); await message(oldCode, 'joined');
   const unrestricted = await generate('');
   assert.equal(unrestricted.passcodeRequired, false);
-  assert.deepEqual(await invitation(unrestricted.room).then(response => response.json()), {passcodeRequired: false,approvalRequired:false,accountRequired:false});
+  assert.deepEqual(await invitation(unrestricted.room).then(response => response.json()), {format:{codec:'opus',bitrate:320000,bitDepth:16,channels:2},passcodeRequired: false,approvalRequired:false,accountRequired:false});
   const openListener = await connect(app.publicPort, t); join(openListener, unrestricted.room);
   await message(openListener, 'joined'); assert.equal((await status()).passcodeRequired, false);
   const disabledInvite = await generate('temporary code');

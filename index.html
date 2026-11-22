@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SessionStream | Stream your DAW to a browser</title>
-<meta name="description" content="Share live stereo audio from your DAW to any browser. SessionStream is a free VST3 and AU plugin for macOS and Windows, with optional Pro collaboration tools.">
+<meta name="description" content="Share live audio from your DAW to any browser. SessionStream is a free VST3 and AU plugin for macOS and Windows, with optional Pro collaboration tools.">
 <meta name="theme-color" content="#15221a">
 <meta property="og:title" content="SessionStream | Stream your DAW to a browser">
-<meta property="og:description" content="Stream live stereo audio from your DAW to a private browser link. VST3 + AU for macOS and Windows.">
+<meta property="og:description" content="Stream live audio from your DAW to a private browser link. VST3 + AU for macOS and Windows.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://sessionstream.app/">
 <meta property="og:site_name" content="SessionStream">
@@ -69,7 +69,7 @@
 
  <div class="hero-composition">
 <div class="hero-copy">
-<h1 id="intro-title">sessionstream<span class="hero-accessible">: Live stereo audio from your DAW to a browser</span>
+<h1 id="intro-title">sessionstream<span class="hero-accessible">: Live audio from your DAW to a browser</span>
 </h1>
 </div>
 <figure class="hero-instrument">
@@ -81,7 +81,7 @@
 
 </figure>
 <div class="hero-bottom">
-<p class="hero-description">Live stereo audio from your DAW to a private browser link.</p>
+<p class="hero-description">Live audio from your DAW to a private browser link.</p>
 <div class="hero-actions">
 <a class="button primary" href="#download" data-auto-download><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4"/></svg><span data-download-label>Download free</span></a>
 <a class="text-link" href="#product-preview" aria-label="Explore SessionStream">Explore</a>
@@ -141,12 +141,13 @@
 </figure>
 </div>
 <section class="quality-overview" aria-labelledby="quality-title">
-<h3 id="quality-title">Stream quality</h3>
+<h3 id="quality-title">Choose your format.</h3>
 <div class="quality-options">
-<article><h4>Studio <span>Pro</span></h4><p>510 kbps</p></article>
-<article class="quality-balanced"><h4>Balanced <span>Free</span></h4><p>320 kbps</p></article>
-<article><h4>Phone <span>Pro</span></h4><p>96 kbps</p></article>
+<article><h4>Opus</h4><p>96–510 kbps at 48 kHz<br>Mono or stereo</p></article>
+<article class="quality-balanced"><h4>PCM <span>Pro</span></h4><p>16-bit, 24-bit or 32-bit float<br>At your DAW sample rate</p></article>
+<article><h4>Surround <span>Pro</span></h4><p>5.1 or 7.1 over PCM<br>Matching DAW bus required</p></article>
 </div>
+<p class="format-note">Free sends Opus at 320 kbps in stereo. Pro unlocks all formats. PCM follows your DAW sample rate from 44.1 to 192 kHz and uses more bandwidth. Surround playback needs a compatible output device. Other devices monitor in stereo.</p>
 </section>
 </section>
 <section class="privacy-section wrap" id="session-privacy" aria-labelledby="privacy-title">
@@ -166,7 +167,7 @@
 <div class="delivery-heading"><h2 id="delivery-title">Local or Cloud.</h2></div>
 <div class="delivery-choices">
 <article class="delivery-direct"><div class="delivery-name"><h3>Local / Direct</h3><span>Free + Pro</span></div><div class="delivery-flow" aria-label="Your computer sends audio to each listener"><span>Your computer</span><svg viewBox="0 0 32 16" aria-hidden="true"><path d="M1 8h28m-6-6 6 6-6 6"/></svg><span>Each listener</span></div><p>Direct streaming from your computer to each person, on the same network or over the internet. Use it for mix checks and small groups since connection could cause delays or have issues entirely.</p><strong>3 listeners on Free · 8 on Pro</strong></article>
-<article class="delivery-cloud"><div class="delivery-name"><h3>Cloud</h3><span>Pro</span></div><div class="delivery-flow" aria-label="Your computer sends one live stream to Cloud, which distributes it to listeners"><span>Your computer</span><svg viewBox="0 0 32 16" aria-hidden="true"><path d="M1 8h28m-6-6 6 6-6 6"/></svg><span>Cloud</span><svg viewBox="0 0 32 16" aria-hidden="true"><path d="M1 8h28m-6-6 6 6-6 6"/></svg><span>Listeners</span></div><p>Send one live stereo stream. Cloud distributes it to the room, saving upload bandwidth as your class or audience grows.</p><strong>End-to-end encryption on by default · limited by listener-hours</strong></article>
+<article class="delivery-cloud"><div class="delivery-name"><h3>Cloud</h3><span>Pro</span></div><div class="delivery-flow" aria-label="Your computer sends one live stream to Cloud, which distributes it to listeners"><span>Your computer</span><svg viewBox="0 0 32 16" aria-hidden="true"><path d="M1 8h28m-6-6 6 6-6 6"/></svg><span>Cloud</span><svg viewBox="0 0 32 16" aria-hidden="true"><path d="M1 8h28m-6-6 6 6-6 6"/></svg><span>Listeners</span></div><p>Send one live audio stream. Cloud distributes it to the room, saving upload bandwidth as your class or audience grows.</p><strong>End-to-end encryption on by default · limited by listener-hours</strong></article>
 </div>
 </section>
 <section class="pro-feature wrap" id="pro" aria-labelledby="pro-title">
@@ -250,7 +251,7 @@
 <li>End-to-end encryption, on by default</li>
 <li>Reusable custom links</li>
 <li>Waiting room, access controls and optional one-tap feedback</li>
-<li>Studio, Balanced, and Phone quality presets</li>
+<li>Opus bitrate and PCM bit-depth controls, with mono, stereo, 5.1 and 7.1</li>
 <li>Receive audio directly in another DAW</li>
 </ul>
 <button class="button primary" type="button" data-buy="pro">Get Pro</button>
@@ -306,9 +307,9 @@
 <td>Included</td>
 </tr>
 <tr>
-<th scope="row">Sound quality presets</th>
-<td>Balanced</td>
-<td>Studio, Balanced &amp; Phone</td>
+<th scope="row">Sender audio formats</th>
+<td>Opus 320 kbps stereo</td>
+<td>Opus 96–510 kbps mono/stereo. PCM 16/24/32-bit float, mono/stereo/5.1/7.1.</td>
 </tr>
 <tr>
 <th scope="row">DAW-to-DAW Receive</th>

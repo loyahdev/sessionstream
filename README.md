@@ -47,7 +47,7 @@ SessionStream is a VST3 and Audio Units (AU) plugin for producers who teach, col
 
 | | What you get |
 | :--- | :--- |
-| **Live stereo** | Stereo Opus / 48 kHz: Balanced 320 kbps on Free, plus Studio 510 kbps and Phone 96 kbps on Pro. |
+| **Live stereo** | Opus / 48 kHz: 320 kbps stereo on Free; 96, 128, 192, 256, 320 or 510 kbps, mono/stereo on Pro. PCM: 16/24-bit integer or 32-bit float, mono/stereo/5.1/7.1 on Pro at the DAW sample rate (44.1–192 kHz). Surround requires a matching DAW bus. Browser outputs without enough channels use labelled stereo monitoring. |
 | **Independent stream gain** | Adjust what your listener hears without changing your track or master level. |
 | **Simple invitations** | Share a private link: Free up to three listeners; Pro up to eight direct listeners or Cloud metered by listener-hours. Generate a new invitation to invalidate the previous one. |
 | **Browser playback** | Listeners install nothing. They get a waveform, a dB volume control with up to +6 dB boost, mute without disconnecting, and live audio and connection details. |

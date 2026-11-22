@@ -63,7 +63,7 @@ int main() {
     p.setStateInformation(nullptr, 0);
     if (p.transport.enabled.load()) return 7;
     // A large Ableton callback used to discard its own queue after eight packets.
-    StreamTransport burst;burst.enabled=true;juce::AudioBuffer<float> large(2,8192);large.clear();burst.push(large.getReadPointer(0),large.getReadPointer(1),8192,48000);
+    auto burstOwned=std::make_unique<StreamTransport>();auto& burst=*burstOwned;burst.enabled=true;juce::AudioBuffer<float> large(2,8192);large.clear();burst.push(large.getReadPointer(0),large.getReadPointer(1),8192,48000);
     for(int n=0;n<32;n++){if(receiver.waitUntilReady(true,1000)<=0)return 12;if(receiver.read(packet.data(),int(packet.size()),false)!=2072)return 13;}
     if(burst.dropped.load()!=0)return 14;
     // Exercise the actual processor receive branch without a control server:

@@ -23,7 +23,7 @@ Official provider setup: https://developers.cloudflare.com/realtime/sfu/get-star
 | Direct listeners | 3 | 8 |
 | Cloud listeners | Unavailable | Metered by listener-hours; no count cap |
 | Cloud access | Unavailable, including accounts with stored credit | Included allowance and top-up credit |
-| Presets | Balanced | Studio, Balanced, Phone |
+| Sender formats | Opus 320 kbps stereo | Opus 96–510 kbps mono/stereo; PCM 16/24/32-bit float, mono/stereo/5.1/7.1 |
 | Receive, reusable links, approval and feedback | Unavailable | Available |
 
 A Free account with stored credit cannot host Cloud or purchase more top-ups. Credits are retained for Pro reactivation. Legacy monthly metadata cannot grant Free accounts Cloud access or included hours. A Pro downgrade removes included hours, preserves carried-over credit, and closes Cloud media through the existing entitlement-expiry checks. Registered and currently authorized installations are required to host Cloud sessions.

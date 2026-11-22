@@ -1,3 +1,4 @@
+import {convertPCM} from '../web/pcm-format.mjs';
 import {ListenerDelivery} from '../web/listener-delivery.mjs';
 import {CloudAudioDecoder} from '../web/cloud-decoder.mjs';
 import dgram from 'node:dgram';
@@ -52,7 +53,7 @@ export class NativeReceiver {
     void this.connect();
   }
   resolveName(){return cleanName(typeof this.nameSource==='function'?this.nameSource():this.nameSource);}
-  status(){return {phase:this.phase,message:this.message,packets:this.packets,rate:this.rate,transport:this.activeMode};}
+  status(){return {phase:this.phase,message:this.message,packets:this.packets,rate:this.rate,transport:this.activeMode,channels:this.channels||2,format:this.sourceFormat};}
   closePeer(){
     clearTimeout(this.webrtcTimer);
     this.delivery?.close();this.delivery=null;
@@ -62,7 +63,7 @@ export class NativeReceiver {
   }
   emitFrames(samples,sampleRate,channelCount,numberOfFrames){
     if(!validRate(sampleRate)||numberOfFrames<1||channelCount<1)return;
-    const stereo=channelCount>=2;
+    this.channels=channelCount;const stereo=channelCount>=2;
     let offset=0;
     while(offset<numberOfFrames){
       const frames=Math.min(240,numberOfFrames-offset);
@@ -90,7 +91,7 @@ export class NativeReceiver {
       this.udp.send(packet,this.port,'127.0.0.1',()=>{});
     }
   }
-  forwardPCM(raw){if(this.closed||!this.hostLive)return;const packet=parsePacket(raw);if(!packet)return;this.packets++;this.lastPacket=Date.now();this.rate=packet.rate;this.phase='receiving';this.message='Receiving audio';this.udp.send(raw,this.port,'127.0.0.1',()=>{});}
+  forwardPCM(raw){if(this.closed||!this.hostLive)return;const packet=parsePacket(raw);if(!packet)return;this.channels=packet.channels;this.packets++;this.lastPacket=Date.now();this.rate=packet.rate;this.phase='receiving';this.message='Receiving audio';this.udp.send(Buffer.from(convertPCM(raw,32)),this.port,'127.0.0.1',()=>{});}
   scheduleWebrtcFallback(ws,current){
     clearTimeout(this.webrtcTimer);
     if(this.activeMode!=='webrtc'||this.cloudMode||this.closed)return;
@@ -135,7 +136,7 @@ export class NativeReceiver {
     await pc.setRemoteDescription(message.sdp);
     for(const item of this.pendingCandidates)if(item.generation===pc.generation)await pc.addIceCandidate(item.candidate);
     this.pendingCandidates=[];
-    const answer=musicSDP(await pc.createAnswer(),510000);
+    const answer=musicSDP(await pc.createAnswer(),this.sourceFormat?.bitrate||510000,this.sourceFormat?.channels||2);
     await pc.setLocalDescription(answer);
     if(current()&&ws.readyState===WebSocket.OPEN){
       ws.send(JSON.stringify({type:'answer',sdp:pc.localDescription,generation:pc.generation}));
@@ -214,7 +215,7 @@ export class NativeReceiver {
         if(message.type==='name-required'){this.noRetry=true;this.phase='error';this.message='Host requires listener identification.';ws.close();return;}
         if(message.type==='passcode-required'){this.phase='passcode';this.message=message.invalid?'Incorrect passcode':'This session needs a passcode';this.noRetry=true;ws.close();return;}
         if(message.type==='joined'){
-          this.cloudMode=message.delivery==='cloud';this.encrypted=message.encrypted===true;this.needsControl=this.cloudMode||this.encrypted;
+          this.sourceFormat=message.format;this.cloudMode=message.delivery==='cloud';if(message.format?.codec==='pcm')this.activeMode='pcm';this.encrypted=message.encrypted===true;this.needsControl=this.cloudMode||this.encrypted;
           this.iceServers=Array.isArray(message.iceServers)?message.iceServers:[];
           ws.send(JSON.stringify({type:'mode',mode:this.activeMode}));
           this.phase='waiting';this.message='Waiting for host audio';

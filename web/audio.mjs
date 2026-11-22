@@ -27,10 +27,10 @@ export async function createAudio(targetMs=35){
     await within(context.resume(),12000,'The browser audio device did not start. Check your output device and try again.');
     await loadAudioEngine(context.audioWorklet);
   } catch(e) { context.close().catch(()=>{}); throw e; }
-  const node=new AudioWorkletNode(context,'session-pcm',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[2],processorOptions:{targetMs}});
-  node.channelCount=2;node.channelCountMode='explicit';
+  const node=new AudioWorkletNode(context,'session-pcm',{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[8],processorOptions:{targetMs}});
+  node.channelCount=8;node.channelCountMode='explicit';
   const analyser=new AnalyserNode(context,{fftSize:2048,smoothingTimeConstant:.72});
-  analyser.channelCount=2;analyser.channelCountMode='explicit';
+  analyser.channelCount=8;analyser.channelCountMode='explicit';
 
   const splitter=new ChannelSplitterNode(context,{numberOfOutputs:2});
   const analyserL=new AnalyserNode(context,{fftSize:2048,smoothingTimeConstant:.72});
@@ -40,32 +40,17 @@ export async function createAudio(targetMs=35){
   splitter.connect(analyserR,1);
 
   const gain=new GainNode(context,{gain:1});
-  gain.channelCount=2;gain.channelCountMode='explicit';
+  gain.channelCount=8;gain.channelCountMode='explicit';
 
-  const stereoDirect=new GainNode(context,{gain:1});
-  stereoDirect.channelCount=2;stereoDirect.channelCountMode='explicit';
-  const monoSum=new GainNode(context,{gain:0});
-  monoSum.channelCount=1;monoSum.channelCountMode='explicit';monoSum.channelInterpretation='speakers';
-
-  const output=new AudioWorkletNode(context,'session-safety',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[2],channelCount:2,channelCountMode:'explicit'});
-  node.connect(analyser);
-  analyser.connect(gain);
-  gain.connect(stereoDirect);
-  gain.connect(monoSum);
-  stereoDirect.connect(output);
-  monoSum.connect(output);
-
+  const output=new AudioWorkletNode(context,'session-safety',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[8],channelCount:8,channelCountMode:'explicit',channelInterpretation:'discrete'});
+  node.channelInterpretation='discrete';analyser.channelInterpretation='discrete';gain.channelInterpretation='discrete';
+  node.connect(analyser);analyser.connect(gain);gain.connect(output);
   let pcmConnected=true,monoEnabled=false;
   return {
     context,node,analyser,analyserL,analyserR,gain,output,
     resume(){mediaPlayback();return context.resume();},
-    setMono(enabled){
-      const next=!!enabled;if(next===monoEnabled)return;monoEnabled=next;
-      const now=context.currentTime;
-      stereoDirect.gain.cancelScheduledValues(now);monoSum.gain.cancelScheduledValues(now);
-      stereoDirect.gain.setTargetAtTime(next?0:1,now,.012);
-      monoSum.gain.setTargetAtTime(next?1:0,now,.012);
-    },
+    setChannels(channels){const maximum=context.destination.maxChannelCount||2,target=channels>2&&maximum>=channels?channels:Math.min(2,maximum);try{context.destination.channelCount=target;context.destination.channelInterpretation='discrete';}catch{context.destination.channelCount=2;}const actual=context.destination.channelCount;node.port.postMessage({type:'format',outputChannels:actual});return {source:channels,output:actual,downmixed:channels>actual};},
+    setMono(enabled){const next=!!enabled;if(next===monoEnabled)return;monoEnabled=next;output.port.postMessage({type:'mono',value:next});},
     usePCM(enabled){
       if(enabled===pcmConnected)return;
       if(enabled)node.connect(analyser);else node.disconnect(analyser);
@@ -75,12 +60,12 @@ export async function createAudio(targetMs=35){
     reset(){node.port.postMessage({type:'reset'});}
   };
 }
-export function musicSDP(description,bitrate){
+export function musicSDP(description,bitrate,channels=2){
   const lines=description.sdp.split('\r\n');
   const opus=lines.find(l=>/^a=rtpmap:\d+ opus\/48000/i.test(l));
   if(!opus)return description;
   const pt=opus.match(/^a=rtpmap:(\d+)/)[1];
-  const opts={stereo:'1','sprop-stereo':'1',maxaveragebitrate:String(bitrate),useinbandfec:'1',usedtx:'0',maxplaybackrate:'48000'};
+  const opts={stereo:channels===1?'0':'1','sprop-stereo':channels===1?'0':'1',maxaveragebitrate:String(bitrate),useinbandfec:'1',usedtx:'0',maxplaybackrate:'48000'};
   const i=lines.findIndex(l=>l.startsWith(`a=fmtp:${pt} `));
   const values=new Map(i>=0?lines[i].slice(lines[i].indexOf(' ')+1).split(';').map(v=>v.trim().split('=')):[]);
   for(const [k,v] of Object.entries(opts))values.set(k,v);

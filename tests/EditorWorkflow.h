@@ -22,7 +22,7 @@ public:
   case 2:
    if(!find<juce::Component>(editor,"setup-panel")->isVisible())return;
    check(editor.getWidth()==860&&editor.getHeight()==510,"Settings changed window size");check(p.linkExpiryHours==0,"New sessions should not expire");
-   snapshot(editor,"/private/tmp/sessionstream-stable-settings.png");button("quality-balanced")->triggerClick();combo->setSelectedId(2,juce::sendNotificationSync);next();return;
+   snapshot(editor,"/private/tmp/sessionstream-stable-settings.png");find<juce::ComboBox>(editor,"stream-format")->setSelectedId(2,juce::sendNotificationSync);combo->setSelectedId(2,juce::sendNotificationSync);next();return;
   case 3:
    if(p.streamQuality!=1||s.linkMode!="custom"||s.linkBusy||!field("custom-name")->isVisible())return;
    field("custom-name")->setText("12");next();return;
@@ -46,12 +46,12 @@ public:
   case 12:
    if(!button("stream-toggle")->isEnabled())return;button("stream-toggle")->triggerClick();next();return;
   case 13:
-   if(!s.live||s.link.isEmpty()||!s.passcodeRequired||button("quality-balanced")->isEnabled()||combo->isEnabled()||field("session-passcode")->isEnabled())return;
+   if(!s.live||s.link.isEmpty()||!s.passcodeRequired||find<juce::ComboBox>(editor,"stream-format")->isEnabled()||combo->isEnabled()||field("session-passcode")->isEnabled())return;
    check(find<juce::Component>(editor,"setup-panel")->isVisible(),"Starting navigated away from Settings");
-   check(!button("quality-balanced")->isEnabled()&&!combo->isEnabled()&&!field("session-passcode")->isEnabled(),"Session settings are not locked");
-   button("session-page")->triggerClick();next();return;
+   check(!find<juce::ComboBox>(editor,"stream-format")->isEnabled()&&!combo->isEnabled()&&!field("session-passcode")->isEnabled(),"Session settings are not locked");
+   if(!button("session-page")->isEnabled()||s.generating)return;button("session-page")->triggerClick();next();return;
   case 14:
-   if(!onSession()||!button("qr-code")->isEnabled())return;
+   if(!onSession()||!button("qr-code")->isEnabled()){if(++errorWait%100==0)std::cout<<"UI_WAIT session="<<onSession()<<" qr="<<button("qr-code")->isEnabled()<<" page="<<button("session-page")->isEnabled()<<" generating="<<s.generating<<" live="<<s.live<<" link="<<s.link.isNotEmpty()<<std::endl;return;}
    check(s.streamStartedAt>0&&s.link.endsWith("/qa-studio"),"Wrong invite or missing timer");savedLink=s.link;
    check(button("stream-toggle")->getButtonText()=="Pause streaming","Unclear streaming action");button("send-mode")->triggerClick();button("qr-code")->triggerClick();next();return;
   case 15:
@@ -63,7 +63,7 @@ public:
    if(s.live||p.isSending())return;check(s.link==savedLink&&s.hasSession,"Pause replaced the invite");
    if(button("stream-toggle")->getButtonText()!="Resume streaming")return;snapshot(editor,"/private/tmp/sessionstream-stable-paused.png");button("session-setup")->triggerClick();next();return;
   case 18:
-   if(!find<juce::Component>(editor,"setup-panel")->isVisible())return;check(!combo->isEnabled()&&!button("quality-balanced")->isEnabled(),"Paused settings can silently replace an invite");button("session-page")->triggerClick();next();return;
+   if(!find<juce::Component>(editor,"setup-panel")->isVisible())return;check(!combo->isEnabled()&&!find<juce::ComboBox>(editor,"stream-format")->isEnabled(),"Paused settings can silently replace an invite");button("session-page")->triggerClick();next();return;
   case 19:
    if(!onSession())return;button("stream-toggle")->triggerClick();next();return;
   case 20:
