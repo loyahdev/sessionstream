@@ -40,7 +40,7 @@ export class Account {
   async signOut() {
     ++this.generation;clearTimeout(this.refreshTimer);this.pending=null;this.exchanging=false;this.restoring=false;
     this.identity=null;this.accessToken=null;this.refreshToken=null;this.message='';
-    try{await this.store?.clear();return {ok:true};}
+    try{await this.store?.clear({interactive:true});return {ok:true};}
     catch{this.message='Could not remove saved sign-in. Try signing out again.';return {ok:false};}
   }
   close(){++this.generation;clearTimeout(this.refreshTimer);}
@@ -52,7 +52,7 @@ export class Account {
       if(generation!==this.generation)return;
       if(!refreshToken)return;
       this.refreshToken=refreshToken;await this.renew(generation);
-    }catch{if(generation===this.generation)this.message='Saved sign-in is unavailable. You can sign in again.';}
+    }catch(error){if(generation===this.generation)this.message=error.code==='SECURE_STORAGE_AUTH_REQUIRED'?'Saved sign-in needs Keychain approval. Use Sign in to reconnect.':'Saved sign-in is unavailable. You can sign in again.';}
     finally{if(generation===this.generation)this.restoring=false;}
   }
   schedule(generation,delay) {
@@ -77,14 +77,14 @@ export class Account {
       }else{this.message='Account connection unavailable. Retrying automatically.';this.schedule(generation,30000);}
     }
   }
-  async accept(token,generation) {
+  async accept(token,generation,{interactive=false}={}) {
     if(typeof token.access_token!=='string'||token.access_token.length>16384||token.token_type?.toLowerCase()!=='bearer')throw Error();
     if(generation!==this.generation)return false;
     // Persist rotated refresh tokens before user-info: a temporary profile
     // outage must not leave the old, already consumed token on this device.
     let saveFailed=false;
     if(typeof token.refresh_token==='string'&&token.refresh_token.length>0)this.refreshToken=token.refresh_token;
-    if(this.refreshToken){try{await this.store?.write(this.refreshToken);}catch{saveFailed=true;}}
+    if(this.refreshToken){try{await this.store?.write(this.refreshToken,{interactive});if(interactive&&this.store&&(await this.store.read())!==this.refreshToken)throw Error('Saved login could not be restored silently');}catch{saveFailed=true;}}
     if(generation!==this.generation)return false;
     const user=await this.json('/oauth/userinfo',{headers:{Authorization:`Bearer ${token.access_token}`}});
     if(typeof user.sub!=='string'||!user.sub)throw Error();
@@ -94,7 +94,7 @@ export class Account {
     this.accessToken=token.access_token;
     this.identity={sub:user.sub,name:name.replace(/[\x00-\x1f\x7f]/g,'').trim().slice(0,64),expires:this.now()+seconds*1000};this.message='';
     if(this.refreshToken){
-      if(saveFailed)this.message='Signed in, but this device could not save your login.';
+      if(saveFailed)this.message='Signed in for this session. Keychain approval is needed to remember this device.';
       this.schedule(generation,Math.max(1000,seconds*1000-60000));
     }else this.message='Signed in for this session. Enable offline_access in Clerk to remember this device.';
     return true;
@@ -111,7 +111,7 @@ export class Account {
     try{
       const token=await this.json('/oauth/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
         body:new URLSearchParams({grant_type:'authorization_code',client_id:this.clientId,code,redirect_uri:pending.redirectUri,code_verifier:pending.verifier})});
-      return await this.accept(token,pending.generation);
+      return await this.accept(token,pending.generation,{interactive:true});
     }catch{if(pending.generation===this.generation)this.message='Sign-in failed. Try again.';return false;}
     finally{if(pending.generation===this.generation)this.exchanging=false;}
   }

@@ -28,7 +28,7 @@ test('real host session forwards stereo PCM to a receiver and enforces its passc
  for(let i=0;i<20;i++){source.send(tonePacket(i,256,48000,12345),app.udpPort,'127.0.0.1');await sleep(2);}
  await until(()=>packets.length>=10);assert.equal(receiver.phase,'receiving');assert.equal(parsePacket(packets[0]).rate,48000);assert.equal(parsePacket(packets[0]).channels,2);
  assert(packets.some(packet=>Math.abs(packet.readFloatLE(24)-packet.readFloatLE(28))>.01));
- const before=packets.length;await control('stop');await sleep(50);
+ await control('stop');await sleep(50);const before=packets.length;
  for(let i=20;i<25;i++)source.send(tonePacket(i,256,48000,12345),app.udpPort,'127.0.0.1');await sleep(100);assert.equal(packets.length,before);
  now+=24*3600000+1;await (await fetch(studio+'/api/studio')).json();await until(()=>receiver.phase==='error');assert.match(receiver.message,/expired/);assert(receiver.noRetry);
  receiver.close();denied.close();

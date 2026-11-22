@@ -10,13 +10,10 @@ if [[ ! -f vendor/JUCE/CMakeLists.txt ]]; then
   tar -xzf "$archive" -C vendor
   mv vendor/JUCE-8.0.12 vendor/JUCE
 fi
-if [[ -d /Library/Developer/CommandLineTools ]]; then
-  export DEVELOPER_DIR=/Library/Developer/CommandLineTools
-  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=13.5 -DCMAKE_C_COMPILER="$DEVELOPER_DIR/usr/bin/clang" -DCMAKE_CXX_COMPILER="$DEVELOPER_DIR/usr/bin/clang++"
-else
-  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=13.5
-fi
-cmake --build build --config Release -j 4
+cmake_command="${CMAKE_PATH:-$(command -v cmake)}"
+export DEVELOPER_DIR="${DEVELOPER_DIR:-$(xcode-select -p)}"
+"$cmake_command" -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=13.5 -DCMAKE_C_COMPILER="$(xcrun --find clang)" -DCMAKE_CXX_COMPILER="$(xcrun --find clang++)"
+"$cmake_command" --build build --config Release -j 4
 zsh scripts/bundle-runtime.sh
 plugin='build/SessionStream_artefacts/Release/VST3/SessionStream.vst3'
 codesign --force --deep --sign - "$plugin"

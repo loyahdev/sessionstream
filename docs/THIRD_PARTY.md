@@ -28,3 +28,8 @@ JIVE 1.2.0, commit 89d5787a762e674ee8b7141031a99e6743948f05, by James Johnson. M
 DM Sans and Manrope from the official Google Fonts repository, under SIL Open Font License 1.1. The plugin embeds static weight instances for offline use; the listener page bundles variable WOFF fonts. Licenses: plugin/assets/DMSans-OFL.txt and plugin/assets/Manrope-OFL.txt. Sources: https://github.com/google/fonts/tree/main/ofl/dmsans and https://github.com/google/fonts/tree/main/ofl/manrope.
 
 The older Inter asset/license is retained in source for compatibility but is no longer used by the current plugin skin.
+
+## Cloud audio codecs
+
+- opusscript 0.1.1: MIT JavaScript bindings, with libopus 1.4 compiled to WebAssembly. Keep the package LICENSE and libopus BSD notices with the bundled module. https://github.com/abalabahaha/opusscript
+- opus-decoder 0.7.12 and @wasm-audio-decoders/common 9.0.7: MIT. Embedded libopus uses its upstream BSD license. @eshaz/web-worker and simple-yenc retain their package licenses. These modules are bundled offline, rather than fetched from a CDN at playback time. https://github.com/eshaz/wasm-audio-decoders

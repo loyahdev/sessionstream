@@ -1,0 +1,13 @@
+# SessionStream-only reset and installer permission step
+
+The user requested resetting SessionStream's saved Keychain credentials and asking for access during installation when needed. The previous proposed automatic ACL-rewrite patch remains unapplied.
+
+The reset was performed against generic-password items whose service is exactly audio.sessionstream.oauth. It clears SessionStream OAuth, link and installation credentials; the next login must authenticate again and may re-enroll the installation. No other service is selected. An independent metadata-only check confirmed zero matching entries afterward. No credential values were printed.
+
+The native helper now exposes three macOS maintenance actions: service-check (silent), service-authorize (macOS interaction allowed only for explicit installer permission), and service-reset (SessionStream service only). Checks enumerate metadata and read each matching item separately, discarding secret values inside the helper. They never emit token values. Reset explicitly uses MatchLimitAll because legacy file-based macOS Keychain defaults deletion to one match.
+
+After a successful plugin installation, setup invokes the installed helper, so permission is requested for the executable the plugin actually uses. If existing saved entries cannot be read silently (exit 3), an optional dialog offers Allow Keychain Access or Not Now. macOS handles any password/Always Allow prompt. After approval, a new noninteractive helper process verifies persistent access before setup reports success. Skipping/denying permission does not fail plugin installation. If no saved entries exist, no permission is requested; macOS can ask during a later sign-in if necessary. The installer does not collect Keychain passwords, reset credentials automatically, or rewrite ACLs.
+
+Native test credentials survived a fresh helper process and were then individually cleared. All 19 targeted account, reconnect, secure-store and quality-policy tests passed. The setup Swift sources compiled with full Xcode and retain the designed DMG, setup and uninstaller. Real account sign-in and Ableton restart still require user validation; no DAW installation or account login was performed by the agent.
+
+Final packaging checks passed: both plugin bundle signatures, both DMG setup/uninstaller signatures, exact embedded PKG hash, compiled permission/persistent-read messages and final setup checksums. The exact packaged signed helper saved a randomly named test login and a fresh helper process restored it; the test entry was cleared afterward. The replacement DMG is artifacts/setup/SessionStream-Setup-1.0.2-mac-arm64.dmg. The existing Windows payload is retained because this permission step is macOS-specific.

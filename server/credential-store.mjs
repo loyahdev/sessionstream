@@ -11,21 +11,21 @@ export class CredentialStore {
   constructor(issuer,clientId,{binary=defaultBinary}={}) {
     this.binary=binary;this.key=createHash('sha256').update(`${issuer}\n${clientId}`).digest('hex');this.queue=Promise.resolve();
   }
-  run(action,value='') {
+  run(action,value='',{interactive=false}={}) {
     const operation=this.queue.then(()=>new Promise((resolve,reject)=>{
       if(Buffer.byteLength(value)>5120)return reject(Error('Credential is too large'));
-      const child=spawn(this.binary,[action,this.key],{stdio:['pipe','pipe','ignore'],windowsHide:true});
+      const child=spawn(this.binary,[action,this.key,...(interactive?['--interactive']:[])],{stdio:['pipe','pipe','ignore'],windowsHide:true});
       const chunks=[];let size=0,failed=false;
-      const fail=()=>{if(!failed){failed=true;reject(Error('Secure credential storage is unavailable'));}};
-      const timer=setTimeout(()=>{child.kill();fail();},15000);timer.unref();
-      child.on('error',fail);child.stdin.on('error',fail);
+      const fail=(authRequired=false)=>{if(!failed){failed=true;const error=Error(authRequired?'Saved sign-in needs Keychain approval. Use Sign in to reconnect.':'Secure credential storage is unavailable');error.code=authRequired?'SECURE_STORAGE_AUTH_REQUIRED':'SECURE_STORAGE_UNAVAILABLE';reject(error);}};
+      const timer=setTimeout(()=>{child.kill();fail();},interactive?120000:15000);timer.unref();
+      child.on('error',()=>fail());child.stdin.on('error',()=>fail());
       child.stdout.on('data',chunk=>{size+=chunk.length;if(size>5120){child.kill();fail();}else chunks.push(chunk);});
-      child.on('close',code=>{clearTimeout(timer);if(code!==0)fail();else if(!failed)resolve(Buffer.concat(chunks).toString('utf8'));});
+      child.on('close',code=>{clearTimeout(timer);if(code!==0)fail(code===3);else if(!failed)resolve(Buffer.concat(chunks).toString('utf8'));});
       child.stdin.end(value);
     }));
     this.queue=operation.catch(()=>{});return operation;
   }
-  async read(){const value=await this.run('read');if(!value)return null;const data=JSON.parse(value);return typeof data.refreshToken==='string'?data.refreshToken:null;}
-  write(refreshToken){return this.run('write',JSON.stringify({refreshToken}));}
-  clear(){return this.run('clear');}
+  async read(options){const value=await this.run('read','',options);if(!value)return null;const data=JSON.parse(value);return typeof data.refreshToken==='string'?data.refreshToken:null;}
+  write(refreshToken,options){return this.run('write',JSON.stringify({refreshToken}),options);}
+  clear(options){return this.run('clear','',options);}
 }

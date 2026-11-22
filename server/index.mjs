@@ -1,6 +1,8 @@
 import {expiredPage} from './expired-page.mjs';
+import {StreamDelivery} from './stream-delivery.mjs';
 import {ListenerAdmission} from './listener-admission.mjs';
 import {pluginSignInURL, accountResultPage} from './account-pages.mjs';
+import {AccountCompletion} from './account-completion.mjs';
 import {DashboardClient} from './dashboard-client.mjs';
 import http from 'node:http';
 import {sharePrefix,validName,normalizeName} from './link-names.mjs';
@@ -48,6 +50,8 @@ export async function createStreamServer(options = {}) {
   const testWorker=!!process.env.NODE_TEST_CONTEXT;
   const config=accountConfig();
   const account = options.account || new Account({...config,autoRestore:false,store:new CredentialStore(config.issuer,config.clientId)});
+  const accountCompletion=new AccountCompletion();
+  const accountEpoch=()=>account.status().phase==='signed-in'?(account.generation??0):null;
   const linkAuth=new LinkAuthorization(account,options.linkStore||new CredentialStore(config.issuer,`${config.clientId}|custom-links`),options.linkOptions);
   const links=new LinkClient(account,linkAuth,{preferences:path.join(options.runtimeDir||path.join(root,'.runtime'),'link-preferences.json'),...options.linkOptions});
   const receivers=new Map(),receiverCredentials=new Map();
@@ -56,7 +60,7 @@ export async function createStreamServer(options = {}) {
   const instance = randomBytes(16).toString('hex');
   let tunnel={phase:'starting',url:''},inviteRequest=null;
   let room = randomBytes(24).toString('hex'), publisher = null, live = false, title = 'Studio session';
-  let native = null, owner = null, inviteSource = null, lease = 0;
+  let native = null, delivery=null, deliveryMode='direct', extraEncryption=false, cloudStarting=false, owner = null, inviteSource = null, lease = 0;
   const lifetime = new EngineLifetime(options.lifetimeOptions);
   const log=options.log||(()=>{});
   const inviteAccess = new InviteAccess();
@@ -86,10 +90,12 @@ export async function createStreamServer(options = {}) {
     return servers;
   };
   const notifyHost = m => native ? native.handle(m) : send(publisher,m);
-  const info = () => ({...sessionPolicy.status(),native:!!native, owner, inviteSource, engine:native?.buffer.stats(), engineError:native?.error, type:'status', live, title, hostName:hostName(), listeners:peers.size, audio:Date.now()-lastAudio < 1500 ? audio : null,
+  const info = () => ({...sessionPolicy.status(),delivery:deliveryMode,encrypted:extraEncryption,native:!!native, owner, inviteSource, engine:native?.buffer.stats(), engineError:native?.error, type:'status', feedbackEnabled:admission.feedback&&dashboard.plan==='pro', live, title, hostName:hostName(), listeners:peers.size, audio:Date.now()-lastAudio < 1500 ? audio : null,
     packets, drops, relayConfigured:ice().length > 1});
-  const dashboard=new DashboardClient({account,enabled:options.dashboardReporting??(!options.account&&!testWorker),...options.dashboardOptions,onDenied:message=>{accountError=message;native?.stop();live=false;owner=null;sessionPolicy.stop();listenerHealth.clear();for(const p of peers.values())send(p,{type:'publisher-left'});},onLimits:limit=>{if(dashboard.plan!=='pro'&&(admission.approval||admission.requireAccount)&&live){accountError='Pro is required for the current listener controls.';native?.stop();live=false;stopReporting();}for(const p of [...peers.values()].slice(limit))p.close(4009,'Session listener limit changed');}});
-  const stopReporting=()=>{void dashboard.stopped();};
+  const dashboard=new DashboardClient({account,enabled:options.dashboardReporting??(!options.account&&!testWorker),...options.dashboardOptions,onDenied:message=>{accountError=message;native?.stop();live=false;owner=null;sessionPolicy.stop();listenerHealth.clear();for(const p of peers.values())send(p,{type:'publisher-left'});},onLimits:limit=>{if(dashboard.plan!=='pro'&&(admission.approval||admission.requireAccount)&&live){accountError='Pro is required for the current listener controls.';native?.stop();live=false;stopReporting();}if(deliveryMode==='direct')for(const p of [...peers.values()].slice(limit))p.close(4009,'Session listener limit changed');}});
+  const stopReporting=()=>{void dashboard.stopped();void delivery?.pause();};
+  const listenerLimit=()=>deliveryMode==='cloud'?(dashboard.plan==='pro'?Infinity:3):dashboard.listenerLimit;
+  async function beginStreaming(id){cloudStarting=true;try{await delivery?.start();source=id;lease=Date.now();lastAudio=0;live=true;native.start([...peers.entries()].filter(([,p])=>native.needsControl||p.mode==='webrtc').map(([id])=>id));}catch(error){accountError=error.message;live=false;owner=null;sessionPolicy.stop();stopReporting();throw Object.assign(error,{status:503});}finally{cloudStarting=false;}}
   const broadcastStatus = () => { send(publisher, info()); for (const p of peers.values()) send(p, info()); };
   const privateRequest = req => !req.headers['cf-connecting-ip'] && !req.headers['x-forwarded-for'] && !req.headers.forwarded
       && /^((127\.0\.0\.1|localhost)(:\d+)?)$/.test(req.headers.host || '');
@@ -98,6 +104,7 @@ export async function createStreamServer(options = {}) {
     receivers.get(id)?.close();receivers.delete(id);
     if (owner === id) { native?.stop();sessionPolicy.stop(); live = false; stopReporting(); owner = null; listenerHealth.clear(); }
     if (inviteSource === id) {
+      void delivery?.end().catch(e=>log('cloud',e.message));
       inviteSource = null; inviteRequest = null; hostNameAccount=null; admission.reset();for(const p of waiting.values())p.close(4003,'Invite changed');waiting.clear(); room = randomBytes(24).toString('hex');
       inviteAccess.clear();sessionPolicy.end(); listenerHealth.clear();
       source = null; lastAudio = 0;
@@ -114,7 +121,7 @@ export async function createStreamServer(options = {}) {
     expireInvite();
     res.setHeader('Referrer-Policy','no-referrer'); res.setHeader('X-Content-Type-Options','nosniff');
     res.setHeader('Cache-Control','no-store');
-    res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' ws://127.0.0.1:*; media-src 'self' blob:; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+    res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self' ws://127.0.0.1:*; media-src 'self' blob:; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     const currentInvite=!tunnel.url||!sharePrefix(new URL(tunnel.url).pathname)||tunnel.invite===room;
     const url = new URL(req.url, 'http://localhost');
     const prefix=sharePrefix(url.pathname);
@@ -157,17 +164,17 @@ export async function createStreamServer(options = {}) {
       const body=await readJSON(req,1024);if(body.error)return reply(body.status,{error:body.error});const m=body.value;
       if(!m||!Number.isInteger(m.source)||!(inviteSource===m.source||(m.action==='settings'&&inviteSource===null&&lifetime.clients.has(m.source))))return reply(403,{error:'Only the session host can manage listeners.'});
       if(!['settings','accept','reject','revoke'].includes(m.action))return reply(400,{error:'Invalid listener action.'});
-      const disabling=m.action==='settings'&&m.approval===false&&m.requireAccount===false;
+      const disabling=m.action==='settings'&&m.approval===false&&m.requireAccount===false&&m.feedback!==true;
       if(!disabling){const access=await dashboard.requirePro();if(!access.ok)return reply(403,{error:access.error});}
       try{
         if(m.action==='settings'){
           admission.configure(m);accessOwner=m.source;
           for(const record of admission.records.values()){
             if(admission.requireAccount&&!record.verified&&!['rejected','revoked'].includes(record.status)){const p=peers.get(record.connection)||waiting.get(record.connection);if(p){send(p,{type:'sign-in-required'});p.close(4015,'Sign in to request access.');}record.status='account-required';}
-            else if(!admission.approval&&record.status==='pending'&&peers.size<dashboard.listenerLimit){record.status='approved';const p=waiting.get(record.connection);if(p)admitListener(p);}
+            else if(!admission.approval&&record.status==='pending'&&peers.size<listenerLimit()){record.status='approved';const p=waiting.get(record.connection);if(p)admitListener(p);}
           }
         }else{
-          const previous=admission.find(m.id);if(m.action==='accept'&&peers.size>=dashboard.listenerLimit&&previous?.connection)return reply(409,{error:'The session listener limit has been reached.'});
+          const previous=admission.find(m.id);if(m.action==='accept'&&peers.size>=listenerLimit()&&previous?.connection)return reply(409,{error:'The session listener limit has been reached.'});
           const record=admission.decide(m.id,m.action),p=waiting.get(record.connection)||peers.get(record.connection);
           if(m.action==='accept'){if(p)admitListener(p);}
           else if(p){peers.delete(p.id);waiting.delete(p.id);native?.handle({type:'peer-left',id:p.id});listenerHealth.remove(p.id);send(p,{type:m.action==='revoke'?'access-revoked':'access-rejected'});p.close(4014,m.action==='revoke'?'The host revoked your access.':'The host declined your request.');}
@@ -205,7 +212,7 @@ export async function createStreamServer(options = {}) {
       if (!studio || !headerAuth(req) || req.headers.origin !== `http://${req.headers.host}`) return reply(403,{error:'Unauthorized'});
       const body = await readJSON(req,512);
       if (body.error) return reply(body.status,{error:body.error});
-      if (body.value?.action === 'sign-out'){reconnectFlow=null;native?.stop();live=false;stopReporting();owner=null;sessionPolicy.stop();await dashboard.stopped();for(const receiver of receivers.values())receiver.close();receivers.clear();await linkAuth.clear().catch(()=>{});return reply(200,await account.signOut());}
+      if (body.value?.action === 'sign-out'){accountCompletion.clear();reconnectFlow=null;native?.stop();live=false;stopReporting();await delivery?.end();owner=null;sessionPolicy.stop();await dashboard.stopped();for(const receiver of receivers.values())receiver.close();receivers.clear();await linkAuth.clear().catch(()=>{});return reply(200,await account.signOut());}
       if (['sign-in','reconnect'].includes(body.value?.action)){
         const reconnect=body.value.action==='reconnect'||!!reconnectFlow;
         if(reconnect&&live)return reply(200,{ok:false,error:'Stop streaming before reconnecting.'});
@@ -226,8 +233,16 @@ export async function createStreamServer(options = {}) {
       }
       return reply(400,{error:'Unknown account action'});
     }
+    if(url.pathname.startsWith('/auth/complete/')){
+      if(!studio||req.method!=='GET')return reply(404,{error:'Not found'});
+      const ok=accountCompletion.get(url.pathname.slice('/auth/complete/'.length),accountEpoch());
+      res.writeHead(ok?200:410,{'Content-Type':'text/html; charset=utf-8','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; img-src https://sessionstream.app; font-src https://sessionstream.app; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"});
+      return res.end(accountResultPage(ok,{expired:!ok}));
+    }
     if (url.pathname === '/auth/callback') {
       if (!studio || req.method !== 'GET' || url.searchParams.getAll('state').length !== 1 || url.searchParams.getAll('code').length > 1) return reply(404,{error:'Not found'});
+      const completed=accountCompletion.lookup(url.searchParams,accountEpoch());
+      if(completed){res.writeHead(303,{Location:'/auth/complete/'+completed});return res.end();}
       const linkCallback=linkAuth.matches(url.searchParams);
       const reconnect=!linkCallback&&reconnectFlow?.state===url.searchParams.get('state')?reconnectFlow:null;
       const ok=linkCallback?await links.callback(url.searchParams):await account.callback(url.searchParams);
@@ -236,7 +251,8 @@ export async function createStreamServer(options = {}) {
         const result=await dashboard.reconnectAfterSignIn(reconnect?.previous);
         accountError=result.ok?'':result.error;
       }
-      res.writeHead(ok?200:400,{'Content-Type':'text/html; charset=utf-8','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"});
+      if(ok){const receipt=accountCompletion.remember(url.searchParams,accountEpoch());res.writeHead(303,{Location:'/auth/complete/'+receipt});return res.end();}
+      res.writeHead(400,{'Content-Type':'text/html; charset=utf-8','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; img-src https://sessionstream.app; font-src https://sessionstream.app; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"});
       return res.end(accountResultPage(ok));
     }
     if (url.pathname === '/api/invite' && req.method === 'POST') {
@@ -261,8 +277,10 @@ export async function createStreamServer(options = {}) {
       if(!['generate','start','stop','lease','end','handoff'].includes(m.action))return reply(400,{error:'Unknown action'});
       if(m.requestId!==undefined&&(typeof m.requestId!=='string'||!/^[a-f0-9-]{32,36}$/.test(m.requestId)))return reply(400,{error:'Invalid request ID'});
       if(!validPasscode(m.passcode))return reply(400,{error:'Passcode must be at most 64 characters.'});
+      if(m.delivery!==undefined&&!['direct','cloud'].includes(m.delivery)||m.encrypted!==undefined&&typeof m.encrypted!=='boolean')return reply(400,{error:'Invalid audio delivery settings.'});
       if(!validSessionSettings(m.quality,m.expiresInHours))return reply(400,{error:'Invalid session settings.'});
-      if(m.action==='generate'&&m.quality&&m.quality!=='studio'){const access=await dashboard.requirePro();if(!access.ok)return reply(403,{error:access.error});}
+      const requestedQuality=m.quality||(['start','handoff'].includes(m.action)&&sessionPolicy.created?sessionPolicy.quality:'balanced');
+      if(['generate','start','handoff'].includes(m.action)&&requestedQuality!=='balanced'){if(account.status().phase!=='signed-in')return reply(403,{error:'SessionStream Pro is required for this quality preset.'});const access=await dashboard.requirePro();if(!access.ok)return reply(403,{error:access.error});}
       if((m.action==='start'||m.action==='handoff')&&sessionPolicy.expired)return reply(410,{error:'This invite has expired. Create a new invite.'});
       if(m.action==='end'){
         if(inviteSource!==null&&inviteSource!==m.source)return reply(403,{error:'Only the session host can end this session.'});
@@ -275,9 +293,9 @@ export async function createStreamServer(options = {}) {
         owner=m.source;inviteSource=m.source;accessOwner=m.source;source=m.source;lease=Date.now();lastAudio=0;
         native.buffer.reset();
         if(!live){
-          if(admission.approval||admission.requireAccount||links.mode==='custom'){const access=await dashboard.requirePro();if(!access.ok)return reply(403,{error:access.error});}
+          if(admission.approval||admission.requireAccount||admission.feedback||links.mode==='custom'){const access=await dashboard.requirePro();if(!access.ok)return reply(403,{error:access.error});}
           const approval=await dashboard.authorizeStart();if(!approval.ok){accountError=approval.error;return reply(approval.status||409,{error:approval.error});}
-          accountError='';sessionPolicy.start();live=true;native.start([...peers.entries()].filter(([,p])=>p.mode==='webrtc').map(([id])=>id));
+          accountError='';sessionPolicy.start();await beginStreaming(m.source);
         }
         log('control','handoff');
         broadcastStatus();return reply(200,{ok:true});
@@ -291,7 +309,7 @@ export async function createStreamServer(options = {}) {
         const repeated=m.action==='generate'&&m.requestId&&inviteSource===m.source&&inviteRequest===m.requestId;
         const creating=(m.action==='generate'&&!repeated)||newOwner;
         const hasPreferences=typeof m.listenerApproval==='boolean'&&typeof m.listenerAccounts==='boolean';
-        if(creating&&(m.linkType==='custom'||hasPreferences&&(m.listenerApproval||m.listenerAccounts))){
+        if(creating&&(m.linkType==='custom'||hasPreferences&&(m.listenerApproval||m.listenerAccounts||m.listenerFeedback===true))){
           const access=await dashboard.requirePro();
           if(!access.ok)return reply(403,{error:access.error});
         }
@@ -307,12 +325,14 @@ export async function createStreamServer(options = {}) {
           return reply(409,{error:'Claim or authorize your custom link first.'});
         owner=m.source;lease=Date.now();
         if(creating){
+          const mode=m.delivery||'direct';if(mode==='cloud'){const status=await dashboard.cloud('status');if(!status.ok||!status.canCloud||!status.configured)return reply(status.status||402,{error:status.error||'Add Cloud listener-hours before using Cloud.'});}
+          await delivery?.configure({mode,encrypted:m.encrypted===true,quality:requestedQuality});deliveryMode=mode;admission.uncapped=mode==='cloud';extraEncryption=m.encrypted===true;native.needsControl=mode==='cloud'||extraEncryption;native.cloudMode=mode==='cloud';dashboard.mode=mode;
           if(hasPreferences||accessOwner!==m.source){
-            admission.configure({approval:m.listenerApproval===true,requireAccount:m.listenerAccounts===true});
+            admission.configure({approval:m.listenerApproval===true,requireAccount:m.listenerAccounts===true,feedback:m.listenerFeedback===true});
             accessOwner=m.source;
           }
           hostNameAccount=m.showHostName===true&&account.status().phase==='signed-in'?account.identity?.sub:null;inviteSource=m.source;inviteRequest=m.requestId||null;native.stop();live=false;stopReporting();listenerHealth.clear();for(const p of peers.values())p.close(4003,'Invite changed');admission.reset();for(const p of waiting.values())p.close(4003,'Invite changed');waiting.clear();room=randomBytes(24).toString('hex');inviteAccess.set(m.passcode);sessionPolicy.create(m.quality,m.expiresInHours);native.setQuality(sessionPolicy.quality);}
-        if(m.action==='start'&&!live){if(admission.approval||admission.requireAccount||links.mode==='custom'){const access=await dashboard.requirePro();if(!access.ok)return reply(403,{error:access.error});}const approval=await dashboard.authorizeStart();if(!approval.ok){accountError=approval.error;return reply(approval.status||409,{error:approval.error});}accountError='';sessionPolicy.start();source=m.source;lastAudio=0;live=true;native.start([...peers.entries()].filter(([,p])=>p.mode==='webrtc').map(([id])=>id));}
+        if(m.action==='start'&&!live){if(admission.approval||admission.requireAccount||admission.feedback||links.mode==='custom'){const access=await dashboard.requirePro();if(!access.ok)return reply(403,{error:access.error});}const approval=await dashboard.authorizeStart();if(!approval.ok){accountError=approval.error;return reply(approval.status||409,{error:approval.error});}accountError='';sessionPolicy.start();await beginStreaming(m.source);}
       }
       if(m.action==='generate'||m.action==='start')options.onInviteRequested?.();
       broadcastStatus();return reply(200,{ok:true});
@@ -322,7 +342,7 @@ export async function createStreamServer(options = {}) {
       for (const p of peers.values()) p.close(4003,'Invite changed');
       admission.reset();for(const p of waiting.values())p.close(4003,'Invite changed');waiting.clear(); room = randomBytes(24).toString('hex'); inviteRequest = null; inviteAccess.clear();sessionPolicy.create(); listenerHealth.clear(); options.onInviteRequested?.(); return reply(200,{ok:true});
     }
-    const allowed = ['/theme-init.js','/brand-mark.svg','/fonts/DMSans.woff','/fonts/Manrope.woff','/app.mjs','/audio.mjs','/pcm-worklet.mjs','/peak-limiter.mjs','/style.css','/favicon.svg'];
+    const allowed = ['/theme-init.js','/brand-mark.svg','/fonts/DMSans.woff','/fonts/Manrope.woff','/app.mjs','/cloud-peer.mjs','/cloud-crypto.mjs','/listener-delivery.mjs','/vendor/cloud-decoder.mjs','/audio.mjs','/pcm-worklet.mjs','/peak-limiter.mjs','/style.css','/favicon.svg'];
     const isPage = url.pathname === '/' || url.pathname === '/listen' || (studio && url.pathname === '/studio');
     if (req.method !== 'GET' || (!isPage && !allowed.includes(url.pathname))) return reply(404,{error:'Not found'});
     try {
@@ -336,7 +356,7 @@ export async function createStreamServer(options = {}) {
       res.writeHead(200,{'Content-Type':mime[path.extname(file)]}); res.end(contents);
     } catch { reply(500,{error:'Unable to load page'}); }
   }
-  const failedRequest=(error,res)=>{log('http error',error);res.writeHead(500);res.end();};
+  const failedRequest=(error,res)=>{log('http error',error);res.writeHead(error.status||500,{'Content-Type':'application/json'});res.end(JSON.stringify({error:error.status?error.message:'This request could not be completed.'}));};
   const pub = http.createServer((req,res)=>handler(req,res,false).catch(error=>failedRequest(error,res)));
   const local = http.createServer((req,res)=>{
     const run=()=>handler(req,res,true).catch(error=>failedRequest(error,res));
@@ -358,9 +378,9 @@ export async function createStreamServer(options = {}) {
   upgrade(pub,false); upgrade(local,true);
   function admitListener(ws){
     if(ws.readyState!==WebSocket.OPEN||ws.requestRoom!==room)return;
-    if(peers.size>=dashboard.listenerLimit){ws.close(4009,'Session is full');return;}
+    if(peers.size>=listenerLimit()){ws.close(4009,'Session is full');return;}
     waiting.delete(ws.id);ws.role='listener';peers.set(ws.id,ws);clearTimeout(ws.joinTimer);
-    send(ws,{type:'joined',id:ws.id,iceServers:ice()});if(ws.mode!=='pcm')notifyHost({type:'peer-joined',id:ws.id});send(ws,info());broadcastStatus();
+    send(ws,{type:'joined',id:ws.id,iceServers:ice(),delivery:deliveryMode,encrypted:extraEncryption});if(native?.needsControl||ws.mode!=='pcm')notifyHost({type:'peer-joined',id:ws.id});send(ws,info());broadcastStatus();
   }
   wss.on('connection',(ws,studio)=>{
     ws.isAlive = true; ws.role = null; ws.id = randomBytes(8).toString('hex'); ws.mode = 'webrtc';
@@ -427,8 +447,10 @@ export async function createStreamServer(options = {}) {
         return;
       }
       if (m.type === 'listener-note' && ws.role === 'listener') {
-        const offsetSeconds = sessionPolicy.sessionStartedAt ? Math.max(0, Math.floor((Date.now() - sessionPolicy.sessionStartedAt) / 1000)) : 0;
-        if (admission.addNote(ws.id, m.text, offsetSeconds)) send(ws, {type:'note-ack', offsetSeconds});
+        if(!live||!admission.feedback||dashboard.plan!=='pro')return send(ws,{type:'note-error',error:'Feedback is not enabled for this session.'});
+        const offsetSeconds = sessionPolicy.sessionStartedAt ? Math.max(0, Math.floor((sessionPolicy.now() - sessionPolicy.sessionStartedAt) / 1000)) : 0;
+        if(admission.addNote(ws.id,m.text,offsetSeconds))send(ws,{type:'note-ack',offsetSeconds,text:admission.notes.at(-1).text});
+        else send(ws,{type:'note-error',error:'Wait a moment before sending another note.'});
         return;
       }
       if (m.type === 'publishing' && ws.role === 'publisher') {
@@ -442,6 +464,7 @@ export async function createStreamServer(options = {}) {
       if (m.type === 'mode' && ws.role === 'listener') {
         const nextMode = m.mode === 'pcm' ? 'pcm' : 'webrtc';
         if (nextMode === ws.mode) return;
+        if(native?.needsControl&&nextMode==='pcm'){ws.mode=nextMode;notifyHost({type:'renegotiate',id:ws.id});return;}
         ws.mode = nextMode;
         notifyHost({type:'peer-mode',id:ws.id,mode:ws.mode}); return;
       }
@@ -461,7 +484,7 @@ export async function createStreamServer(options = {}) {
       clearTimeout(joinTimer);
       if (publisher === ws) { publisher=null; live=false;stopReporting(); listenerHealth.clear(); for (const p of peers.values()) send(p,{type:'publisher-left'}); }
       waiting.delete(ws.id);admission.disconnected(ws.id);listenerHealth.remove(ws.id);
-      if (peers.delete(ws.id)) notifyHost({type:'peer-left',id:ws.id});
+      if (peers.delete(ws.id)){void delivery?.remove(ws.id).catch(e=>log('cloud',e.message));notifyHost({type:'peer-left',id:ws.id});}
       broadcastStatus();
     });
   });
@@ -475,14 +498,15 @@ export async function createStreamServer(options = {}) {
     const fresh=usageSource!==p.source||usageSequence===null||((p.sequence-usageSequence)>>>0)>0&&((p.sequence-usageSequence)>>>0)<0x80000000;
     if(fresh){dashboard.audio(p.frames/p.rate,connected.length,connected.reduce((sum,ws)=>sum+(ws.mode==='pcm'?p.rate*8:(native?.bitrate||510000)/8),0));usageSequence=p.sequence;usageSource=p.source;}
     native?.feed(data,p);
+    if(deliveryMode==='cloud')return;
     // Keep socket queues bounded. Slow clients reconnect at the live edge.
     for (const ws of [...(publisher?[publisher]:[]),...[...peers.values()].filter(p=>p.mode === 'pcm')]) {
       if (ws.readyState !== WebSocket.OPEN) continue;
       if (ws.bufferedAmount > 65536) { ++drops; ws.close(4010,'Audio connection too slow; reconnecting'); continue; }
-      ws.send(data,{binary:true});
+      if(extraEncryption&&ws.role==='listener'){void delivery.buffered(ws.id,data).catch(e=>log('audio',e.message));}else ws.send(data,{binary:true});
     }
   });
-  if(options.nativeSender){const {NativeSender}=await import('./native-sender.mjs');native=new NativeSender((id,m)=>send(peers.get(id),m),ice);}
+  if(options.nativeSender){const {NativeSender}=await import('./native-sender.mjs');native=new NativeSender((id,m)=>send(peers.get(id),m),ice);delivery=new StreamDelivery({PeerConnection:native.PeerConnection,iceServers:ice,api:(action,body)=>dashboard.cloud(action,body),allowed:id=>peers.has(id),sendControl:(id,m)=>native.sendControl(id,m),sendBinary:(id,raw)=>{const ws=peers.get(id);if(ws?.readyState===WebSocket.OPEN&&ws.bufferedAmount<65536)ws.send(raw,{binary:true});},onError:e=>{accountError=e.message;native.pause();live=false;stopReporting();broadcastStatus();}});native.onControlOpen=id=>{void delivery.join(id).catch(e=>{accountError=e.message;});};native.onControl=(id,m)=>delivery.control(id,m);native.onAudio=samples=>{if(live&&deliveryMode==='cloud')delivery.frame(samples);};}
   await Promise.all([
     new Promise((resolve,reject)=>{pub.once('error',reject);pub.listen(publicPort,'127.0.0.1',resolve);}),
     new Promise((resolve,reject)=>{local.once('error',reject);local.listen(studioPort,'127.0.0.1',resolve);}),
@@ -493,12 +517,12 @@ export async function createStreamServer(options = {}) {
     const state=lifetime.poll();for(const id of state.expired){log('engine','controller heartbeat expired');releaseSource(id);}
     if(state.idle&&!idleNotified){idleNotified=true;options.onNoClients?.();}
   },250) : null;
-  const statusTimer = setInterval(()=>{for(const r of admission.expirePending())waiting.get(r.connection)?.close(4016,'Access request expired. Request access again.');expireInvite();if(native&&owner!==null&&Date.now()-lease>5000){native.stop();sessionPolicy.stop();live=false;stopReporting();owner=null;listenerHealth.clear();for(const p of peers.values())send(p,{type:'publisher-left'});}broadcastStatus();},1000);
+  const statusTimer = setInterval(()=>{for(const r of admission.expirePending())waiting.get(r.connection)?.close(4016,'Access request expired. Request access again.');expireInvite();if(native&&!cloudStarting&&owner!==null&&Date.now()-lease>5000){native.stop();sessionPolicy.stop();live=false;stopReporting();owner=null;listenerHealth.clear();for(const p of peers.values())send(p,{type:'publisher-left'});}broadcastStatus();},1000);
   const heartbeat = setInterval(()=>{ for (const ws of wss.clients) {if (!ws.isAlive) ws.terminate(); else {ws.isAlive=false;ws.ping();}} },15000);
   return {instance,get customLinkSelection(){return links.selection();},get inviteRevision(){return room;},publicPort:pub.address().port, studioPort:local.address().port, udpPort:udp.address().port,
     setManagedIceServers(servers){managedIce=Array.isArray(servers)&&servers.length?servers:null;},
     setTunnelState(phase,url='',invite=room){tunnel={phase,url,invite};},
-    async close() {await dashboard.close();for(const receiver of receivers.values())receiver.close();account.close();native?.close();clearInterval(lifetimeTimer);clearInterval(statusTimer);clearInterval(heartbeat);for (const ws of wss.clients) ws.terminate();
+    async close() {await delivery?.end();await dashboard.close();for(const receiver of receivers.values())receiver.close();account.close();native?.close();clearInterval(lifetimeTimer);clearInterval(statusTimer);clearInterval(heartbeat);for (const ws of wss.clients) ws.terminate();
       await Promise.all([new Promise(r=>wss.close(r)),new Promise(r=>pub.close(r)),new Promise(r=>local.close(r)),new Promise(r=>udp.close(r))]);}};
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

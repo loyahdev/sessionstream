@@ -1,0 +1,10 @@
+files = [defines["app"], defines["uninstaller"]]
+background = defines["background"]
+badge_icon = defines["icon"]
+format = "UDZO"
+window_rect = ((145, 165), (620, 381))
+default_view = "icon-view"
+icon_size = 80
+text_size = 12
+grid_spacing = 64
+icon_locations = {"SessionStream Setup.app": (398, 128), "Uninstall SessionStream.app": (545, 128)}

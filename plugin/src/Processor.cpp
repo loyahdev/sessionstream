@@ -120,6 +120,9 @@ void StreamProcessor::getStateInformation(juce::MemoryBlock& state) {
     int flags=controller
         ?(controller->listenerPreferences()&3)|(controller->sharesHostName()?4:0)|(controller->requiresPasscode()?8:0)|(controller->prefersCustomLink()?16:0)
         :0;
+    if(controller&&(controller->listenerPreferences()&4)!=0)flags|=1024;
+    if(controller&&controller->usesCloud())flags|=2048;
+    if(controller&&!controller->encryptsAudio())flags|=4096;
     if(receiveLowLatency.load())flags|=32;
     flags|=((receiveBufferIndex.load()&3)<<6);
     flags|=((uiScaleIndex.load()&3)<<8);
@@ -145,7 +148,9 @@ void StreamProcessor::setStateInformation(const void* data,int size) {
             setReceiveBufferIndex((flags>>6)&3);
             uiScaleIndex.store(juce::jlimit(0,2,(flags>>8)&3));
             if(controller){
-                controller->restoreListenerPreferences(flags&3);
+                controller->cloudDelivery((flags&2048)!=0);
+                controller->encryptAudio((flags&4096)==0);
+                controller->restoreListenerPreferences((flags&3)|((flags&1024)?4:0));
                 controller->shareHostName((flags&4)!=0);
                 controller->requirePasscode((flags&8)!=0);
                 controller->preferCustomLink((flags&16)!=0);
@@ -169,24 +174,68 @@ private:
     InviteQR qr;
 };
 
+// Covers this editor only; the DAW remains usable while a link is prepared.
+class LinkProgressOverlay final : public juce::Component,private juce::Timer {
+public:
+    std::function<void()> onCancel;
+    LinkProgressOverlay(){
+        setComponentID("link-progress");setTitle("Creating link");setInterceptsMouseClicks(true,true);
+        addAndMakeVisible(cancel);cancel.setComponentID("cancel-link-creation");cancel.setButtonText("Cancel");
+        cancel.onClick=[this]{if(onCancel)onCancel();};
+    }
+    void show(bool cancelling){
+        stopping=cancelling;cancel.setEnabled(!stopping);cancel.refreshStyle();
+        const bool opening=!isVisible();setVisible(true);toFront(false);
+        if(opening){startTimerHz(30);cancel.grabKeyboardFocus();}
+        repaint();
+    }
+    void hide(){setVisible(false);stopTimer();}
+    void resized() override {cancel.setBounds(getWidth()/2-60,getHeight()/2+43,120,34);}
+    void paint(juce::Graphics& g) override {
+        g.fillAll(studio::background.withAlpha(.94f));
+        const float x=getWidth()*.5f,y=getHeight()*.5f;
+        auto box=juce::Rectangle<float>(x-172,y-99,344,198);
+        g.setColour(studio::panel);g.fillRoundedRectangle(box,8);
+        g.setColour(studio::line);g.drawRoundedRectangle(box,8,1);
+        const auto angle=float(std::fmod(juce::Time::getMillisecondCounterHiRes()*.004,juce::MathConstants<double>::twoPi));
+        juce::Path arc;arc.addCentredArc(x,y-47,14,14,0,angle,angle+juce::MathConstants<float>::pi*1.45f,true);
+        g.setColour(studio::violet);g.strokePath(arc,juce::PathStrokeType(2,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+        g.setColour(studio::text);g.setFont(studio::font(17,true));
+        g.drawText(stopping?"Cancelling…":"Creating your link",int(x)-150,int(y)-13,300,28,juce::Justification::centred);
+    }
+    bool keyPressed(const juce::KeyPress& key) override {
+        if(key==juce::KeyPress::escapeKey){if(!stopping&&onCancel)onCancel();return true;}
+        return key.getKeyCode()==juce::KeyPress::tabKey;
+    }
+private:
+    studio::ModernButton cancel;bool stopping=false;
+    void timerCallback() override{repaint();}
+};
+
 class StreamEditor final : public juce::AudioProcessorEditor,private juce::Timer {
 public:
     explicit StreamEditor(StreamProcessor& processor):AudioProcessorEditor(processor),p(processor){
         setLookAndFeel(&look);
+        addMouseListener(this,true);
         p.signalCapture.drain([](SignalCapture::Frame){});p.signalCapture.active=true;
         addAndMakeVisible(spectrum);spectrum.setComponentID("live-spectrum");
         logo=juce::Drawable::createFromImageData(BinaryData::WebsiteMark_svg,BinaryData::WebsiteMark_svgSize);
 
         for(auto* b:{&sendMode,&receiveMode,&rxLiveMode,&rxPcmMode,&rxBuf40,&rxBuf90,&rxBuf200})b->getProperties().set("role","segment");
+        sendMode.getProperties().set("role","mode");receiveMode.getProperties().set("role","mode");
         more.getProperties().set("role","quiet");
         accountButton.getProperties().set("role","account");
         toggle.getProperties().set("role","primary");
         localMute.getProperties().set("role","secondary");
         addAndMakeVisible(localMute);
-        addAndMakeVisible(setupButton);setupButton.getProperties().set("role","segment");setupButton.setComponentID("session-setup");setupButton.setButtonText("Settings");setupButton.setTitle("Session settings");setupButton.onClick=[this]{showingSetup=true;showingPeople=false;timerCallback();};
-        addAndMakeVisible(sessionPageButton);sessionPageButton.getProperties().set("role","segment");sessionPageButton.setComponentID("session-page");sessionPageButton.setButtonText("Session");sessionPageButton.onClick=[this]{showingSetup=false;showingPeople=false;timerCallback();};
-        addAndMakeVisible(peopleButton);peopleButton.setButtonText("Listeners");peopleButton.setComponentID("session-listeners");peopleButton.getProperties().set("role","segment");peopleButton.onClick=[this]{showingPeople=true;showingSetup=false;timerCallback();};
+        addAndMakeVisible(setupButton);setupButton.getProperties().set("role","nav");setupButton.setComponentID("session-setup");setupButton.setButtonText("Settings");setupButton.setTitle("Session settings");setupButton.onClick=[this]{showingSetup=true;showingPeople=false;timerCallback();};
+        addAndMakeVisible(sessionPageButton);sessionPageButton.getProperties().set("role","nav");sessionPageButton.setComponentID("session-page");sessionPageButton.setButtonText("Session");sessionPageButton.onClick=[this]{showingSetup=false;showingPeople=false;timerCallback();};
+        addAndMakeVisible(peopleButton);peopleButton.setButtonText("Listeners");peopleButton.setComponentID("session-listeners");peopleButton.getProperties().set("role","nav");peopleButton.onClick=[this]{showingPeople=true;showingSetup=false;timerCallback();};
 
+        setupButton.setIcon(studio::ModernButton::Icon::settings);setupButton.setIconOnly(true);
+        peopleButton.setIcon(studio::ModernButton::Icon::users);
+        toggle.setIconOnly(true);endButton.setIcon(studio::ModernButton::Icon::stop);endButton.setIconOnly(true);localMute.setIconOnly(true);qrButton.setIconOnly(true);
+        includePasscode.setComponentID("include-passcode");includePasscode.setButtonText("Include passcode");includePasscode.setTooltip("Include the session passcode when copying the invite. This does not change session access.");includePasscode.setToggleState(true,juce::dontSendNotification);addChildComponent(includePasscode);
         addChildComponent(listenerPanel);listenerPanel.onAction=[this](juce::var command){p.controller->manageListeners(command);};
         addAndMakeVisible(endButton);endButton.setComponentID("end-session");endButton.getProperties().set("role","secondary");endButton.setTooltip("Disconnect everyone and invalidate this invite. Your custom name stays reserved.");
         endButton.onClick=[this]{
@@ -196,6 +245,8 @@ public:
             studio::syncToggleState(usePasscode,false);passcode.clear();invite.clear();timerCallback();
         };
         localMute.setComponentID("mute-local");localMute.setIcon(studio::ModernButton::Icon::speaker);localMute.setTooltip("Silences this plugin's local DAW output while streaming. Listeners still hear the stream.");localMute.onClick=[this]{p.setLocalMuted(!p.localMuted());timerCallback();};
+        setupOverlay.onDelivery=[this](bool cloud){if(sessionLatched||p.isSending()||s.generating||s.ending)return;p.controller->cloudDelivery(cloud);inviteSettingsDirty=true;};
+        setupOverlay.onEncryption=[this](bool value){if(sessionLatched||p.isSending()||s.generating||s.ending)return;p.controller->encryptAudio(value);inviteSettingsDirty=true;};
         setupOverlay.setComponentID("setup-panel");addChildComponent(setupOverlay);setupOverlay.onChange=[this](int q){if(sessionLatched||p.isSending()||s.generating||s.ending)return;if(q!=p.streamQuality){p.streamQuality=q;p.linkExpiryHours=0;p.controller->sessionSettings(q,0);inviteSettingsDirty=true;}};
         addChildComponent(showHostName);
         showHostName.setButtonText("Show my name to listeners");
@@ -247,14 +298,14 @@ public:
         receivePasscode.setTextToShowWhenEmpty("Passcode (if needed)",studio::muted);receivePasscode.setPasswordCharacter(0x2022);receivePasscode.setInputRestrictions(64);
         claimLink.onClick=[this]{p.controller->links("claim",customName.getText());};
         customName.onReturnKey=[this]{if(claimLink.isEnabled())claimLink.triggerClick();};
-        generate.setButtonText("Create link");copy.setButtonText("Copy link");copyWithPasscode.setButtonText("Copy with passcode");toggle.setButtonText("Start streaming");
+        generate.setButtonText("Create link");copy.setButtonText("Copy invite");copyWithPasscode.setButtonText("Copy with passcode");toggle.setButtonText("Start streaming");
         qrButton.setButtonText("QR code");qrButton.onClick=[this]{qrOverlay.show(p.controller->status().link);};
         addAndMakeVisible(usePasscode);usePasscode.setButtonText("Passcode");usePasscode.setColour(juce::ToggleButton::textColourId,studio::muted);
         addAndMakeVisible(passcode);passcode.setPasswordCharacter(0x2022);passcode.setInputRestrictions(64);passcode.setTextToShowWhenEmpty("Passcode",studio::muted);passcode.setFont(studio::font(12));passcode.setIndents(10,7);passcode.setColour(juce::TextEditor::backgroundColourId,studio::inset);passcode.setColour(juce::TextEditor::textColourId,studio::text);passcode.setVisible(false);
         passcode.onTextChange=[this]{inviteSettingsDirty=true;};
         usePasscode.onClick=[this]{p.controller->requirePasscode(usePasscode.getToggleState());inviteSettingsDirty=true;passcode.setVisible(usePasscode.getToggleState());passcode.setEnabled(usePasscode.getToggleState());if(usePasscode.getToggleState())passcode.grabKeyboardFocus();else passcode.clear();};
         generate.onClick=[this]{if(p.isReceiveMode()){p.connectReceive(false);return;}const auto status=p.controller->status();if(!p.isHostEnabled()||!status.ready||status.generating||p.isSending())return;if(usePasscode.getToggleState()&&passcode.getText().isEmpty()){passcode.grabKeyboardFocus();return;}waitingInviteSettings=true;generate.setEnabled(false);usePasscode.setEnabled(false);passcode.setEnabled(false);p.setSending(false);p.controller->generate(usePasscode.getToggleState()?passcode.getText():juce::String{},p.streamQuality,0);};
-        copy.onClick=[this]{juce::SystemClipboard::copyTextToClipboard(p.controller->status().link);copy.setButtonText("Copied");copiedTicks=30;};
+        copy.onClick=[this]{const auto status=p.controller->status();const auto code=p.controller->activePasscode();const bool withCode=includePasscode.getToggleState()&&status.passcodeRequired&&code.isNotEmpty();juce::SystemClipboard::copyTextToClipboard(status.link+(withCode?"\nPasscode: "+code:juce::String{}));copy.setButtonText("Copied");copiedTicks=30;};
         copyWithPasscode.onClick=[this]{
             const auto link=p.controller->status().link,code=p.controller->activePasscode();
             if(link.isNotEmpty()&&code.isNotEmpty()){
@@ -283,7 +334,7 @@ public:
                 if(usePasscode.getToggleState()&&passcode.getText().isEmpty()){passcode.grabKeyboardFocus();return;}
                 p.controller->generate(usePasscode.getToggleState()?passcode.getText():juce::String{},p.streamQuality,0);
             }
-            p.setSending(true);
+            p.setSending(true);timerCallback();
         };
         addAndMakeVisible(invite);invite.setReadOnly(true);invite.setFont(studio::font(12));invite.setIndents(10,8);invite.setTextToShowWhenEmpty("Your private link appears here",studio::muted);invite.setColour(juce::TextEditor::backgroundColourId,studio::inset);invite.setColour(juce::TextEditor::textColourId,studio::muted);
         addAndMakeVisible(level);level.setTooltip("Adjusts stream output only. DAW output is unchanged. Double-click for 0 dB.");
@@ -298,6 +349,7 @@ public:
         ignoreUpdate.onClick=[this]{p.updates.ignoreForSession();refreshUpdate();};
         update.setVisible(false);ignoreUpdate.setVisible(false);
         addChildComponent(qrOverlay);
+        addChildComponent(linkProgress);linkProgress.onCancel=[this]{cancellingLink=true;p.setSending(false);p.setLocalMuted(false);p.controller->endSession();waitingInviteSettings=false;inviteSettingsDirty=true;timerCallback();};
 
         addAndMakeVisible(accountButton);accountButton.setButtonText("Sign in");
         accountButton.setColour(juce::TextButton::buttonColourId,juce::Colour(0xff161e19));
@@ -305,9 +357,9 @@ public:
         accountButton.onClick=[this]{
             if(s.reconnectRequired&&s.accountPhase=="signed-in"){p.controller->reconnectAccount();return;}
             if(s.accountPhase!="signed-in"){p.controller->account(s.accountPhase!="signing-in");return;}
-            juce::PopupMenu menu;menu.setLookAndFeel(&look);menu.addItem(1,"Sign out");menu.addItem(3,"Open account dashboard");menu.addItem(4,s.plan=="pro"?"Manage Pro subscription":"Upgrade to Pro");if(s.planKnown&&s.plan=="pro"&&s.customName.isNotEmpty())menu.addItem(2,"Release custom link");
+            juce::PopupMenu menu;menu.setLookAndFeel(&look);if(s.canCloud)menu.addSectionHeader("Cloud: "+juce::String(s.cloudHoursRemaining,1)+" listener-hours left");menu.addItem(1,"Sign out");menu.addItem(3,"Open account dashboard");if(s.planKnown&&s.plan=="pro"&&s.customName.isNotEmpty())menu.addItem(2,"Release custom link");
             const juce::Component::SafePointer<StreamEditor> safe(this);
-            menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&accountButton).withParentComponent(this),[safe](int result){if(safe&&result==1)safe->p.controller->account(false);if(safe&&result==2)safe->p.controller->links("release");if(safe&&result==3)juce::URL("https://sessionstream.app/dashboard/").launchInDefaultBrowser();if(safe&&result==4)juce::URL(safe->s.plan=="pro"?"https://sessionstream.app/dashboard/account/billing":"https://sessionstream.app/dashboard/billing/").launchInDefaultBrowser();});
+            menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&accountButton).withParentComponent(this),[safe](int result){if(safe&&result==1)safe->p.controller->account(false);if(safe&&result==2)safe->p.controller->links("release");if(safe&&result==3)juce::URL("https://sessionstream.app/dashboard/").launchInDefaultBrowser();});
         };
 
         addAndMakeVisible(more);more.setButtonText({});more.setTooltip("More options");more.setTitle("More options");
@@ -337,6 +389,8 @@ public:
     ~StreamEditor() override {p.signalCapture.active=false;stopTimer();setLookAndFeel(nullptr);}
 
     void mouseDown(const juce::MouseEvent& e) override {
+        auto* target=e.originalComponent;
+        if(target!=nullptr&&dynamic_cast<juce::TextEditor*>(target)==nullptr&&target->findParentComponentOfClass<juce::TextEditor>()==nullptr)juce::Component::unfocusAllComponents();
         // Click-to-reset held stereo peaks in the Audio Monitor meter zone
         if(juce::Rectangle<int>(24,392,216,64).contains(e.getPosition())){
             heldPeaks[0]=heldPeaks[1]=0.f;peakHoldTicks[0]=peakHoldTicks[1]=0;
@@ -352,33 +406,26 @@ public:
         sendMode.setBounds(342,20,86,28);
         receiveMode.setBounds(430,20,88,28);
 
-        spectrum.setBounds(16,64,556,286);
+        spectrum.setBounds(20,72,550,280);
         level.setBounds(257,386,90,78);
-        localMute.setBounds(372,430,184,28);
+        localMute.setBounds(522,428,34,30);
 
-        if(pro){
-            sessionPageButton.setBounds(604,100,66,26);
-            setupButton.setBounds(672,100,68,26);
-            peopleButton.setBounds(742,100,82,26);
-        }else{
-            sessionPageButton.setBounds(604,100,108,26);
-            setupButton.setBounds(714,100,110,26);
-            peopleButton.setBounds(742,100,82,26);
-        }
-
-        invite.setBounds(602,136,224,32);
-        copy.setBounds(602,174,140,28);
-        qrButton.setBounds(748,174,78,28);
+        sessionPageButton.setBounds(602,100,64,30);
+        setupButton.setBounds(pro?688:788,100,38,30);
+        peopleButton.setBounds(734,100,92,30);
+        invite.setBounds(602,164,224,34);
+        copy.setBounds(602,208,180,36);qrButton.setBounds(790,208,36,36);
+        includePasscode.setBounds(602,250,224,24);
         copyWithPasscode.setBounds(602,208,224,26);
         generate.setBounds(750,98,76,26);
 
-        setupOverlay.setBounds(602,136,224,74);
-        linkKind.setBounds(602,228,224,28);
-        customName.setBounds(602,262,140,28);
-        claimLink.setBounds(750,262,76,28);
-        showHostName.setBounds(602,296,224,22);
-        usePasscode.setBounds(602,322,224,22);
-        passcode.setBounds(602,346,224,28);
+        setupOverlay.setBounds(602,136,224,126);
+        linkKind.setBounds(602,272,224,28);
+        customName.setBounds(602,306,140,28);
+        claimLink.setBounds(750,306,76,28);
+        showHostName.setBounds(602,pro?340:282,224,22);
+        usePasscode.setBounds(602,pro?366:308,224,22);
+        passcode.setBounds(602,pro?390:332,224,28);
 
         listenerPanel.setBounds(602,136,224,272);
 
@@ -393,11 +440,12 @@ public:
         rxBuf90.setBounds(677,rxBufY,72,24);
         rxBuf200.setBounds(751,rxBufY,73,24);
 
-        endButton.setBounds(602,378,224,28);
-        toggle.setBounds(602,420,224,36);
+        endButton.setBounds(652,430,42,38);
+        toggle.setBounds(602,430,42,38);
         update.setBounds(584,526,108,30);
         ignoreUpdate.setBounds(700,526,144,30);
-        qrOverlay.setBounds(getLocalBounds());
+        qrOverlay.setBounds(getLocalBounds());linkProgress.setBounds(getLocalBounds());
+        for(auto* field:{&invite,&passcode,&customName,&receiveTarget,&receivePasscode}){field->setBorder(juce::BorderSize<int>());field->setIndents(10,0);field->setJustification(juce::Justification::centredLeft);}
     }
 
     void paint(juce::Graphics& g) override {
@@ -414,10 +462,6 @@ public:
             g.setColour(colour);
             g.drawText(value,x,y,w,h,just);
         };
-        auto card=[&](juce::Rectangle<float> area){
-            g.setColour(panel);g.fillRoundedRectangle(area,7.f);
-            g.setColour(line);g.drawRoundedRectangle(area.reduced(.5f),7.f,1.f);
-        };
         auto insetTrack=[&](juce::Rectangle<float> area){
             g.setColour(inset);g.fillRoundedRectangle(area,6.f);
             g.setColour(line);g.drawRoundedRectangle(area.reduced(.5f),6.f,1.f);
@@ -425,22 +469,21 @@ public:
 
         // Top Header Bar
         if(logo)logo->drawWithin(g,{16,20,25,29},juce::RectanglePlacement::centred,1.f);
-        g.setColour(text);g.setFont(headingFont(24.5f,true).withExtraKerningFactor(-.056f));
-        g.drawText("sessionstream",50,16,162,36,juce::Justification::centredLeft);
-        juce::GlyphArrangement wordmark;wordmark.addLineOfText(headingFont(24.5f,true).withExtraKerningFactor(-.056f),"sessionstream",0,0);
-        label(UpdateChecker::currentVersion,50+juce::roundToInt(wordmark.getBoundingBox(0,-1,true).getRight())+8,29,44,18,10,muted);
-        if(pro)insetTrack({340.f,18.f,180.f,32.f});
+        g.setColour(text);g.setFont(headingFont(26.f,true).withExtraKerningFactor(-.04f));
+        g.drawText("sessionstream",54,16,206,36,juce::Justification::centredLeft);
+        juce::GlyphArrangement wordmark;wordmark.addLineOfText(headingFont(26.f,true).withExtraKerningFactor(-.04f),"sessionstream",0,0);
+        label(UpdateChecker::currentVersion,54+juce::roundToInt(wordmark.getBoundingBox(0,-1,true).getRight())+8,29,44,18,10,muted);
+        g.setColour(line);g.drawHorizontalLine(63,20.f,840.f);
 
         // Main Cards
-        card({584,64,260,408});
-        card({16,362,556,110});
+        g.setColour(line);g.drawVerticalLine(584,76.f,468.f);g.drawHorizontalLine(362,20.f,570.f);
 
         // Right Card Live Status & Timer (Always visible — never hidden by pending listener requests)
         const auto stateText=s.ending?"Ending session..."
             :s.warning?"Check audio"
             :receiving?(s.receivePhase=="approval"?"Awaiting approval":s.receivePhase=="denied"?"Access declined":active?"Receiving":p.isReceiving()?"Connecting":"Ready to receive")
             :s.handoffReady?"Active on other track"
-            :active?"Live session"
+            :active?"Streaming"
             :p.isSending()?"Connecting"
             :sessionLatched?"Paused"
             :"Ready";
@@ -449,10 +492,10 @@ public:
         if(sessionLatched&&s.streamStartedAt>0&&!receiving){
             const auto seconds=juce::jmax<juce::int64>(0,(juce::Time::currentTimeMillis()-s.streamStartedAt)/1000);
             const auto duration=juce::String(seconds/3600).paddedLeft('0',2)+":"+juce::String((seconds/60)%60).paddedLeft('0',2)+":"+juce::String(seconds%60).paddedLeft('0',2);
-            label(duration,750,72,76,20,10.f,muted,false,juce::Justification::centredRight);
+            if(endConfirmTicks==0)label(duration,708,439,118,20,11.f,muted,false,juce::Justification::centredRight);
         }
 
-        if(!receiving)insetTrack({602.f,98.f,224.f,30.f});
+        if(!receiving){g.setColour(line);g.drawHorizontalLine(129,602.f,826.f);}
 
         if(receiving){
             label("Receive session",602,98,146,26,16.5f,text);
@@ -496,44 +539,19 @@ public:
         }else if(showingPeople){
             if(s.listenerMessage.isNotEmpty())label(s.listenerMessage,602,396,224,18,10,warm);
         }else if(showingSetup){
-            if(pro)label("Link type",602,211,224,15,10,muted);
-            const bool custom=pro&&linkKind.getSelectedId()==2;
-            const auto hint=sessionLatched?juce::String("End this session to change settings."):custom&&customName.getText().isNotEmpty()&&!validDraftName()?juce::String::fromUTF8("3\xE2\x80\x93" "32 characters. Start with a letter; no trailing dash."):custom&&s.linkMessage.isNotEmpty()?s.linkMessage:custom&&s.customName.isEmpty()?juce::String("Choose and save a name to continue."):juce::String("Settings apply when you start a session.");
-            g.setColour(!sessionLatched&&custom&&s.linkMessage.isNotEmpty()?warm:muted);g.setFont(font(10.5f));g.drawFittedText(hint,602,378,224,34,juce::Justification::topLeft,2);
+
         }else{
-            // Structured Resend-style Session Spec Card (eliminating the empty void)
-            const auto quality=pro?p.streamQuality.load():0;
-            const bool showPassCopy=copyWithPasscode.isVisible();
-            const int specY=showPassCopy?242:212;
-            juce::Rectangle<float> spec{602.f,static_cast<float>(specY),224.f,84.f};
-            insetTrack(spec);
-            g.setColour(line);
-            g.drawHorizontalLine(specY+28,602.f,826.f);
-            g.drawHorizontalLine(specY+56,602.f,826.f);
-
-            const juce::String codecValue=quality==0?"510 kbps Stereo":quality==1?"320 kbps Stereo":"96 kbps Stereo";
-            const int accessBits=pro?p.controller->listenerPreferences():0;
-            const bool hasPass=sessionLatched?s.passcodeRequired:usePasscode.getToggleState();
-            const juce::String accessValue=(accessBits&2)?(hasPass?"Account + Passcode":"Signed-in only")
-                :(accessBits&1)?(hasPass?"Approval + Passcode":"Approval required")
-                :hasPass?"Passcode":"Private link";
-            const juce::String linkValue=(pro&&p.controller->prefersCustomLink()&&s.customName.isNotEmpty())?("/"+s.customName):"Managed 6-digit";
-
-            label("Codec",612,specY+3,64,22,10.f,muted);
-            label(codecValue,678,specY+3,138,22,10.5f,text,true,juce::Justification::centredRight);
-            label("Access",612,specY+31,64,22,10.f,muted);
-            label(accessValue,678,specY+31,138,22,10.5f,hasPass||(accessBits!=0)?accent:text,true,juce::Justification::centredRight);
-            label("Link",612,specY+59,64,22,10.f,muted);
-            label(linkValue,678,specY+59,138,22,10.5f,text,false,juce::Justification::centredRight);
-
-            const auto help=endConfirmTicks>0?juce::String("Click Confirm end to disconnect everyone and invalidate this invite.")
-                :s.ending?juce::String("Closing this session...")
-                :s.handoffReady?juce::String("Switch the live stream to this track without dropping your room or listeners.")
-                :sessionLatched?(p.isSending()?juce::String("Pause keeps listeners connected. End session closes the invite."):juce::String("Audio is paused. Resume with the same invite and listeners."))
-                :juce::String("Start a session, then copy the invite for your listeners.");
-            juce::AttributedString paragraph(help);paragraph.setFont(font(10.5f));paragraph.setColour(endConfirmTicks>0?warm:muted);paragraph.setWordWrap(juce::AttributedString::WordWrap::byWord);
-            paragraph.draw(g,{602.f,static_cast<float>(specY+92),224.f,42.f});
+            label("Listening link",602,142,224,16,11,muted);
+            g.setColour(line);g.drawHorizontalLine(286,602.f,826.f);
+            const auto quality=pro?p.streamQuality.load():1;
+            label("Quality",602,296,70,20,11,muted);
+            label(quality==0?"Studio - 510 kbps":quality==1?"Balanced - 320 kbps":"Phone - 96 kbps",672,296,154,20,11,text,false,juce::Justification::centredRight);
+            if(!pro)label(juce::String(s.listeners)+((s.hasSession?s.delivery=="cloud":p.controller->usesCloud())?" Cloud":" / "+juce::String(s.listenerLimit)),750,72,76,20,10.5f,muted,false,juce::Justification::centredRight);
+            label("Delivery",602,322,70,20,11,muted);label((s.hasSession?s.delivery=="cloud":p.controller->usesCloud())?"Cloud":"Direct",672,322,154,20,11,text,false,juce::Justification::centredRight);
+            label("Encryption",602,348,80,20,11,muted);label((s.hasSession?s.encrypted:p.controller->encryptsAudio())?"End to end":"Connection only",692,348,134,20,11,text,false,juce::Justification::centredRight);
+            if(endConfirmTicks>0)label("Confirm end",704,439,122,20,11,warm,true,juce::Justification::centredRight);
         }
+        g.setColour(line);g.drawHorizontalLine(416,602.f,826.f);
 
         // Bottom-Left Audio Monitor Card (16, 362, 556, 110)
         // Zone 1: Stereo Meter + dB Scale + Limiter Indicator
@@ -572,20 +590,20 @@ public:
         label(receiving?"Receive gain":"Stream gain",252,371,100,16,10.f,muted,false,juce::Justification::centred);
 
         // Zone 3: Short-Term Loudness + Relocated Monitor Mute
-        label("Short-term loudness",372,371,130,15,10.f,muted);
+        label("Short-term",372,371,130,15,11.f,muted);
         const auto lufs=p.loudness.lufs();
         label(std::isfinite(lufs)?juce::String(lufs,1)+" LUFS":juce::String::fromUTF8("\xE2\x80\x94 LUFS"),372,389,116,24,16.5f,text);
         if(receiving){
             label(juce::String(p.receiveBufferMs())+" ms buf",490,392,66,18,10.5f,muted,false,juce::Justification::centredRight);
             label("Stereo DAW input",372,433,184,22,10.5f,muted);
         }else{
-            label(juce::String(s.listeners)+" / "+juce::String(s.listenerLimit),490,392,66,18,10.5f,s.listeners>0?accent:muted,true,juce::Justification::centredRight);
+            label("Local audio",372,430,130,22,10.5f,muted);
         }
 
         // Bottom Status Bar
-        g.setColour(ink);g.fillEllipse(17.f,487.5f,4.5f,4.5f);
+        if(diagnosticsTicks>0||s.warning||!s.ready){g.setColour(ink);g.fillEllipse(17.f,487.5f,4.5f,4.5f);}
         g.setFont(font(11));g.setColour(muted);
-        g.drawFittedText(diagnosticsTicks>0?diagnosticsMessage:s.message,29,477,810,26,juce::Justification::centredLeft,1);
+        if(diagnosticsTicks>0||s.warning||!s.ready)g.drawFittedText(diagnosticsTicks>0?diagnosticsMessage:s.message,29,477,810,26,juce::Justification::centredLeft,1);
 
         if(updateVisible){
             g.setColour(line);g.drawHorizontalLine(513,16.f,844.f);
@@ -594,10 +612,11 @@ public:
     }
 
 private:
-    StreamProcessor& p;studio::Look look;SpectrumView spectrum;std::unique_ptr<juce::Drawable> logo;
+    StreamProcessor& p;studio::Look look;juce::TooltipWindow tooltips{this,450};SpectrumView spectrum;std::unique_ptr<juce::Drawable> logo;
     studio::ModernButton generate,copy,copyWithPasscode,qrButton,toggle,update,ignoreUpdate,more,accountButton,sendMode,receiveMode,claimLink,setupButton,localMute,sessionPageButton,endButton,peopleButton,rxLiveMode,rxPcmMode,rxBuf40,rxBuf90,rxBuf200;
-    ListenerPanel listenerPanel;juce::ComboBox linkKind;juce::ToggleButton usePasscode,showHostName;juce::Slider level;
-    juce::TextEditor invite,passcode,customName,receiveTarget,receivePasscode;InviteOverlay qrOverlay;SessionSetup setupOverlay;
+    ListenerPanel listenerPanel;juce::ComboBox linkKind;juce::ToggleButton usePasscode,showHostName,includePasscode;juce::Slider level;
+    juce::TextEditor invite,passcode,customName,receiveTarget,receivePasscode;InviteOverlay qrOverlay;SessionSetup setupOverlay;LinkProgressOverlay linkProgress;
+    std::vector<std::pair<juce::Component*,bool>> progressEnabledStates;bool cancellingLink=false;
     juce::String lastLayoutKey,lastPaintKey,lastFooter,latest,diagnosticsMessage,lastClaimedName;
     juce::int64 lastDurationTick=-1;StreamController::Status s;
     float peaks[2]{},heldPeaks[2]{};int peakHoldTicks[2]{};
@@ -651,10 +670,13 @@ private:
     }
 
     void timerCallback() override {
+        for(const auto& state:progressEnabledStates)state.first->setEnabled(state.second);
+        progressEnabledStates.clear();
         applyUiScale();
         if(diagnosticsTicks>0)--diagnosticsTicks;
         if(endConfirmTicks>0)--endConfirmTicks;
         s=p.controller->status();
+        if(cancellingLink&&!s.generating&&!s.ending)cancellingLink=false;
         if(s.available&&s.accountPhase=="signed-out"&&p.isReceiveMode())p.setReceiveMode(false);
         refreshUpdate();
         if((s.link.isNotEmpty()||(!s.generating&&!waitingInviteSettings))&&invite.getText()!=s.link)invite.setText(s.link,false);
@@ -672,6 +694,8 @@ private:
         accountButton.setButtonText(s.accountPhase=="restoring"?"Signing in...":s.accountPhase=="signing-in"?"Cancel sign-in":s.reconnectRequired?"Reconnect account":signedIn?(s.accountName.isNotEmpty()?s.accountName:"Account"):"Sign in");
         if(signedIn&&s.planKnown&&!s.reconnectRequired)accountButton.setBadge(pro?"PRO":"FREE",pro);
         else accountButton.setBadge({},false);
+        accountButton.setIconOnly(false);
+        accountButton.setTitle(accountButton.getButtonText());
         layoutAccountButton();
         accountButton.setEnabled(s.available&&s.accountPhase!="restoring");
         accountButton.setTooltip(signedIn?"Account & subscription":s.accountMessage.isNotEmpty()?s.accountMessage:s.accountConfigured?"Optional account sign-in":"Account sign-in is not configured yet.");
@@ -722,9 +746,9 @@ private:
         level.setTooltip(receiving?"Adjusts received audio output in this DAW.":"Adjusts stream output only. DAW output is unchanged.");
 
         const bool customReady=!custom||(pro&&!s.customName.isEmpty()&&!s.linkBusy&&s.linkAuthorized);
-        const bool needsPlan=p.controller->listenerPreferences()!=0||p.controller->prefersCustomLink()||p.streamQuality.load()!=0;
+        const bool needsPlan=p.controller->listenerPreferences()!=0||p.controller->prefersCustomLink()||p.streamQuality.load()!=1;
         const bool planReady=!needsPlan||s.planKnown||s.accountPhase=="signed-out";
-        const bool canGenerate=settingsEditable&&p.isHostEnabled()&&s.ready&&customReady&&planReady;
+        const bool canGenerate=(!p.controller->usesCloud()||s.canCloud)&&settingsEditable&&p.isHostEnabled()&&s.ready&&customReady&&planReady;
 
         if(waitingInviteSettings&&!s.generating&&s.link.isNotEmpty()){waitingInviteSettings=false;inviteSettingsDirty=false;}
         if(sessionLatched&&!s.ending&&s.link.isNotEmpty()&&!inviteSettingsDirty&&!waitingInviteSettings)studio::syncToggleState(usePasscode,s.passcodeRequired);
@@ -735,7 +759,7 @@ private:
         copy.setEnabled(s.link.isNotEmpty()&&!s.ending&&!s.generating);
         qrButton.setEnabled(s.link.isNotEmpty()&&!s.ending&&!s.generating);
         const bool canCopyWithPass=onSessionTab&&s.link.isNotEmpty()&&s.passcodeRequired&&p.controller->activePasscode().isNotEmpty()&&!s.ending&&!s.generating;
-        copyWithPasscode.setVisible(canCopyWithPass);
+        copyWithPasscode.setVisible(false);includePasscode.setVisible(canCopyWithPass);includePasscode.setEnabled(canCopyWithPass);
         copyWithPasscode.setEnabled(canCopyWithPass);
 
         const bool canHandoff=!receiving&&s.handoffReady&&p.isHostEnabled()&&!s.ending;
@@ -779,6 +803,8 @@ private:
                 for(const auto& listener:*listeners)
                     if(listener["status"].toString()=="pending")++pendingRequests;
         }
+        peopleButton.setButtonText(juce::String(s.listeners)+((s.hasSession?s.delivery=="cloud":p.controller->usesCloud())?" Cloud":" / "+juce::String(s.listenerLimit)));
+        peopleButton.setTitle("Listeners");
         peopleButton.setCountBadge(pendingRequests);
         peopleButton.setTooltip(pendingRequests>0?(juce::String(pendingRequests)+(pendingRequests==1?" pending listener request":" pending listener requests")):"Manage listeners");
         peopleButton.setVisible(pro&&!receiving);
@@ -792,22 +818,25 @@ private:
 
         showHostName.setVisible(!receiving&&showingSetup&&signedIn);showHostName.setEnabled(settingsEditable);
         studio::syncToggleState(showHostName,p.controller->sharesHostName());
-        setupOverlay.setVisible(!receiving&&showingSetup);setupOverlay.configure(pro?p.streamQuality.load():0,settingsEditable,pro);
+        setupOverlay.setVisible(!receiving&&showingSetup);setupOverlay.configure(pro?p.streamQuality.load():1,settingsEditable,pro);setupOverlay.configureDelivery(p.controller->usesCloud(),p.controller->encryptsAudio(),s.canCloud);
 
         endButton.setVisible(onSessionTab);
         endButton.setEnabled(!s.ending&&(sessionLatched||p.isSending()||s.generating));
         endButton.setButtonText(endConfirmTicks>0?"Confirm end":"End session");
         endButton.getProperties().set("role",endConfirmTicks>0?"danger":"secondary");
 
+        toggle.setTitle(toggle.getButtonText());toggle.setTooltip(toggle.getButtonText());
+        endButton.setTitle(endButton.getButtonText());
         localMute.setVisible(!receiving);
         localMute.setEnabled(p.isSending()&&!s.ending);
         localMute.setButtonText(p.localMuted()&&p.isSending()?"Unmute local audio":"Mute local audio");
+        localMute.setTitle(localMute.getButtonText());localMute.setTooltip(localMute.getButtonText()+". Listeners still hear the stream.");
         studio::syncToggleState(localMute,p.localMuted()&&p.isSending());
 
         const auto layoutKey=juce::String(int(showingPeople))+juce::String(int(showingSetup))+juce::String(int(receiving))+juce::String(int(p.isReceiving()))+juce::String(int(receiveFailed))+juce::String(int(p.isSending()))+juce::String(int(signedIn))+juce::String(int(pro))+juce::String(int(custom))+juce::String(int(usePasscode.getToggleState()))+juce::String(int(updateVisible))+juce::String(int(receivePasscode.isVisible()))+juce::String(int(canCopyWithPass));
         if(layoutKey!=lastLayoutKey){lastLayoutKey=layoutKey;resized();repaint(584,64,260,408);}
 
-        if(copiedTicks>0&&--copiedTicks==0)copy.setButtonText("Copy link");
+        if(copiedTicks>0&&--copiedTicks==0)copy.setButtonText("Copy invite");
         if(copiedPasscodeTicks>0&&--copiedPasscodeTicks==0)copyWithPasscode.setButtonText("Copy with passcode");
 
         if(!dragging&&!level.hasKeyboardFocus(true)){
@@ -828,10 +857,16 @@ private:
         repaint(16,362,556,110);
 
         const auto timeTick=sessionLatched?juce::Time::currentTimeMillis()/1000:0;
-        if(timeTick!=lastDurationTick){lastDurationTick=timeTick;repaint(748,72,80,20);}
+        if(timeTick!=lastDurationTick){lastDurationTick=timeTick;repaint(704,430,126,38);}
 
         const auto paintKey=s.listenerMessage+juce::String(int(showingPeople))+juce::String(int(showingSetup))+juce::String(int(sessionLatched))+juce::String(int(endConfirmTicks>0))+juce::String(int(s.ending))+s.link+s.linkMessage+juce::String(int(s.live))+juce::String(int(s.warning))+juce::String(int(s.linkBusy))+juce::String(int(s.passcodeRequired))+customName.getText()+juce::String(int(validDraftName()))+s.receivePhase+s.receiveTransport+juce::String(int(s.handoffReady))+juce::String(pendingRequests);
         if(paintKey!=lastPaintKey){lastPaintKey=paintKey;repaint(584,64,260,408);}
+
+        if(s.generating||cancellingLink){
+            qrOverlay.setVisible(false);
+            for(int i=0;i<getNumChildComponents();++i){auto* child=getChildComponent(i);if(child==&linkProgress)continue;progressEnabledStates.emplace_back(child,child->isEnabled());child->setEnabled(false);if(auto* button=dynamic_cast<studio::ModernButton*>(child))button->refreshStyle();}
+            linkProgress.show(cancellingLink);
+        }else linkProgress.hide();
 
         const auto footer=diagnosticsTicks>0?diagnosticsMessage:s.message;
         if(footer!=lastFooter){lastFooter=footer;repaint(16,477,830,28);}

@@ -1,3 +1,4 @@
+import {ListenerDelivery} from './listener-delivery.mjs';
 import {createAudio,musicSDP} from './audio.mjs';
 const $=id=>document.getElementById(id),studio=document.documentElement.dataset.mode==='studio';
 const themeButton=$('theme-toggle');
@@ -57,7 +58,9 @@ function reloadExpired(){
   location.replace(url);
 }
 let audio=null,ws=null,running=false,reconnectTimer=null,reconnectAttempt=0,session=null,iceServers=[],peerId=null;
+let deliveryMode='direct',extraEncryption=false,secureDelivery=null;
 let pcm=false,live=false,lastBinary=0,statsTimer=null,fallbackTimer=null,pingTimer=null,rtcSource=null,remoteElement=null,needsResume=false;
+let feedbackEnabled=false,nextNoteAt=0;
 let muted=false,mono=false,dimmed=false,scopeMode='wave',noteTimer=null,connectionRetried=false;
 let bufferStats=null;
 let passcode='',awaitingPasscode=false,joined=false,sourceAvailable=false,healthState='ok',healthSentAt=0;
@@ -139,8 +142,9 @@ function reportHealth(next,showMessage=true){
   if(next!=='ok')message(healthMessages[next],true);
   else if(changed&&!awaitingPasscode){message(live?'':'Audio will start when your host is ready.');status(live?'Listening':'Waiting for host',live?'live':'');}
 }
+function closeDelivery(){secureDelivery?.close();secureDelivery=null;}
 function disposePeer(id){const p=peers.get(id);if(p){p.onconnectionstatechange=null;p.close();peers.delete(id);}pendingCandidates.delete(id);}
-function closePeers(){for(const id of peers.keys())disposePeer(id);rtcSource?.disconnect();rtcSource=null;if(remoteElement){remoteElement.pause();remoteElement.srcObject=null;remoteElement.remove();remoteElement=null;}needsResume=false;}
+function closePeers(){closeDelivery();for(const id of peers.keys())disposePeer(id);rtcSource?.disconnect();rtcSource=null;if(remoteElement){remoteElement.pause();remoteElement.srcObject=null;remoteElement.remove();remoteElement=null;}needsResume=false;}
 function updateModeControls(automatic=false){
   $('mode-live').checked=!pcm;$('mode-buffered').checked=pcm;
   $('mode-help').textContent=pcm
@@ -149,6 +153,7 @@ function updateModeControls(automatic=false){
   $('quality').textContent='STEREO';
 }
 function setMode(value,automatic=false){
+  if(deliveryMode==='cloud')return;
   pcm=value;connectionRetried=false;resetReception();clearTimeout(fallbackTimer);closePeers();audio?.reset();audio?.usePCM(pcm);send({type:'mode',mode:pcm?'pcm':'webrtc'});
   updateModeControls(automatic);
   $('transport').textContent=pcm?'PCM / tunnel':'Connecting…';
@@ -164,7 +169,7 @@ function retryLiveAudio(){
 }
 function scheduleFallback(){
   clearTimeout(fallbackTimer);
-  if(studio||pcm||!running)return;
+  if(studio||pcm||deliveryMode==='cloud'||!running)return;
   fallbackTimer=setTimeout(()=>{
     if([...peers.values()].some(p=>p.connectionState==='connected'))return;
     // Waiting for the host is not a failed connection attempt.
@@ -181,10 +186,12 @@ function connection(id,generation=crypto.randomUUID()){
     if(pc.connectionState==='connected'){
       if(!studio){connectionRetried=false;clearTimeout(fallbackTimer);status(live?'Listening':'Waiting for host',live?'live':'');if(healthState==='ok')message('');}
     }else if(pc.connectionState==='failed'){
+      if(deliveryMode==='cloud'){ws?.close();return;}
       if(studio)offer(id,true).catch(e=>message(e.message,true));else if(!pcm){if(live&&sourceAvailable)reportHealth('connection-failed');retryLiveAudio();}
     }else if(pc.connectionState==='disconnected'&&!studio){status('Recovering connection');scheduleFallback();}
   };
   if(!studio){
+    if(deliveryMode==='cloud'||extraEncryption){closeDelivery();secureDelivery=new ListenerDelivery({iceServers,decode:async()=>{const {CloudAudioDecoder}=await import('./vendor/cloud-decoder.mjs');const decoder=new CloudAudioDecoder();await decoder.ready;return decoder;},onFrame:raw=>{if(!running||!live)return;lastBinary=performance.now();audio?.usePCM(true);audio?.feed(raw);},onError:e=>{if(!running||!live)return;message(e.message,true);ws?.close();}});pc.ondatachannel=event=>secureDelivery?.attach(event.channel);}
     pc.ontrack=e=>{
       if(new URLSearchParams(location.search).has('audio-test'))console.debug('track',e.track.kind,e.track.readyState,e.track.muted,e.track.enabled);
       if(pcm||!running||!audio||peers.get(id)!==pc)return;
@@ -246,12 +253,13 @@ async function onSignal(m){
     if(!running||ws!==socket)return;
     waitingForApproval=false;
     if(!studio)$('connect').innerHTML='Stop listening <span aria-hidden="true">■</span>';
-    joined=true;if(!studio&&$('note-form'))$('note-form').hidden=false;connectionRetried=false;awaitingPasscode=false;$('passcode-form').hidden=true;$('connect').hidden=false;$('passcode').value='';$('passcode-error').textContent='';$('passcode').removeAttribute('aria-invalid');resetReception();
+    deliveryMode=m.delivery==='cloud'?'cloud':'direct';extraEncryption=m.encrypted===true;if(!studio){$('audio-security').hidden=false;$('audio-security').textContent=deliveryMode==='cloud'?(extraEncryption?'Cloud · end-to-end encrypted':'Cloud · connection encryption only'):(extraEncryption?'Direct · end-to-end encrypted':'Direct · connection encryption only');}if(!studio){$('audio-mode').hidden=deliveryMode==='cloud';if(deliveryMode==='cloud'){audio?.usePCM(true);$('transport').textContent=extraEncryption?'Cloud / encrypted':'Cloud / transport encryption';}}
+    joined=true;if(!studio)$('listener-identity').hidden=true;if(!studio&&$('note-form'))$('note-form').hidden=true;connectionRetried=false;awaitingPasscode=false;$('passcode-form').hidden=true;$('connect').hidden=false;$('passcode').value='';$('passcode-error').textContent='';$('passcode').removeAttribute('aria-invalid');resetReception();
     reconnectAttempt=0;iceServers=m.iceServers;peerId=m.id;
     if(studio){live=true;send({type:'publishing',live:true,title:$('title').value});for(const id of m.peers||[])await offer(id);message('Broadcasting. Press Start streaming in the plugin, then play your project.');}
     else{send({type:'mode',mode:pcm?'pcm':'webrtc'});send({type:'listener-health',state:'ok'});healthState='ok';scheduleFallback();status('Waiting for host');}
   }else if(m.type==='status'){
-    live=m.live;
+    live=m.live;feedbackEnabled=m.feedbackEnabled===true;if(!studio&&$('note-form'))$('note-form').hidden=!(joined&&live&&feedbackEnabled);
     if(!studio)showHost(m.hostName);
     const wasAvailable=sourceAvailable;sourceAvailable=!!m.audio;
     if(sourceAvailable&&!wasAvailable)resetReception();
@@ -261,14 +269,14 @@ async function onSignal(m){
     else $('source-label').textContent='WAITING FOR PLUGIN AUDIO';
     if(studio){status(live&&m.audio?'Broadcasting live':live?'Waiting for plugin':'Sharing paused',live&&m.audio?'live':'');}
     else if(!live){status('Waiting for host');message('Audio will start when your host is ready.');}
-    else if(pcm){status(m.audio?'Listening':'Waiting for audio',m.audio?'live':'');if(m.audio&&healthState==='ok')message('');}
+    else if(pcm||deliveryMode==='cloud'){status(m.audio?'Listening':'Waiting for audio',m.audio?'live':'');if(m.audio&&healthState==='ok')message('');}
     else if([...peers.values()].some(p=>p.connectionState==='connected')){status('Listening', 'live');}
 
   }else if(m.type==='peer-joined'||m.type==='renegotiate')await offer(m.id||m.from,m.type==='renegotiate');
   else if(m.type==='peer-left'||m.type==='peer-mode'&&m.mode==='pcm')disposePeer(m.id);
   else if(m.type==='peer-mode'&&m.mode==='webrtc')await offer(m.id,true);
   else if(m.type==='publisher-left'){closePeers();audio?.reset();live=false;sourceAvailable=false;reportHealth('ok');status('Waiting for host');}
-  else if(m.type==='offer'&&!studio&&!pcm){
+  else if(m.type==='offer'&&!studio&&(!pcm||extraEncryption||deliveryMode==='cloud')){
     const pc=connection(m.from,m.generation);await pc.setRemoteDescription(m.sdp);
     await flushCandidates(m.from,pc);
     const answer=musicSDP(await pc.createAnswer(),510000);await pc.setLocalDescription(answer);
@@ -281,8 +289,11 @@ async function onSignal(m){
   }else if(m.type==='note-ack'&&!studio&&$('note-status')){
     const sec=Math.max(0,Math.floor(Number(m.offsetSeconds)||0));
     const stamp=`${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`;
+    if($('note-input')?.value.trim()===m.text)$('note-input').value='';
     $('note-status').hidden=false;$('note-status').textContent=`Sent to DAW at ${stamp} ✓`;
     clearTimeout(noteTimer);noteTimer=setTimeout(()=>{if($('note-status'))$('note-status').hidden=true;},3500);
+  }else if(m.type==='note-error'&&!studio&&$('note-status')){
+    $('note-status').hidden=false;$('note-status').textContent=m.error||'Your note could not be sent.';
   }else if(m.type==='pong'&&pcm)$('rtt').textContent=`${Math.round(performance.now()-m.at)} ms`;
 }
 function connectSocket(){
@@ -291,7 +302,7 @@ function connectSocket(){
   socket.onopen=()=>{if(studio)send({type:'join',role:'publisher',token:session.token});else joinListener();};
   let chain=Promise.resolve();
   socket.onmessage=({data})=>{
-    if(typeof data!=='string'){lastBinary=performance.now();if(studio||pcm)audio?.feed(data);return;}
+    if(typeof data!=='string'){if(extraEncryption&&!studio){void secureDelivery?.buffered(data);return;}lastBinary=performance.now();if(studio||pcm)audio?.feed(data);return;}
     chain=chain.then(()=>ws===socket&&running?onSignal(JSON.parse(data)):undefined).catch(e=>{console.error('Signaling failed:',e);message(`Connection issue: ${e.message}`,true);});
   };
   socket.onerror=()=>message('Connection interrupted. Reconnecting…',true);
@@ -357,6 +368,7 @@ async function prepareAudio(attempt){
 async function stop(showMessage=true){
   ++audioAttempt;waitingForApproval=false;checkingSignIn=false;awaitingPasscode=false;
   if($('note-form'))$('note-form').hidden=true;
+  if(!studio)$('listener-identity').hidden=accessDenied||(!approvalRequired&&!accountRequired);
   reportHealth('ok',false);running=false;live=false;joined=false;sourceAvailable=false;clearTimeout(reconnectTimer);clearTimeout(fallbackTimer);clearInterval(statsTimer);clearInterval(pingTimer);
   if(studio)send({type:'publishing',live:false});ws?.close();ws=null;closePeers();
   const closing=audio;
@@ -390,12 +402,12 @@ async function updateStats(){
     }
   }
   const now=performance.now();
-  if(!studio&&!pcm){if(receivedPackets!==null&&packets>receivedPackets)lastProgress=now;receivedPackets=packets;}
+  if(!studio&&!pcm&&deliveryMode!=='cloud'){if(receivedPackets!==null&&packets>receivedPackets)lastProgress=now;receivedPackets=packets;}
   if((studio||joined)&&audio&&['suspended','interrupted'].includes(audio.context.state)){status('Audio paused');message('Audio was paused by your browser. Tap Resume audio.');$('connect').innerHTML='Resume audio <span>↗</span>';}
   if(!studio&&running&&joined){
     // Incoming packets, rather than output level, distinguish a broken stream
     // from intentional mute, silent content, or the host pausing a broadcast.
-    const progress=pcm?lastBinary:lastProgress;
+    const progress=pcm||deliveryMode==='cloud'?lastBinary:lastProgress;
     if(!live||!sourceAvailable)reportHealth('ok');
     else if(needsResume||['suspended','interrupted'].includes(audio?.context.state))reportHealth('audio-blocked');
     else if(progress&&now-progress<3000)reportHealth('ok');
@@ -456,6 +468,8 @@ if($('dim'))$('dim').onclick=()=>{dimmed=!dimmed;$('dim').setAttribute('aria-pre
 for(const [id,mode] of [['scope-wave','wave'],['scope-fft','fft']]){
   if($(id))$(id).onclick=()=>{
     scopeMode=mode;
+    $('scope').dataset.display=mode;
+    $('scope').setAttribute('aria-label',mode==='fft'?'Live audio frequency spectrum':'Live left and right audio waveforms');
     for(const [other,m] of [['scope-wave','wave'],['scope-fft','fft']]){
       const active=m===scopeMode;
       $(other)?.classList.toggle('active',active);
@@ -465,9 +479,8 @@ for(const [id,mode] of [['scope-wave','wave'],['scope-fft','fft']]){
 }
 function submitMixNote(raw){
   const text=String(raw||'').trim().slice(0,120);
-  if(!text||!joined||studio)return;
-  send({type:'listener-note',text});
-  if($('note-input'))$('note-input').value='';
+  if(!text||!joined||studio||!live||!feedbackEnabled||performance.now()<nextNoteAt)return;
+  nextNoteAt=performance.now()+2000;send({type:'listener-note',text});
 }
 if($('note-form')){
   $('note-form').onsubmit=e=>{e.preventDefault();submitMixNote($('note-input')?.value);};
@@ -551,7 +564,7 @@ function draw(){
   const plotLine=light?'rgba(44,102,33,.12)':'rgba(186,247,122,.08)';
   const midLine=light?'#cbd7cc':'#2a352d';
   const plotL=light?'#2c6621':'#baf77a';
-  const plotR=light?'#2b7c66':'#74d8a1';
+  const plotR=light?'#74638f':'#baa7d7';
   const plotIdle=light?'#829285':'#56665a';
   const dpr=Math.min(devicePixelRatio||1,2),w=canvas.clientWidth,h=canvas.clientHeight;
   if(w>0&&h>0&&(canvas.width!==Math.round(w*dpr)||canvas.height!==Math.round(h*dpr))){
@@ -598,7 +611,7 @@ function draw(){
     }
     const amp=h*.20;
     drawCurve(valuesL,w,topY,amp,running?plotL:plotIdle,running?(light?'rgba(44,102,33,.10)':'rgba(186,247,122,.10)'):null);
-    drawCurve(valuesR,w,botY,amp,running?plotR:plotIdle,running?(light?'rgba(43,124,102,.10)':'rgba(116,216,161,.09)'):null);
+    drawCurve(valuesR,w,botY,amp,running?plotR:plotIdle,running?(light?'rgba(116,99,143,.10)':'rgba(186,167,215,.09)'):null);
 
     ctx.font='600 9px "DM Sans", sans-serif';
     ctx.fillStyle=light?'rgba(23,33,26,.48)':'rgba(242,243,236,.42)';

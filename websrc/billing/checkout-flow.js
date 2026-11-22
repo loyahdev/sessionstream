@@ -4,9 +4,9 @@ export function verifyCheckoutIdentity(user,account){
  if(!primary?.emailAddress||primary.verification?.status!=='verified'||primary.emailAddress.toLowerCase()!==account.user.email?.toLowerCase())throw Error('Verify your primary account email in account settings before subscribing.');
  return primary.emailAddress;
 }
-export function verifyCheckoutPrice(checkout,planId){
+export function verifyCheckoutPrice(checkout,planId,period='month'){
  const due=checkout?.totals?.totalDueNow;
- if(checkout?.plan?.id!==planId||checkout.planPeriod!=='month'||due?.amount!==500||String(due.currency).toLowerCase()!=='usd')throw Error('The subscription price could not be verified. Please contact support.');
+ if(checkout?.plan?.id!==planId||!['month','annual'].includes(period)||checkout.planPeriod!==period||due?.amount!==(period==='annual'?9996:1000)||String(due.currency).toLowerCase()!=='usd')throw Error('The subscription price could not be verified. Please contact support.');
 }
 export function paymentMessage(error){return String(error?.errors?.[0]?.longMessage||error?.errors?.[0]?.message||error?.error?.message||error?.message||'Your payment could not be completed. Please try again.').slice(0,300);}
 export async function completeCheckout({verify,submit,confirm,finalize}){

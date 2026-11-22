@@ -18,9 +18,11 @@
     </header>
     <main>
       <section class="listener" id="console-card" aria-label="Audio session">
+        <div class="listener-entry">
         <div class="console-top">
           <div class="connection-status"><span class="dot" id="status-dot"></span><span id="status-label">READY TO LISTEN</span></div>
           <h1 id="heading">Listen</h1>
+          <p id="audio-security" class="audio-security" hidden></p>
           <p id="host-name" class="description host-name" hidden></p>
         </div>
 
@@ -46,6 +48,8 @@
 
         <p class="message" id="message" role="status"></p>
 
+        </div>
+        <div class="listener-console">
         <section class="audio-details" aria-label="Audio details">
           <div class="audio-summary">
             <div class="audio-tags">
@@ -53,32 +57,33 @@
               <span class="summary-sep">·</span>
               <span id="source-label">WAITING FOR AUDIO</span>
             </div>
-            <div class="scope-switcher" role="group" aria-label="Visualizer mode">
+            <div class="scope-switcher" role="group" aria-label="Audio display">
               <button type="button" id="scope-wave" class="scope-tab active" aria-pressed="true">Stereo L/R</button>
               <button type="button" id="scope-fft" class="scope-tab" aria-pressed="false">Spectrum</button>
             </div>
           </div>
           <div class="scope-frame">
-            <canvas id="scope" aria-label="Live stereo audio visualizer"></canvas>
+            <canvas id="scope" data-display="wave" role="img" aria-label="Live left and right audio waveforms"></canvas>
+            <div class="scope-frequency" aria-hidden="true"><span>20 Hz</span><span>100</span><span>1k</span><span>20k</span></div>
           </div>
         </section>
 
         <div id="listener-settings" class="monitor-strip">
           <div class="volume-control">
-            <label for="volume">Monitor</label>
+            <label for="volume">Volume</label>
             <input id="volume" type="range" min="-60" max="6" step="0.5" value="0" aria-label="Listening volume in decibels" aria-valuetext="0 dB">
             <output id="volume-label" for="volume">0 dB</output>
           </div>
           <div class="monitor-buttons" role="group" aria-label="Monitor check controls">
             <button id="mono" type="button" class="mute-button" aria-pressed="false" title="Fold stereo mix to mono (L+R)">Mono</button>
-            <button id="dim" type="button" class="mute-button" aria-pressed="false" title="Attenuate listening level by 12 dB">Dim −12</button>
+            <button id="dim" type="button" class="mute-button" aria-pressed="false" title="Attenuate listening level by 12 dB">Dim −12 dB</button>
             <button id="mute" type="button" class="mute-button" aria-pressed="false" title="Mute audio while staying connected">Mute</button>
           </div>
         </div>
 
         <form id="note-form" class="note-bar" hidden>
           <div class="note-chips" role="group" aria-label="Quick mix reactions">
-            <button type="button" class="note-chip" data-note="Sounds clean">Sounds clean</button>
+            <button type="button" class="note-chip" data-note="I like this">I like this</button>
             <button type="button" class="note-chip" data-note="Check vocal level">Vocal level</button>
             <button type="button" class="note-chip" data-note="Check low end">Low end</button>
           </div>
@@ -89,6 +94,8 @@
           <p id="note-status" class="note-status" role="status" hidden></p>
         </form>
 
+        </div>
+        <div class="listener-connection">
         <fieldset id="audio-mode" class="audio-mode" aria-describedby="mode-help">
           <legend>Audio transport</legend>
           <div class="mode-options">
@@ -104,6 +111,7 @@
           <div><dt>Audio buffer</dt><dd id="buffer">—</dd></div>
           <div><dt id="fourth-label">Packet loss</dt><dd id="fourth-value">—</dd></div>
         </dl></details>
+        </div>
       </section>
 
       <section class="invite" id="invite-panel" hidden>
@@ -113,7 +121,7 @@
       </section>
       <span id="session-title" hidden></span>
     </main>
-    <footer><span>Streaming live from their DAW with SessionStream · </span><a href="https://sessionstream.app/#download" target="_blank" rel="noopener noreferrer">Get the free plugin ↗</a></footer>
+    <footer><span>Audio streamed with SessionStream · </span><a href="https://sessionstream.app/#download" target="_blank" rel="noopener noreferrer">Get the free plugin ↗</a></footer>
   </div>
   <script type="module" src="/app.mjs"></script>
 </body>

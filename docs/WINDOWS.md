@@ -1,4 +1,4 @@
-# SessionStream 1.0 for Windows
+# SessionStream 1.0.3 for Windows
 
 The Windows installer contains a VST3 bundle with native **Intel/AMD x64** and **ARM64** plugin binaries. It requires **Windows 11** and a matching 64-bit DAW. A native ARM64 DAW loads the ARM64 binary; an x64 DAW, including one running under emulation on ARM, loads the x64 binary. 32-bit x86 DAWs are not supported.
 

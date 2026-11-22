@@ -4,9 +4,9 @@ const browserKey=credential=>typeof credential==='string'&&/^[a-f0-9]{64}$/.test
 const denied=status=>status==='rejected'||status==='revoked';
 const clean=name=>typeof name==='string'?name.replace(/[\x00-\x1f\x7f]/g,'').trim().slice(0,48):'';
 export class ListenerAdmission {
- constructor({now=Date.now}={}){this.now=now;this.approval=false;this.requireAccount=false;this.records=new Map();this.notes=[];this.noteTimestamps=new Map();}
+ constructor({now=Date.now}={}){this.now=now;this.uncapped=false;this.approval=false;this.requireAccount=false;this.feedback=false;this.records=new Map();this.notes=[];this.noteTimestamps=new Map();}
  reset(){this.records.clear();this.notes=[];this.noteTimestamps.clear();}
- configure({approval,requireAccount}){if(typeof approval!=='boolean'||typeof requireAccount!=='boolean')throw Error('Invalid listener settings.');this.approval=approval;this.requireAccount=requireAccount;}
+ configure({approval,requireAccount,feedback}){if(typeof approval!=='boolean'||typeof requireAccount!=='boolean')throw Error('Invalid listener settings.');if(feedback!==undefined&&typeof feedback!=='boolean')throw Error('Invalid feedback setting.');this.approval=approval;this.requireAccount=requireAccount;if(feedback!==undefined)this.feedback=feedback;}
  decision(credential,identity){
   const browser=browserKey(credential);
   const account=identity&&this.records.get('account:'+identity.id);
@@ -24,7 +24,7 @@ export class ListenerAdmission {
   const key=identity?'account:'+identity.id:browser||'legacy:'+connection;
   let record=this.records.get(key);
   if(record?.status==='account-required')record.status=this.approval?'pending':'approved';
-  if(!record){if(this.records.size>=256)return {status:'full'};record={id:randomBytes(8).toString('hex'),key,browser,name:clean(identity?.name)||clean(name)||'Guest',verified:!!identity,status:this.approval?'pending':'approved',at:this.now(),connection};this.records.set(key,record);}
+  if(!record){if(!this.uncapped&&this.records.size>=256||this.approval&&[...this.records.values()].filter(r=>r.status==='pending').length>=256)return {status:'full'};record={id:randomBytes(8).toString('hex'),key,browser,name:clean(identity?.name)||clean(name)||'Guest',verified:!!identity,status:this.approval?'pending':'approved',at:this.now(),connection};this.records.set(key,record);}
   const replacedConnection=record.connection&&record.connection!==connection?record.connection:null;record.connection=connection;record.at=this.now();
   return {status:record.status,record,replacedConnection};
  }
@@ -39,15 +39,16 @@ export class ListenerAdmission {
  addNote(connection,rawText,offsetSeconds=0){
   const text=typeof rawText==='string'?rawText.replace(/[\x00-\x1f\x7f]/g,'').trim().slice(0,120):'';
   if(!text)return false;
-  const now=this.now(),last=this.noteTimestamps.get(connection)||0;
-  if(now-last<2000)return false;
-  this.noteTimestamps.set(connection,now);
   const record=[...this.records.values()].find(r=>r.connection===connection&&r.status==='approved');
+  if(!this.feedback||!record)return false;
+  const now=this.now(),last=this.noteTimestamps.get(record.id);
+  if(last!==undefined&&now-last<2000)return false;
+  this.noteTimestamps.set(record.id,now);
   const offset=Math.max(0,Math.floor(Number(offsetSeconds)||0));
   if(record){record.note=text;record.noteOffset=offset;}
   this.notes.push({id:randomBytes(6).toString('hex'),name:record?.name||'Listener',text,offsetSeconds:offset,at:now});
   if(this.notes.length>20)this.notes.shift();
   return true;
  }
- snapshot(){return {approval:this.approval,requireAccount:this.requireAccount,notes:[...this.notes],listeners:[...this.records.values()].filter(r=>r.status==='pending'||r.status==='approved').map(({id,name,verified,status,connection,note,noteOffset})=>({id,name,verified,status,online:!!connection,...(note?{note,noteOffset}:{})}))};}
+ snapshot(){return {approval:this.approval,requireAccount:this.requireAccount,feedback:this.feedback,notes:[...this.notes],listeners:[...this.records.values()].filter(r=>r.status==='pending'||r.status==='approved').map(({id,name,verified,status,connection,note,noteOffset})=>({id,name,verified,status,online:!!connection,...(note?{note,noteOffset}:{})}))};}
 }

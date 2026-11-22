@@ -1,0 +1,15 @@
+# Account completion and visual alignment
+
+A consumed OAuth callback could be revisited after the account had already connected, causing the browser to show the cancellation/failure page. The authorization code remains strictly single-use. The companion now keeps bounded five-minute presentation receipts containing only a callback fingerprint, epoch and expiry, and redirects success to a clean local completion URL. Exact completed callbacks can reuse that presentation receipt without another token exchange or installation reconnect. Altered/unknown callbacks still fail; public-port requests are rejected. Sign-out clears receipts; an expired confirmation is neutral about the plugin's current login rather than claiming sign-in failed.
+
+Hosted sign-in/sign-up and the local result page now share web/account.css: actual studio photography, bold SessionStream typography, charcoal/paper surfaces, flat controls, lime actions in dark mode and violet secondary accents. Removed old slogan copy, circular decoration and rounded green cards. The website's Clerk form uses the same tokens; explicit overrides remove provider bevel/shadow styling. Shared CSS and auth assets receive content-versioned URLs.
+
+Published account-page styling to the existing Cloudflare site, version 3fbf2494-230b-4b30-8485-6d945bcff407. The local callback/result changes require the replacement plugin runtime in the new installers; a website deployment alone does not update an already running companion.
+
+Verification: all 177 then-current serial regression tests passed; the final neutral-expiry change and callback/account/reconnect suite passed 21 targeted tests. Tests confirm clean result redirects, exact replay without another exchange, rejection of altered callbacks, receipt bounds/expiry, sign-out invalidation, and loopback-only result access. The actual live Clerk sign-in and sign-up forms loaded in the browser. Checked mobile sign-in at 390px with no horizontal overflow; confirmed final brand accent and no primary-button shadow. Browser used public forms with no entered credentials. No real OAuth sign-in was performed by the agent.
+
+Screenshots in /Users/jaxonhensch/wavesstreamvst/artifacts/plugin-listener-1.0.2/: account-sign-in-live.jpg, account-sign-in-mobile.jpg, account-success.jpg. The success screenshot is the real renderer in an isolated presentation preview, not a claim of the user's authenticated session.
+
+The setup builder can now consume the existing architecture/version-validated combined Windows stage using SESSIONSTREAM_SETUP_WINDOWS_STAGE, avoiding unnecessary intermediate installer recompression. Default release-input behavior remains available.
+
+Final packaging checks passed: extracted AU/VST3 signatures and byte-identical current server/web sources, DMG setup/uninstaller signatures and exact PKG, all 121 Windows payload hashes, receipt/style files, embedded uninstaller and final setup checksums. The stable Windows installer filename also points to the completed designed setup. The designed downloads are in artifacts/setup/. Nothing was installed into system plugin folders and no real account login was performed.

@@ -4,7 +4,8 @@ int main() {
     juce::ScopedJuceInitialiser_GUI init;
     juce::DatagramSocket receiver(false);
     if (!receiver.bindToPort(49300, "127.0.0.1")) { std::cerr << "Stop bridge before native test\n"; return 1; }
-    StreamProcessor p;
+    // Receive buffers exceed the default Windows thread stack; hosts allocate plugins on the heap.
+    auto owned=std::make_unique<StreamProcessor>();auto& p=*owned;
     p.prepareToPlay(48000, 512);
     p.setSending(true);
     juce::AudioBuffer<float> b(2, 512); juce::MidiBuffer midi;
@@ -48,15 +49,15 @@ int main() {
         if(std::abs(l-original.getSample(0,n*256)*expected)>1.e-6f)return 9;
     }
     for(int ch=0;ch<2;ch++)for(int i=0;i<512;i++)if(b.getSample(ch,i)!=original.getSample(ch,i))return 10;
-    p.controller->restoreListenerPreferences(3);
+    p.controller->restoreListenerPreferences(7);
     p.controller->shareHostName(true);
     p.controller->requirePasscode(true);
     p.controller->preferCustomLink(true);
     juce::MemoryBlock state;p.getStateInformation(state);p.setGainDb(0);p.setStateInformation(state.getData(),int(state.getSize()));
     if(!p.isSending()||std::abs(p.gainDb()+6)>1.e-4f)return 11;
-    StreamProcessor restored;restored.setStateInformation(state.getData(),int(state.getSize()));
+    auto restoredOwned=std::make_unique<StreamProcessor>();auto& restored=*restoredOwned;restored.setStateInformation(state.getData(),int(state.getSize()));
     if(restored.isSending()||std::abs(restored.gainDb()+6)>1.e-4f)return 20;
-    if(restored.controller->listenerPreferences()!=3||!restored.controller->sharesHostName()
+    if(restored.controller->listenerPreferences()!=7||!restored.controller->sharesHostName()
        ||!restored.controller->requiresPasscode()||!restored.controller->prefersCustomLink())return 21;
     p.setSending(false);
     p.setStateInformation(nullptr, 0);
@@ -67,7 +68,7 @@ int main() {
     if(burst.dropped.load()!=0)return 14;
     // Exercise the actual processor receive branch without a control server:
     // track input is replaced by the remote stereo signal, never re-broadcast.
-    StreamProcessor incoming;incoming.controller.reset();incoming.prepareToPlay(48000,512);incoming.setReceiveMode(true);incoming.connectReceive(true);
+    auto incomingOwned=std::make_unique<StreamProcessor>();auto& incoming=*incomingOwned;incoming.controller.reset();incoming.prepareToPlay(48000,512);incoming.setReceiveMode(true);incoming.connectReceive(true);
     juce::AudioBuffer<float> received(2,512);received.clear();incoming.processBlock(received,midi);
     juce::DatagramSocket feed(false);std::array<char,2072> receivePacket{};std::memcpy(receivePacket.data(),packet.data(),2072);
     for(int i=0;i<256;++i){const float l=.25f,r=-.125f;std::memcpy(receivePacket.data()+24+i*8,&l,4);std::memcpy(receivePacket.data()+28+i*8,&r,4);}
@@ -78,7 +79,7 @@ int main() {
     for(int i=0;i<512;++i)if(std::abs(received.getSample(0,i)-.25f)>1.e-6f||std::abs(received.getSample(1,i)+.125f)>1.e-6f)return 21;
     if(incoming.transport.enabled.load()||receiver.waitUntilReady(true,50)>0)return 22;
     juce::MemoryBlock receiveState;incoming.getStateInformation(receiveState);incoming.setStateInformation(receiveState.getData(),static_cast<int>(receiveState.getSize()));if(!incoming.isReceiveMode()||!incoming.isReceiving())return 25;
-    StreamProcessor receiveRestored;receiveRestored.controller.reset();receiveRestored.setStateInformation(receiveState.getData(),static_cast<int>(receiveState.getSize()));if(!receiveRestored.isReceiveMode()||receiveRestored.isReceiving()||receiveRestored.isSending())return 26;
+    auto receiveRestoredOwned=std::make_unique<StreamProcessor>();auto& receiveRestored=*receiveRestoredOwned;receiveRestored.controller.reset();receiveRestored.setStateInformation(receiveState.getData(),static_cast<int>(receiveState.getSize()));if(!receiveRestored.isReceiveMode()||receiveRestored.isReceiving()||receiveRestored.isSending())return 26;
     incoming.connectReceive(false);incoming.processBlock(received,midi);
     for(int ch=0;ch<2;++ch)for(int i=0;i<512;++i)if(received.getSample(ch,i)!=0)return 23;
     std::cout<<"PASS: processor receive replaces track input, preserves stereo, stops silently, and cannot feed Send"<<std::endl;

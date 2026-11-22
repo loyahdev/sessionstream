@@ -1,0 +1,11 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import{verifyCheckoutPrice}from'../websrc/billing/checkout-flow.js';
+import{validClerkProPlan}from'../services/tunnel-broker/clerk-billing.mjs';
+import{checkoutDestination}from'../websrc/billing-navigation.js';
+const plan={id:'p',for_payer_type:'user',is_recurring:true,publicly_visible:true,fee:{amount:1000,currency:'usd'},annual_fee:{amount:9996,currency:'usd'}};
+test('Only exact configured $10 monthly / $99.96 annual plan is accepted',()=>{assert(validClerkProPlan(plan,'p','annual'));for(const annual_fee of [{amount:1000,currency:'usd'},{amount:9996,currency:'cad'},{amount:10001,currency:'usd'}])assert(!validClerkProPlan({...plan,annual_fee},'p','annual'))});
+test('Annual checkout verifies interval, plan and exact USD total',()=>{const c={plan:{id:'p'},planPeriod:'annual',totals:{totalDueNow:{amount:9996,currency:'USD'}}};verifyCheckoutPrice(c,'p','annual');assert.throws(()=>verifyCheckoutPrice(c,'p','month'));assert.throws(()=>verifyCheckoutPrice({...c,totals:{totalDueNow:{amount:1000,currency:'USD'}}},'p','annual'));assert.throws(()=>verifyCheckoutPrice({...c,planPeriod:'month'},'p','annual'))});
+test('Selected annual period reaches checkout but never changes billing-management URL',()=>{assert.equal(checkoutDestination('/dashboard/billing/','https://sessionstream.app','annual'),'https://sessionstream.app/dashboard/billing/?period=annual');assert.equal(checkoutDestination('/dashboard/account/billing','https://sessionstream.app','annual'),'https://sessionstream.app/dashboard/account/billing');assert.throws(()=>checkoutDestination('https://evil.test','https://sessionstream.app','annual'));assert.throws(()=>checkoutDestination('/dashboard/billing/','https://sessionstream.app','weekly'))});
+
+import{AccountHub}from'../services/tunnel-broker/accounts.mjs';
+test('Monthly validation cannot populate the annual price-validation cache',async()=>{const hub=new AccountHub({storage:{}},{CLERK_ISSUER:'https://clerk.example',CLERK_PRO_PLAN_ID:'p',CLERK_PLAN_FETCH:async()=>Response.json({...plan,annual_fee:{amount:10000,currency:'usd'}})});await hub.validateClerkPlan('month');await assert.rejects(hub.validateClerkPlan('annual'));});

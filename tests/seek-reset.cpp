@@ -26,13 +26,15 @@ int main(int argc,char** argv){
         p->controller.reset();
         auto* processor=p.get();
         p->controller=std::make_unique<StreamController>(p->transport.getSourceId(),[processor]{return processor->isSending();},argv[1],juce::File::getCurrentWorkingDirectory().getChildFile("missing-seek-test-runtime"),[processor]{return processor->shouldKeepSession();});
+        // This integrity probe compares raw PCM bytes; encrypted playback is covered separately.
+        p->controller->encryptAudio(false);
         std::unique_ptr<juce::AudioProcessorEditor> editor(p->createEditor());
         juce::TextButton* start=nullptr;juce::ToggleButton* protection=nullptr;juce::TextEditor* passcode=nullptr;
         bool sawGenerate=false;
         for(auto* child:editor->getChildren()){
             if(auto* button=dynamic_cast<juce::TextButton*>(child)){
-                if(button->getButtonText()=="Preparing connection..."){sawGenerate=true;require(!button->isEnabled(),"Generate was enabled during loading");}
-                if(button->getButtonText()=="Start streaming"){start=button;require(!button->isEnabled(),"Start was enabled while loading");}
+                if(button->getComponentID()=="new-link"){sawGenerate=true;require(!button->isEnabled(),"Generate was enabled during loading");}
+                if(button->getComponentID()=="stream-toggle"){start=button;require(!button->isEnabled(),"Start was enabled while loading");}
             }
             if(auto* toggle=dynamic_cast<juce::ToggleButton*>(child))protection=toggle;
             if(auto* text=dynamic_cast<juce::TextEditor*>(child))if(text->getPasswordCharacter()!=0)passcode=text;

@@ -24,11 +24,14 @@ cpSync(process.argv[2], process.argv[3], {
 });
 JS
 }
+node scripts/build-cloud-codec.mjs
 for plugin in build/SessionStream_artefacts/Release/VST3/SessionStream.vst3 build/SessionStream_artefacts/Release/AU/SessionStream.component build/SessionStream_artefacts/Release/Standalone/SessionStream.app; do
   runtime="$plugin/Contents/Resources/runtime"
   [[ ! -d "$runtime" ]] || chmod -R u+w "$runtime"
   mkdir -p "$runtime/bin" "$runtime/node_modules" "$runtime/scripts" "$runtime/notices"
   cp docs/THIRD_PARTY.md docs/NODE-WEBRTC-LICENSE.md docs/CLOUDFLARED-LICENSE.txt "$runtime/notices/"
+  cp node_modules/opusscript/LICENSE "$runtime/notices/OPUSSCRIPT-LICENSE"
+  cp node_modules/opusscript/build/COPYING.libopus "$runtime/notices/LIBOPUS-LICENSE"
   cp plugin/third_party/LICENSE-qrcodegen.txt "$runtime/notices/"
   cp vendor/JUCE/LICENSE.md "$runtime/notices/JUCE-LICENSE.md"
   cp LICENSE README.md "$runtime/notices/"
@@ -43,7 +46,7 @@ for plugin in build/SessionStream_artefacts/Release/VST3/SessionStream.vst3 buil
   cp vendor/node/bin/node "$runtime/bin/node"
   cp "$CLOUDFLARED_PATH" "$runtime/bin/cloudflared"
   cp vendor/node/LICENSE "$runtime/bin/NODE-LICENSE"
-  for module in ws @roamhq domexception webidl-conversions; do
+  for module in ws @roamhq domexception webidl-conversions opusscript opus-decoder @wasm-audio-decoders @eshaz simple-yenc; do
     copy_tree "node_modules/$module" "$runtime/node_modules/$module"
   done
   for binary in "$runtime/bin/account-credentials" "$runtime/bin/node" "$runtime/bin/cloudflared" "$runtime/node_modules/@roamhq/wrtc-darwin-arm64/wrtc.node"; do

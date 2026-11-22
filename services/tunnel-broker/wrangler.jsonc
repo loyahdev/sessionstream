@@ -20,8 +20,7 @@
     "CLERK_ISSUER": "https://clerk.sessionstream.app",
     "CLERK_CLIENT_ID": "pc8es4va5qJsFDVW",
     "PRO_LISTENER_LIMIT": "8",
-    "PRO_CLOUD_LISTENER_LIMIT": "30",
-    "MAC_DOWNLOAD_URL": "https://github.com/loyahdev/sessionstream/releases/latest/download/SessionStream-mac-arm64.pkg",
+    "MAC_DOWNLOAD_URL": "https://github.com/loyahdev/sessionstream/releases/latest/download/SessionStream-mac-arm64.dmg",
     "WINDOWS_DOWNLOAD_URL": "https://github.com/loyahdev/sessionstream/releases/latest/download/SessionStream-windows-x64-arm64.exe",
     "BILLING_PROVIDER": "clerk",
     "CLERK_PRO_PLAN_ID": "cplan_3LfuHOHrgi4rz3CLjd1z9VFXZRR"

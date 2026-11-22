@@ -1,3 +1,5 @@
+import {ListenerDelivery} from '../web/listener-delivery.mjs';
+import {CloudAudioDecoder} from '../web/cloud-decoder.mjs';
 import dgram from 'node:dgram';
 import {randomBytes} from 'node:crypto';
 import {WebSocket} from 'ws';
@@ -53,6 +55,7 @@ export class NativeReceiver {
   status(){return {phase:this.phase,message:this.message,packets:this.packets,rate:this.rate,transport:this.activeMode};}
   closePeer(){
     clearTimeout(this.webrtcTimer);
+    this.delivery?.close();this.delivery=null;
     if(this.sink){try{this.sink.ondata=null;this.sink.stop();}catch{}this.sink=null;}
     if(this.pc){try{this.pc.onicecandidate=null;this.pc.onconnectionstatechange=null;this.pc.ontrack=null;this.pc.close();}catch{}this.pc=null;}
     this.pendingCandidates=[];
@@ -87,9 +90,10 @@ export class NativeReceiver {
       this.udp.send(packet,this.port,'127.0.0.1',()=>{});
     }
   }
+  forwardPCM(raw){if(this.closed||!this.hostLive)return;const packet=parsePacket(raw);if(!packet)return;this.packets++;this.lastPacket=Date.now();this.rate=packet.rate;this.phase='receiving';this.message='Receiving audio';this.udp.send(raw,this.port,'127.0.0.1',()=>{});}
   scheduleWebrtcFallback(ws,current){
     clearTimeout(this.webrtcTimer);
-    if(this.activeMode!=='webrtc'||this.closed)return;
+    if(this.activeMode!=='webrtc'||this.cloudMode||this.closed)return;
     this.webrtcTimer=setTimeout(()=>{
       if(!current()||this.activeMode!=='webrtc')return;
       if(this.pc?.connectionState==='connected')return;
@@ -102,7 +106,7 @@ export class NativeReceiver {
   }
   async handleOffer(ws,message,current){
     const wrtc=this.wrtcImpl||(await import('@roamhq/wrtc')).default;
-    if(!current()||this.activeMode!=='webrtc'||ws.readyState!==WebSocket.OPEN)return;
+    if(!current()||this.activeMode!=='webrtc'&&!this.needsControl||ws.readyState!==WebSocket.OPEN)return;
     this.closePeer();
     const pc=this.pc=new wrtc.RTCPeerConnection({iceServers:this.iceServers});
     pc.generation=message.generation;
@@ -112,11 +116,13 @@ export class NativeReceiver {
     pc.onconnectionstatechange=()=>{
       if(!current()||this.pc!==pc)return;
       if(pc.connectionState==='connected')clearTimeout(this.webrtcTimer);
+      else if(pc.connectionState==='failed'&&this.cloudMode){ws.close();}
       else if(pc.connectionState==='failed'&&this.activeMode==='webrtc'){
         this.activeMode='pcm';this.closePeer();
         if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'mode',mode:'pcm'}));
       }
     };
+    if(this.needsControl){this.delivery=new ListenerDelivery({PeerConnection:wrtc.RTCPeerConnection,iceServers:this.iceServers,decode:async()=>{const decoder=new CloudAudioDecoder();await decoder.ready;return decoder;},onFrame:raw=>this.forwardPCM(Buffer.from(raw)),onError:()=>{if(current()&&this.hostLive)ws.close();}});pc.ondatachannel=event=>this.delivery?.attach(event.channel);}
     pc.ontrack=event=>{
       if(!current()||this.pc!==pc||this.activeMode!=='webrtc')return;
       if(this.sink){try{this.sink.ondata=null;this.sink.stop();}catch{}}
@@ -156,7 +162,7 @@ export class NativeReceiver {
       if(!current())return;
       const url=new URL(this.url);
       url.hash='';
-      url.pathname=this.url.hostname.endsWith('.trycloudflare.com')?'/signal':`${url.pathname}/signal`;
+      url.pathname=this.url.pathname==='/listen'&&/^[a-f0-9]{48}$/.test(this.url.hash.slice(1))?'/signal':`${url.pathname}/signal`;
       url.protocol=url.protocol==='http:'?'ws:':'wss:';
       const ws=this.ws=new WebSocket(url,{origin:this.url.origin,handshakeTimeout:10000,maxPayload:65536,followRedirects:false});
       ws.on('error',()=>{});
@@ -185,10 +191,7 @@ export class NativeReceiver {
       ws.on('message',async(raw,binary)=>{
         if(!current())return;
         if(binary){
-          const packet=parsePacket(raw);if(!packet)return;
-          this.packets++;this.lastPacket=Date.now();this.rate=packet.rate;
-          this.phase='receiving';this.message='Receiving audio';
-          this.udp.send(raw,this.port,'127.0.0.1',()=>{});
+          if(this.encrypted){void this.delivery?.buffered(raw);}else this.forwardPCM(raw);
           return;
         }
         let message;try{message=JSON.parse(raw.toString());}catch{return;}
@@ -211,13 +214,14 @@ export class NativeReceiver {
         if(message.type==='name-required'){this.noRetry=true;this.phase='error';this.message='Host requires listener identification.';ws.close();return;}
         if(message.type==='passcode-required'){this.phase='passcode';this.message=message.invalid?'Incorrect passcode':'This session needs a passcode';this.noRetry=true;ws.close();return;}
         if(message.type==='joined'){
+          this.cloudMode=message.delivery==='cloud';this.encrypted=message.encrypted===true;this.needsControl=this.cloudMode||this.encrypted;
           this.iceServers=Array.isArray(message.iceServers)?message.iceServers:[];
           ws.send(JSON.stringify({type:'mode',mode:this.activeMode}));
           this.phase='waiting';this.message='Waiting for host audio';
           if(this.activeMode==='webrtc')this.scheduleWebrtcFallback(ws,current);
           return;
         }
-        if(message.type==='offer'&&this.activeMode==='webrtc'){
+        if(message.type==='offer'&&(this.activeMode==='webrtc'||this.needsControl)){
           this.handleOffer(ws,message,current).catch(()=>{
             if(!current())return;
             this.activeMode='pcm';this.closePeer();
@@ -225,7 +229,7 @@ export class NativeReceiver {
           });
           return;
         }
-        if(message.type==='candidate'&&this.activeMode==='webrtc'){
+        if(message.type==='candidate'&&(this.activeMode==='webrtc'||this.needsControl)){
           if(this.pc?.remoteDescription&&this.pc.generation===message.generation)await this.pc.addIceCandidate(message.candidate).catch(()=>{});
           else if(this.pendingCandidates.length<64)this.pendingCandidates.push({candidate:message.candidate,generation:message.generation});
           return;

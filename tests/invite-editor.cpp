@@ -9,8 +9,13 @@ public:
     const juce::String getApplicationName() override{return "SessionStream invite verification";}
     const juce::String getApplicationVersion() override{return UpdateChecker::currentVersion;}
     void initialise(const juce::String&) override {
-        processor=std::make_unique<StreamProcessor>([]{return juce::SystemStats::getEnvironmentVariable("SESSIONSTREAM_EDITOR_WORKFLOW",{})=="1"?juce::String("1.1"):juce::String(UpdateChecker::currentVersion);},juce::SystemStats::getEnvironmentVariable("SESSIONSTREAM_EDITOR_UDP_PORT","49300").getIntValue());
-        const auto endpoint=juce::SystemStats::getEnvironmentVariable("SESSIONSTREAM_EDITOR_ENDPOINT",{});
+        const auto previewFile=juce::File::getSpecialLocation(juce::File::currentExecutableFile).getSiblingFile("preview.json");
+        const auto preview=juce::JSON::parse(previewFile);
+        const auto configuredEndpoint=preview["endpoint"].toString();
+        const bool isolated=configuredEndpoint.startsWith("http://127.0.0.1:")&&int(preview["udpPort"])>=1024&&int(preview["udpPort"])<=65535;
+        const auto endpoint=isolated?configuredEndpoint:juce::SystemStats::getEnvironmentVariable("SESSIONSTREAM_EDITOR_ENDPOINT",{});
+        const int udpPort=isolated?int(preview["udpPort"]):juce::SystemStats::getEnvironmentVariable("SESSIONSTREAM_EDITOR_UDP_PORT","49300").getIntValue();
+        processor=std::make_unique<StreamProcessor>([]{return juce::SystemStats::getEnvironmentVariable("SESSIONSTREAM_EDITOR_WORKFLOW",{})=="1"?juce::String("1.1"):juce::String(UpdateChecker::currentVersion);},udpPort);
         if(endpoint.isNotEmpty())processor->controller=std::make_unique<StreamController>(processor->transport.getSourceId(),[this]{return processor->isSending();},endpoint);
         if(juce::SystemStats::getEnvironmentVariable("SESSIONSTREAM_EDITOR_RECEIVE_PREVIEW",{})=="1")processor->setReceiveMode(true);
         processor->prepareToPlay(48000,480);

@@ -14,7 +14,7 @@ const nodeVersion='24.3.0';
 const cloudflaredVersion='2026.9.3';
 const nodeHash='c0c8efbca1b57e5b074bbdf7cef1ccca40979d6b46e5bcadaad5d4b07cbb3b10';
 const cloudflaredHash='f096265ec2fcbe9bb6e2d64268db167ced3fcbb83d894bdb9e2fcdb26f2ea7e2';
-const modules=['@roamhq/wrtc','@roamhq/wrtc-win32-x64','ws','domexception','webidl-conversions'];
+const modules=['@roamhq/wrtc','@roamhq/wrtc-win32-x64','ws','domexception','webidl-conversions','opusscript','opus-decoder','@wasm-audio-decoders/common','@eshaz/web-worker','simple-yenc'];
 await mkdir(downloads,{recursive:true});
 async function download(name,url,algorithm,expected,encoding='hex'){
   const file=path.join(downloads,name);
@@ -56,10 +56,13 @@ for(const module of modules){
   const destination=path.join(cache,'node_modules',module);await mkdir(destination,{recursive:true});
   execFileSync('tar',['-xf',archive,'--strip-components=1','-C',destination]);
 }
+execFileSync(process.execPath,[path.join(root,'scripts/build-cloud-codec.mjs')],{cwd:root,stdio:'inherit'});
 for(const dir of ['server','web'])await cp(path.join(root,dir),path.join(cache,dir),{recursive:true,filter:p=>!path.basename(p).startsWith('._')&&path.basename(p)!=='.DS_Store'});
 await mkdir(path.join(cache,'scripts'));await mkdir(path.join(cache,'notices'));
 for(const file of ['companion.mjs','launch-engine.mjs'])await cp(path.join(root,'scripts',file),path.join(cache,'scripts',file));
 for(const file of ['THIRD_PARTY.md','NODE-WEBRTC-LICENSE.md','CLOUDFLARED-LICENSE.txt','NSIS-LICENSE.txt'])await cp(path.join(root,'docs',file),path.join(cache,'notices',file));
+await cp(path.join(cache,'node_modules/opusscript/LICENSE'),path.join(cache,'notices/OPUSSCRIPT-LICENSE'));
+await cp(path.join(cache,'node_modules/opusscript/build/COPYING.libopus'),path.join(cache,'notices/LIBOPUS-LICENSE'));
 await cp(path.join(root,'plugin','third_party','LICENSE-qrcodegen.txt'),path.join(cache,'notices','LICENSE-qrcodegen.txt'));
 await cp(path.join(root,'vendor','JUCE','LICENSE.md'),path.join(cache,'notices','JUCE-LICENSE.md'));
 await cp(path.join(root,'vendor','JIVE','LICENSE.md'),path.join(cache,'notices','JIVE-LICENSE.md'));

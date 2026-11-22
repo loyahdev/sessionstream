@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.1-baf77a?style=flat-square&amp;labelColor=202a23" alt="Version 1.0.1">
+  <img src="https://img.shields.io/badge/version-1.0.3-baf77a?style=flat-square&amp;labelColor=202a23" alt="Version 1.0.3">
   <img src="https://img.shields.io/badge/macOS-13.5%2B-baf77a?style=flat-square&amp;labelColor=202a23&amp;logo=apple&amp;logoColor=white" alt="macOS 13.5 or newer">
   <img src="https://img.shields.io/badge/Apple_Silicon-VST3_%2B_AU-baf77a?style=flat-square&amp;labelColor=202a23" alt="Apple Silicon · VST3 and AU">
   <img src="https://img.shields.io/badge/Windows_11-x64_%2B_ARM64-baf77a?style=flat-square&amp;labelColor=202a23" alt="Windows 11 · Intel/AMD x64 and ARM64">
@@ -47,20 +47,24 @@ SessionStream is a VST3 and Audio Units (AU) plugin for producers who teach, col
 
 | | What you get |
 | :--- | :--- |
-| **Live stereo** | Low-delay WebRTC audio with stereo Opus at a requested 510 kbps / 48 kHz. |
+| **Live stereo** | Stereo Opus / 48 kHz: Balanced 320 kbps on Free, plus Studio 510 kbps and Phone 96 kbps on Pro. |
 | **Independent stream gain** | Adjust what your listener hears without changing your track or master level. |
-| **Simple invitations** | Share a private link with up to eight listeners. Generate a new invitation to invalidate the previous one. |
+| **Simple invitations** | Share a private link: Free up to three listeners; Pro up to eight direct listeners or Cloud metered by listener-hours. Generate a new invitation to invalidate the previous one. |
 | **Browser playback** | Listeners install nothing. They get a waveform, a dB volume control with up to +6 dB boost, mute without disconnecting, and live audio and connection details. |
 | **Buffered audio** | Automatic PCM fallback through the HTTPS tunnel when a direct WebRTC connection cannot be established. |
+| **Cloud hours** | Pro includes 300 listener-hours per billing month. Optional $5 / 300-hour top-ups work on Free too and do not expire at renewal. Free receives no monthly allowance. |
 | **Bundled engine** | The streaming engine and tunnel ship with the plugin. No separate Node install, Cloudflare login, or SessionStream subscription. |
 
 ## Quick start
 
-**Current build: 1.0.1 · macOS Apple Silicon + Windows 11 x64 / ARM64**
+**Current build: 1.0.3 · macOS Apple Silicon + Windows 11 x64 / ARM64**
+
+[1.0.3 release notes and verification limits](docs/RELEASE-1.0.3.md)
+
 
 | Operating system | Architecture | Plugin formats | Installer |
 | :--- | :--- | :--- | :--- |
-| macOS 13.5+ | Apple Silicon | VST3 + AU | `SessionStream-mac-arm64.pkg` |
+| macOS 13.5+ | Apple Silicon | VST3 + AU | `SessionStream-mac-arm64.dmg` (custom setup and uninstall apps) |
 | Windows 11 | Intel/AMD x64 + ARM64 | VST3 | `SessionStream-windows-x64-arm64.exe` |
 
 The Windows installer includes both plugin architectures. Windows ARM64 uses an x64 streaming helper under emulation. Intel Macs, Windows 10 and 32-bit x86 DAWs are not supported.

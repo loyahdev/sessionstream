@@ -15,5 +15,7 @@ test('plugin login cannot redirect to other websites or arbitrary local endpoint
  assert.throws(()=>pluginAuthorization('#plugin=%'));assert.throws(()=>pluginAuthorization('#plugin=https://evil.example'));
 });
 test('success and cancellation pages use matching branding and no private identity or tokens',()=>{
- for(const ok of [true,false]){const html=accountResultPage(ok);assert(html.includes('Your studio.'));assert(html.includes('Manrope'));assert(html.includes('prefers-color-scheme:dark'));assert(html.includes('https://sessionstream.app/privacy/'));assert(!html.includes('<script'));assert(!html.includes('access_token'));assert(html.includes(ok?"You're signed in.":"Let's try that again."));}
+ for(const ok of [true,false]){const html=accountResultPage(ok);assert(html.includes('Session<br>stream'));assert(!html.includes('studio-session.webp'));assert(html.includes('--violet:'));assert(html.includes('Manrope'));assert(html.includes('prefers-color-scheme:dark'));assert(html.includes('https://sessionstream.app/privacy/'));assert(!html.includes('<script'));assert(!html.includes('access_token'));assert(html.includes(ok?"You're signed in.":"Sign-in incomplete."));}
 });
+
+test('expired confirmation is neutral about the current plugin sign-in',()=>{const html=accountResultPage(false,{expired:true});assert(html.includes('Confirmation expired.'));assert(html.includes('This page does not change your sign-in.'));assert(!html.includes('Sign-in was cancelled'));});

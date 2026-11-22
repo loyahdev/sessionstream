@@ -37,7 +37,7 @@ export class LinkAuthorization {
     const data=await this.call('/v1/link-auth/finish',pending.capability,{state:pending.state,code:params.get('code')});
     if(pending.generation!==this.generation||data.user!==this.account.identity?.sub)return false;
     if(typeof data.token!=='string'||!/^[a-f0-9]{64}$/.test(data.token))return false;
-    this.token=data.token;this.user=data.user;this.expires=Date.now()+30*86400000-60000;await this.store.write(JSON.stringify({token:this.token,user:this.user,expires:this.expires}));return pending.generation===this.generation;
+    this.token=data.token;this.user=data.user;this.expires=Date.now()+30*86400000-60000;await this.store.write(JSON.stringify({token:this.token,user:this.user,expires:this.expires}),{interactive:true});return pending.generation===this.generation;
   }
   async clear(){const token=this.token;++this.generation;this.ensuring=null;this.pending=null;this.token=null;this.user=null;await this.store.clear();if(token)void this.request(new URL('/v1/link-auth/session',this.broker),{method:'DELETE',headers:{Authorization:`Bearer ${token}`},redirect:'error',signal:AbortSignal.timeout(5000)}).catch(()=>{});}
   async call(path,capability,body){const response=await this.request(new URL(path,this.broker),{method:'POST',headers:{Authorization:`Bearer ${capability}`,'Content-Type':'application/json'},body:JSON.stringify(body),redirect:'error',signal:AbortSignal.timeout(10000)});const data=await response.json();if(!response.ok)throw Error(data.error||'Could not authorize custom links.');return data;}
