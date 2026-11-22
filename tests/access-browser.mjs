@@ -113,7 +113,7 @@ try{
   await page.locator('#mute').click();await page.waitForTimeout(1500);assert((await energy(page))<.0001);assert.equal(await page.evaluate(()=>window.sessionDiagnostics().listenerHealth),'ok');await waitIssue(null);
   report.checks.push({name:'Authorized protected reconnect remembers code only in page memory; PCM and hard mute stay connected/healthy',result:'PASS'});
   await page.evaluate(()=>window.__dropPCM=true);await page.waitForFunction(()=>window.sessionDiagnostics().listenerHealth==='audio-stalled',null,{timeout:10000});
-  await control('generate',{passcode});await page.waitForURL(/expired=1/);
+  await control('generate',{passcode});await page.getByRole('heading',{name:'Link expired',exact:true}).waitFor();assert.equal(new URL(page.url()).searchParams.has('expired'),false);
   assert.equal(await page.locator('h1').textContent(),'Link expired');await waitIssue(null);
   report.checks.push({name:'Revoked invite stops listening, preserves the terminal error, and clears producer health',result:'PASS'});
   await protectedClient.context.close();

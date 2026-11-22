@@ -29,8 +29,8 @@ try{
  await control('stop');await page.waitForFunction(()=>window.sessionDiagnostics().running&&!window.sessionDiagnostics().live);assert.equal((await (await fetch(local+'/api/studio')).json()).listeners,1);assert((await page.evaluate(()=>window.sessionDiagnostics().connections)).includes('connected'));
  await control('start');await page.waitForFunction(()=>window.sessionDiagnostics().running&&window.sessionDiagnostics().live);assert.equal(await page.evaluate(()=>window.__socketCount),sockets);assert.equal(await page.evaluate(()=>window.__offerCount),offers);assert((await page.evaluate(()=>window.sessionDiagnostics().connections)).includes('connected'));
  await control('end');
- await page.waitForURL(/expired=1/);
- await idle.waitForURL(/expired=1/);
+ await page.getByRole('heading',{name:'Link expired',exact:true}).waitFor();assert.equal(new URL(page.url()).searchParams.has('expired'),false);
+ await idle.getByRole('heading',{name:'Link expired',exact:true}).waitFor();assert.equal(new URL(idle.url()).searchParams.has('expired'),false);
  assert.equal(await page.locator('h1').textContent(),'Link expired');
  assert.equal(await idle.locator('h1').textContent(),'Link expired');
  assert.equal(await page.locator('#connect').count(),0);

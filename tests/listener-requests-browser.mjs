@@ -148,7 +148,7 @@ try{
  await expectStatus(signed,'WAITING FOR APPROVAL');
  assert.equal((await pending())[0].verified,true);
  await control('end');
- await signed.waitForURL(/expired=1/);
+ await signed.getByRole('heading',{name:'Link expired',exact:true}).waitFor();assert.equal(new URL(signed.url()).searchParams.has('expired'),false);
  assert.equal(await signed.locator('h1').textContent(),'Link expired');
  assert.deepEqual(errors,[]);
  console.log('PASS: cancel, reject/reload, policy changes, duplicate tabs, approve, revoke/reload, audio failure, passcode retry, verified-account retry, expiry and theme icons.');

@@ -1,3 +1,4 @@
+const cleanURLScript = "const u=new URL(location.href);if(u.searchParams.get('expired')==='1'){u.searchParams.delete('expired');u.hash='';history.replaceState(null,'',u.pathname+u.search);}";
 const markup = `<!doctype html>
 <html lang="en">
 <head>
@@ -15,14 +16,14 @@ h1{margin:32px 0 8px;font-size:clamp(30px,7vw,42px);letter-spacing:-.04em}p{colo
 </head>
 <body><main>
 <div class="brand"><svg aria-hidden="true" width="25" height="29" viewBox="-3 -1 40 46" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M0 17C9 2 24 19 34 3M0 29C9 14 24 31 34 15M0 41C9 26 24 43 34 27"/></svg>sessionstream</div>
-<h1>Link expired</h1><p>This listening session is no longer available. Ask your host to share a new link.</p>
-<a href="https://sessionstream.app/">Back to SessionStream</a>
-</main></body></html>`;
+<h1>Link expired</h1><p>This listening session is no longer available.</p>
+<a href="?">Try again</a> · <a href="https://sessionstream.app/">SessionStream home</a>
+</main><script>${cleanURLScript}</script></body></html>`;
 
 export const expiredPage = () => new Response(markup, {status:410, headers:{
   'Content-Type':'text/html; charset=utf-8',
   'Cache-Control':'no-store',
   'Referrer-Policy':'no-referrer',
   'X-Content-Type-Options':'nosniff',
-  'Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"
+  'Content-Security-Policy':"default-src 'none'; script-src 'sha256-l0ziaZR47LGJIVldnsiaZFOpr5kVkb3cPIhgl2781SA='; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"
 }});
