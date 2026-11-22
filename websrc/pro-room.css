@@ -1,6 +1,6 @@
 /* Keep the two producers and console visible in the selected studio portrait. */
 .class-room{display:grid;grid-template-columns:minmax(0,.88fr) minmax(0,1.12fr);align-items:stretch;background:var(--ss-surface-muted);border-top:2px solid var(--ss-accent-violet,#b7a4d0)}
-.class-photo{margin:0;overflow:hidden;background:#101516}.class-photo img{display:block;width:100%;height:100%;aspect-ratio:4/5;object-fit:cover;object-position:50% 62%}
+.class-photo{margin:0;overflow:hidden;background:#101516}.class-photo img{display:block;width:100%;height:100%;aspect-ratio:4/5;object-fit:cover;object-position:50% 62%;filter:grayscale(1) contrast(1.04)}
 .class-copy{display:flex;flex-direction:column;justify-content:center;gap:28px;padding:48px 56px}
 .class-copy h2{font-size:clamp(46px,5.1vw,76px);line-height:1.02;letter-spacing:-.055em;font-weight:750;margin:0}
 .class-details>p{font-size:18px;line-height:1.65;color:var(--muted);max-width:52ch}

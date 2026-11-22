@@ -31,6 +31,6 @@
 - Selected by the user: https://www.pexels.com/photo/man-using-a-mixing-console-7088040/
 - Photographer: cottonbro studio. Original: 3704 × 5556.
 - Licence: https://www.pexels.com/license/ allows website and promotional use and modifications, without implying endorsement.
-- Assets: `production-lesson.webp` (1400 × 2100), `production-lesson-small.webp` (800 × 1200). The original violet studio lighting is retained. The responsive CSS crop removes some empty space while keeping both producers and the console visible.
+- Assets: `production-lesson.webp` (1400 × 2100), `production-lesson-small.webp` (800 × 1200). Original colour is retained in the asset files; the site applies monochrome with a small contrast adjustment in CSS. The responsive CSS crop removes some empty space while keeping both producers and the console visible.
 - Illustrative production photography, not a claimed customer, endorsement or actual SessionStream lesson. Footer credit links to the original photograph.
 - Supersedes the Recording Connection local preview; that unlicensed image is not packaged or published.
