@@ -117,14 +117,29 @@ async function loadCustomLink(){
  if(panel.hidden){linkLoadedFor=null;currentCustomName='';return}
  const user=account.user.id,input=$('#custom-link-name');if(linkSaving||(linkLoadedFor===user&&(document.activeElement===input||input.value!==currentCustomName)))return;
  const version=++linkRequest;
- try{const data=await api('/links');if(version!==linkRequest||account?.user.id!==user||account?.plan!=='pro')return;currentCustomName=data.name||'';$('#custom-link-name').value=currentCustomName;$('#custom-link-copy').disabled=!currentCustomName;linkLoadedFor=user;$('#custom-link-message').textContent='';}
+ try{const data=await api('/links');if(version!==linkRequest||account?.user.id!==user||account?.plan!=='pro')return;currentCustomName=data.name||'';$('#custom-link-name').value=currentCustomName;$('#custom-link-copy').disabled=!currentCustomName;$('#custom-link-release').disabled=!currentCustomName;linkLoadedFor=user;$('#custom-link-message').textContent='';}
  catch(error){if(version===linkRequest)$('#custom-link-message').textContent=error.message}
 }
 $('#custom-link-form').addEventListener('submit',async event=>{
  event.preventDefault();if(linkSaving)return;linkSaving=true;const button=$('#custom-link-save'),input=$('#custom-link-name');button.disabled=true;input.disabled=true;button.textContent='Saving…';
- try{const data=await api('/links','PUT',{name:input.value.trim().toLowerCase()});currentCustomName=data.name;input.value=data.name;$('#custom-link-copy').disabled=false;$('#custom-link-message').textContent='Saved.'}
+ try{const data=await api('/links','PUT',{name:input.value.trim().toLowerCase()});currentCustomName=data.name;input.value=data.name;$('#custom-link-copy').disabled=false;$('#custom-link-release').disabled=false;$('#custom-link-message').textContent='Saved.'}
  catch(error){$('#custom-link-message').textContent=error.message}
  finally{linkSaving=false;button.disabled=false;input.disabled=false;button.textContent='Save'}
+});
+$('#custom-link-release').addEventListener('click',()=>{
+ if(linkSaving||!currentCustomName)return;
+ const name=currentCustomName,user=account.user.id;
+ message('Release '+name+'?',['Anyone can claim this name afterward. Your next session will use a random code.']);
+ $('#dialog-done').textContent='Cancel';$('#dialog-done').classList.remove('primary');$('#dialog-done').classList.add('tonal');
+ const confirm=el('button','Release link','button disconnect-confirm');
+ confirm.addEventListener('click',async()=>{
+  if(linkSaving||account?.user.id!==user||currentCustomName!==name)return;
+  linkSaving=true;++linkRequest;confirm.disabled=true;confirm.textContent='Releasing…';
+  const input=$('#custom-link-name'),save=$('#custom-link-save'),release=$('#custom-link-release');input.disabled=true;save.disabled=true;release.disabled=true;$('#custom-link-copy').disabled=true;
+  try{await api('/links','DELETE');if(account?.user.id!==user)return;currentCustomName='';input.value='';$('#custom-link-message').textContent='Link released.';closeDialog();}
+  catch(error){confirm.disabled=false;confirm.textContent='Release link';$('#dialog-body').querySelector('p').textContent=error.message;}
+  finally{linkSaving=false;input.disabled=false;save.disabled=false;release.disabled=!currentCustomName;$('#custom-link-copy').disabled=!currentCustomName;}
+ });$('#dialog-body').append(confirm);
 });
 $('#custom-link-copy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(location.origin+'/'+currentCustomName);$('#custom-link-message').textContent='Link copied.'}catch{$('#custom-link-name').focus();$('#custom-link-name').select();$('#custom-link-message').textContent='Copy is unavailable in this browser. Your link is '+location.origin+'/'+currentCustomName}});
 

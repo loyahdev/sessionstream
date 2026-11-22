@@ -47,3 +47,10 @@ test('no reserved name uses a random code, and an explicit random choice survive
  name='saved-on-site';await client.refresh();assert.equal(client.selection().name,name);
  await client.action('mode','random');await client.refresh();assert.equal(client.status().mode,'random');assert.equal(client.selection(),null);
 });
+
+test('plugin release clears the saved name and selects random, without releasing another account',async()=>{
+ let name='plugin-room';const methods=[];
+ const client=new LinkClient(signedAccount,auth,{request:async(_url,{method})=>{methods.push(method);if(method==='DELETE')name='';return Response.json({name});}});
+ await client.refresh();assert.equal(client.selection().name,'plugin-room');
+ await client.action('release');assert.equal(client.name,'');assert.equal(client.status().mode,'random');assert.equal(client.selection(),null);assert.equal(methods.filter(m=>m==='DELETE').length,1);
+});
