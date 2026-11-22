@@ -29,6 +29,7 @@
 </script>
 <link rel="stylesheet" href="/websrc/colors.css">
 <link rel="stylesheet" href="/websrc/home.css">
+<link rel="stylesheet" href="/websrc/pro-room.css">
 </head>
 <body class="homepage studio-page">
 <a class="skip" href="#main">Skip to content</a>
@@ -100,9 +101,9 @@
 <div class="deck-heading">
 <div>
 
-<h2 id="product-title">Your DAW.<br><span>Their browser.</span></h2>
+<h2 id="product-title">Stream from<br><span>your DAW.</span></h2>
 </div>
-<p>Add the plugin to a track or master bus, start streaming and share the invite. Your listeners can then open it in their browsers.</p>
+<p>Put SessionStream on a track or your master bus. Start a session and share the browser link. Listeners hear your changes as you make them.</p>
 </div>
 <div class="plugin-tour" id="how-it-works" aria-label="Native Send interface explained">
 
@@ -129,7 +130,7 @@
 <section class="listening-section" id="sound" aria-labelledby="listening-title">
 <div class="listening-copy">
 
-<h2 id="listening-title">Check your mix.<br><span>On another system.</span></h2>
+<h2 id="listening-title">Check your mix on<br><span>another system.</span></h2>
 <div class="mix-check-copy"><p>Open your stream link on another device and hear it live. Check how the mix sounds without exporting a file or leaving your session.</p>
 <ul class="mix-check-devices" aria-label="Places to check your mix"><li>Phone speakers</li><li>Headphones</li><li>Another sound system</li></ul>
 <p class="mix-check-controls">Each listener has independent volume, Mono and Dim controls. Share the same link with a client to hear changes together.</p></div>
@@ -141,19 +142,19 @@
 </figure>
 </div>
 <section class="quality-overview" aria-labelledby="quality-title">
-<h3 id="quality-title">Choose your format.</h3>
+<h3 id="quality-title">Audio formats</h3>
 <div class="quality-options">
 <article><h4>Opus</h4><p>96–510 kbps at 48 kHz<br>Mono or stereo</p></article>
 <article class="quality-balanced"><h4>PCM <span>Pro</span></h4><p>16-bit, 24-bit or 32-bit float<br>At your DAW sample rate</p></article>
 <article><h4>Surround <span>Pro</span></h4><p>5.1 or 7.1 over PCM<br>Matching DAW bus required</p></article>
 </div>
-<p class="format-note">Free only sends Opus at 320 kbps in stereo, while Pro unlocks all formats like PCM from 44.1 to 192 kHz and uses more bandwidth. Surround playback needs a compatible output device.</p>
+<p class="format-note">Free includes stereo Opus at 320 kbps. Pro adds the other Opus bitrates and PCM from 44.1 to 192 kHz. PCM uses more bandwidth. Surround requires a compatible output device.</p>
 </section>
 </section>
 <section class="privacy-section wrap" id="session-privacy" aria-labelledby="privacy-title">
 <div class="privacy-heading">
 <svg class="privacy-mark" viewBox="0 0 64 72" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 32V21a20 20 0 0 1 40 0v11M5 32h54v35H5z"/><circle cx="32" cy="47" r="3"/><path d="M32 50v7"/></svg>
-<h2 id="privacy-title">Control who hears<br><span>your session.</span></h2>
+<h2 id="privacy-title">Private sessions</h2>
 <p>Playing unreleased music? Share the invite only with people you trust, and add a passcode before they join.</p>
 </div>
 <div class="privacy-controls">
@@ -166,7 +167,7 @@
 <section class="delivery-section wrap" id="delivery-modes" aria-labelledby="delivery-title">
 <div class="delivery-heading"><h2 id="delivery-title">Local or Cloud.</h2></div>
 <div class="delivery-choices">
-<article class="delivery-direct"><div class="delivery-name"><h3>Local / Direct</h3><span>Free + Pro</span></div><div class="delivery-flow" aria-label="Your computer sends audio to each listener"><span>Your computer</span><svg viewBox="0 0 32 16" aria-hidden="true"><path d="M1 8h28m-6-6 6 6-6 6"/></svg><span>Each listener</span></div><p>Direct streaming from your computer to each person, on the same network or over the internet. Use it for mix checks and small groups since connection could cause delays or have issues entirely.</p><strong>3 listeners on Free · 8 on Pro</strong></article>
+<article class="delivery-direct"><div class="delivery-name"><h3>Local / Direct</h3><span>Free + Pro</span></div><div class="delivery-flow" aria-label="Your computer sends audio to each listener"><span>Your computer</span><svg viewBox="0 0 32 16" aria-hidden="true"><path d="M1 8h28m-6-6 6 6-6 6"/></svg><span>Each listener</span></div><p>Direct streaming from your computer to each person, on the same network or over the internet. It works well for mix checks and small groups. Your upload connection carries a separate stream for each listener.</p><strong>3 listeners on Free · 8 on Pro</strong></article>
 <article class="delivery-cloud"><div class="delivery-name"><h3>Cloud</h3><span>Pro</span></div><div class="delivery-flow" aria-label="Your computer sends one live stream to Cloud, which distributes it to listeners"><span>Your computer</span><svg viewBox="0 0 32 16" aria-hidden="true"><path d="M1 8h28m-6-6 6 6-6 6"/></svg><span>Cloud</span><svg viewBox="0 0 32 16" aria-hidden="true"><path d="M1 8h28m-6-6 6 6-6 6"/></svg><span>Listeners</span></div><p>Send one live audio stream. Cloud distributes it to the room, saving upload bandwidth as your class or audience grows.</p><strong>End-to-end encryption on by default · limited by Cloud hours</strong></article>
 </div>
 </section>
@@ -175,22 +176,25 @@
 <p class="eyebrow">SessionStream Pro</p>
 
 </div>
-<div class="pro-feature-top">
-<figure class="pro-teaching-photo">
-<img src="/websrc/assets/producer-workshop.webp" width="1800" height="1200" alt="Producer working at a keyboard and mixing desk while a vocalist records in the booth" loading="lazy">
-
-</figure>
-<div class="pro-story">
-
-<h2 id="pro-title">Host a private<br>listening room.</h2>
-<p class="pro-intro">Teach a class or review a session with your audience. Share one reusable browser link. Use a waiting room or passcode to control who joins.</p>
-
-<div class="pro-actions">
+<div class="class-room">
+<div class="class-copy">
+<h2 id="pro-title">Teach from<br>your DAW.</h2>
+<p>Let the class hear your session while you work. Students open your reusable link in a browser. Keep your usual video call for talking and screen sharing.</p>
+<ul class="class-controls" aria-label="Room controls"><li>Waiting room</li><li>Optional passcode</li><li>Listener access controls</li></ul>
 <button class="button primary" type="button" data-buy="pro" data-period-price>Get Pro · $10 USD / month</button>
-
 </div>
-
-</div>
+<figure class="class-routing">
+<svg viewBox="0 0 600 420" role="img" aria-labelledby="class-routing-title class-routing-desc">
+<title id="class-routing-title">From the instructor’s DAW to the class</title>
+<desc id="class-routing-desc">The instructor sends one encrypted stream to Cloud. Cloud distributes it to students listening in their browsers.</desc>
+<g fill="none" stroke="currentColor" stroke-width="2"><rect x="200" y="25" width="200" height="112" rx="7"/><path d="M220 116h160M190 149h220l14 14H176z"/><path class="class-wave" d="M223 79h20l8-22 13 42 12-32 12 14 11-10 12 20 13-35 12 31 11-12h30"/>
+<path class="class-cable" d="M300 164v38M300 250v39M74 311v-22h452v22M187 289v22M300 289v22M413 289v22"/>
+<rect x="244" y="202" width="112" height="48" rx="24"/>
+<g class="class-endpoints"><rect x="40" y="312" width="68" height="48" rx="4"/><rect x="153" y="312" width="68" height="48" rx="4"/><rect x="266" y="312" width="68" height="48" rx="4"/><rect x="379" y="312" width="68" height="48" rx="4"/><rect x="492" y="312" width="68" height="48" rx="4"/><path d="M40 325h68M153 325h68M266 325h68M379 325h68M492 325h68"/></g></g>
+<g fill="currentColor" text-anchor="middle" font-family="Manrope,sans-serif"><text x="300" y="14" font-size="12">INSTRUCTOR’S DAW</text><text x="300" y="232" font-size="16">Cloud</text><text x="300" y="399" font-size="14">STUDENTS’ BROWSERS</text></g>
+</svg>
+<figcaption>Cloud distributes the audio, so your computer sends one stream for the whole class.</figcaption>
+</figure>
 </div>
 <section class="receive-feature" id="use-cases" aria-labelledby="receive-title">
 <div class="receive-copy">
@@ -203,7 +207,7 @@
 
 </section>
 <section class="compatibility-section wrap" id="compatibility" aria-labelledby="compatibility-title">
-<div class="compatibility-heading"><div><h2 id="compatibility-title">Compatibility.</h2></div><div class="platform-specs"><div><h3>macOS</h3><p>Apple Silicon · macOS 13.5 or later<br>Use AU in Logic Pro.</p><span>VST3 + AU</span></div><div><h3>Windows</h3><p>Windows 11 · Intel/AMD x64 + ARM64<br>Match the plugin architecture to your DAW.</p><span>VST3</span></div></div></div>
+<div class="compatibility-heading"><div><h2 id="compatibility-title">Compatibility</h2></div><div class="platform-specs"><div><h3>macOS</h3><p>Apple Silicon · macOS 13.5 or later<br>Use AU in Logic Pro.</p><span>VST3 + AU</span></div><div><h3>Windows</h3><p>Windows 11 · Intel/AMD x64 + ARM64<br>Match the plugin architecture to your DAW.</p><span>VST3</span></div></div></div>
 <div class="host-register"><h3>Supported desktop hosts</h3></div>
 <ul class="host-list" aria-label="Supported desktop hosts">
 <li><img src="/websrc/assets/daws/ableton.svg" width="36" height="36" alt="" loading="lazy"><div><strong>Ableton Live</strong></div></li>
@@ -388,7 +392,7 @@
 <section class="faq wrap" id="questions" aria-labelledby="questions-title">
 <div>
 
-<h2 id="questions-title">Questions.</h2>
+<h2 id="questions-title">Questions</h2>
 </div>
 <div class="faq-list">
 <details><summary>Do I need an account to send audio?<span aria-hidden="true">+</span></summary><p>No account is required to stream a session with up to three listeners.</p></details>
@@ -443,7 +447,7 @@
 <img src="/websrc/assets/logo.svg" alt="">
 <svg viewBox="0 0 1100 152" aria-hidden="true" focusable="false"><text x="0" y="128" textLength="1100" lengthAdjust="spacingAndGlyphs">sessionstream</text></svg>
 </a>
-<p class="footer-photo-credits wrap">Studio photography: <a href="https://www.pexels.com/photo/sound-engineer-creating-musical-arrangement-on-computer-in-recording-studio-4105576/" target="_blank" rel="noopener noreferrer">Brett Sayles</a> and <a href="https://www.pexels.com/photo/a-man-in-a-recording-studio-with-a-keyboard-28003176/" target="_blank" rel="noopener noreferrer">Kaiser Leo Xiv</a> via Pexels.</p>
+<p class="footer-photo-credits wrap">Studio photography: <a href="https://www.pexels.com/photo/sound-engineer-creating-musical-arrangement-on-computer-in-recording-studio-4105576/" target="_blank" rel="noopener noreferrer">Brett Sayles</a> via Pexels.</p>
 <div class="footer-bottom wrap">
 <span>© 2026 SessionStream</span>
 <div class="footer-bottom-links"><a href="/terms/">Terms</a><a href="/privacy/">Privacy</a></div>

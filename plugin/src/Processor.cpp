@@ -556,8 +556,8 @@ public:
             if(cloud&&pro&&(!s.canCloud&&!p.isSending()))label("Cloud hours unavailable",602,374,224,14,10.5f,muted);
             else if(cloud&&pro){
                 const auto bits=streamformat::pcm(quality)?p.signalRate()*(pro?p.streamChannels.load():2)*(quality==6?16:quality==7?24:32):double(quality==0?510000:quality==2?96000:quality==3?128000:quality==4?192000:quality==5?256000:320000);
-                label(juce::String(bits/320000.0,2)+" Cloud h per listener-hour",602,374,224,20,10.5f,muted);
-                label(juce::String(bits*3600/8/1e9,3)+" GB per listener-hour",602,396,224,16,10,muted);
+                label("Per listener-hour",602,380,90,18,9.5f,muted);
+                label(juce::String(bits/320000.0,2)+" h / "+juce::String(bits*3600/8/1e9,3)+" GB",692,380,134,18,10.5f,text,false,juce::Justification::centredRight);
             }else label(streamformat::layout(pro?p.streamChannels.load():2),602,374,224,20,11,muted);
             if(!pro)label(juce::String(s.listeners)+((s.hasSession?s.delivery=="cloud":p.controller->usesCloud())?" Cloud":" / "+juce::String(s.listenerLimit)),750,72,76,20,10.5f,muted,false,juce::Justification::centredRight);
             label("Delivery",602,322,70,20,11,muted);label((s.hasSession?s.delivery=="cloud":p.controller->usesCloud())?"Cloud":"Direct",672,322,154,20,11,text,false,juce::Justification::centredRight);
