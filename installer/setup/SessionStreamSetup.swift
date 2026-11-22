@@ -123,54 +123,13 @@ final class SetupModel: NSObject, NSApplicationDelegate, ObservableObject {
             }.value
             log = result.log
             if result.succeeded {
-                let helper = FileManager.default.homeDirectoryForCurrentUser
-                    .appendingPathComponent("Library/Audio/Plug-Ins/VST3/SessionStream.vst3/Contents/Resources/runtime/bin/account-credentials")
-                let access = await Task.detached(priority: .userInitiated) {
-                    runKeychainMaintenance(helper: helper, action: "service-check")
-                }.value
-                if access == 3 {
-                    let permission = NSAlert()
-                    permission.messageText = "Allow saved SessionStream sign-in?"
-                    permission.informativeText = "SessionStream needs permission to read its saved account information in macOS Keychain. macOS may ask you to approve each saved SessionStream entry using your login Keychain password. Choose Always Allow in the macOS prompt to remember access. You can skip this and sign in from the plug-in later."
-                    permission.addButton(withTitle: "Allow Keychain Access")
-                    permission.addButton(withTitle: "Not Now")
-                    if permission.runModal() == .alertFirstButtonReturn {
-                        let authorized = await Task.detached(priority: .userInitiated) {
-                            runKeychainMaintenance(helper: helper, action: "service-authorize")
-                        }.value
-                        let verified = authorized == 0 ? await Task.detached(priority: .userInitiated) {
-                            runKeychainMaintenance(helper: helper, action: "service-check")
-                        }.value : authorized
-                        keychainMessage = verified == 0 ? "Saved sign-in access is ready." : "Keychain access was not saved. Sign in from the plug-in and choose Always Allow when macOS asks."
-                    } else {
-                        keychainMessage = "Keychain access was skipped. You can sign in from the plug-in later."
-                    }
-                } else if access != 0 {
-                    keychainMessage = "Keychain could not be checked. You can sign in from the plug-in later."
-                }
+                // Installation must not open every saved account item. Only the
+                // plugin's explicit sign-in flow may request credential access.
+                keychainMessage = "If macOS asks for saved sign-in access in the plug-in, choose Always Allow to remember it."
             }
             phase = result.succeeded ? .complete : .failed
         }
     }
-}
-
-// Run the installed helper so macOS approves the same executable the plug-in uses.
-// The helper checks only SessionStream's service and never emits secret values.
-private func runKeychainMaintenance(helper: URL, action: String) -> Int32 {
-    guard FileManager.default.isExecutableFile(atPath: helper.path) else { return -1 }
-    let process = Process()
-    process.executableURL = helper
-    process.arguments = [action]
-    process.standardOutput = FileHandle.nullDevice
-    process.standardError = FileHandle.nullDevice
-    do { try process.run() } catch { return -1 }
-    let deadline = Date().addingTimeInterval(action == "service-authorize" ? 120 : 15)
-    while process.isRunning {
-        if Date() >= deadline { process.terminate(); return -1 }
-        Thread.sleep(forTimeInterval: 0.1)
-    }
-    process.waitUntilExit()
-    return process.terminationStatus
 }
 
 private let pluginPaths = ["VST3/SessionStream.vst3", "Components/SessionStream.component"]

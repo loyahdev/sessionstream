@@ -15,6 +15,7 @@ Cloud streaming, account balances and explicit audio-format controls are package
 - Clerk private metadata supports `cloudMonthlyRenewHours` and administrator edits to `cloudTopupHoursRemaining`; `cloudNormalHoursRemaining` is calculated. The dashboard sums the buckets. The obsolete editable total is removed.
 - Tester accounts use separate Stripe sandbox checkout through the normal purchase button. Sandbox purchases fund Cloud only for authorized testers and never grant Pro features.
 - Direct/Cloud selection, default endpoint encryption, pause/resume, native Receive, listener access controls and account persistence ship in the bundled runtime.
+- macOS setup no longer reads or requests approval for every historical Keychain entry. Account access stays in the explicit plugin sign-in flow.
 - The macOS DMG includes the custom setup and uninstaller. Windows setup includes native x64 and ARM64 VST3 binaries and the offline runtime. Windows ARM64 uses an x64 helper under Windows 11 emulation.
 
 ## Verification
