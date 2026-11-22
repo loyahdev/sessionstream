@@ -2,6 +2,16 @@
 #include <iostream>
 #include <chrono>
 int runProbe(int argc,char** argv){
+    if(argc==3&&juce::String(argv[1])=="--verify-avatar"){
+        unsigned char header[24]={137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,64,0,0,0,64};
+        if(!accountavatar::validRaster(juce::MemoryBlock(header,24)))return 10;
+        header[16]=1;if(accountavatar::validRaster(juce::MemoryBlock(header,24)))return 11;
+        header[16]=0;header[20]=1;if(accountavatar::validRaster(juce::MemoryBlock(header,24)))return 12;
+        if(accountavatar::validRaster(juce::MemoryBlock("<svg>bad</svg>",14)))return 13;
+        auto bytes=accountavatar::load(argv[2]);if(!bytes)return 14;
+        std::cout<<"PASS: avatar raster bounds and public Clerk PNG download\n";return 0;
+    }
+
     if(argc<3)return 1;
     const auto start=std::chrono::steady_clock::now();
     StreamController controller(101,[]{return false;},argv[2],juce::File(argv[1]));

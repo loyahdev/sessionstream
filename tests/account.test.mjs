@@ -152,3 +152,10 @@ test('completed sign-in reports session-only login when a fresh silent read cann
  const {account}=savedAccount({autoRestore:false,store:{write:async()=>{},read:async()=>{throw Object.assign(Error('blocked'),{code:'SECURE_STORAGE_AUTH_REQUIRED'});},clear:async()=>{}}});
  try{const url=begin(account);assert.equal(await account.callback(callback(url)),true);assert.equal(account.status().phase,'signed-in');assert.match(account.status().message,/for this session/);}finally{account.close();}
 });
+
+test('verified profile provides the full name and safe avatar and clears both on sign-out',async()=>{
+ let picture='https://img.clerk.com/verified-profile';const {account}=fixture({fetchImpl:async url=>Response.json(String(url).endsWith('/token')?{access_token:'test-access',token_type:'Bearer'}:{sub:'user_123',name:'Studio Producer',given_name:'Studio',picture})});
+ assert(await account.callback(callback(begin(account))));assert.equal(account.status().name,'Studio Producer');assert.equal(account.status().imageUrl,picture);
+ await account.signOut();assert.equal(account.status().imageUrl,null);picture='https://127.0.0.1/private';assert(await account.callback(callback(begin(account))));assert.equal(account.status().imageUrl,null);
+ await account.signOut();picture='javascript:alert(1)';assert(await account.callback(callback(begin(account))));assert.equal(account.status().imageUrl,null);account.close();
+});

@@ -1,6 +1,7 @@
 #pragma once
 #include <jive_style_sheets/jive_style_sheets.h>
 #include "StudioLookAndFeel.h"
+#include "AccountAvatar.h"
 
 namespace studio {
 // This JUCE build ignores setToggleState while disabled. Model synchronization
@@ -19,6 +20,7 @@ class ModernButton final : public juce::TextButton {
 public:
     enum class Icon {none,copy,qr,link,play,account,settings,speaker,more,swap,users,stop};
     ModernButton(){setMouseClickGrabsKeyboardFocus(false);refreshStyle();}
+    void setAvatar(accountavatar::Bytes value){if(avatarBytes==value)return;avatarBytes=std::move(value);const auto loaded=avatarBytes?juce::ImageFileFormat::loadFrom(avatarBytes->getData(),avatarBytes->getSize()):juce::Image{};avatar=loaded.isValid()?loaded.rescaled(64,64,juce::Graphics::highResamplingQuality):juce::Image{};repaint();}
     void setIconOnly(bool value){if(iconOnly!=value){iconOnly=value;repaint();}}
     void setIcon(Icon value){if(icon!=value){icon=value;repaint();}}
     void setBadge(juce::String value,bool highlight=false){
@@ -99,19 +101,22 @@ public:
         }
         if(icon!=Icon::none){
             juce::GlyphArrangement glyph;glyph.addLineOfText(type,getButtonText(),0,0);
-            const float textWidth=juce::jmin(bounds.getWidth()-19.f,glyph.getBoundingBox(0,-1,true).getWidth());
-            const float start=badgeText.isNotEmpty()?bounds.getX():bounds.getCentreX()-(textWidth+19.f)*.5f;
-            paintIcon(g,{start,bounds.getCentreY()-7.f,14.f,14.f});
-            bounds.setLeft(start+19.f);
+            const float side=role=="account"?20.f:14.f,gap=role=="account"?26.f:19.f;
+            const float textWidth=juce::jmin(bounds.getWidth()-gap,glyph.getBoundingBox(0,-1,true).getWidth());
+            const float start=badgeText.isNotEmpty()?bounds.getX():bounds.getCentreX()-(textWidth+gap)*.5f;
+            paintIcon(g,{start,bounds.getCentreY()-side*.5f,side,side});
+            bounds.setLeft(start+gap);
         }
         if(!iconOnly)g.drawFittedText(getButtonText(),bounds.toNearestInt(),(icon==Icon::none&&badgeText.isEmpty()&&role!="nav")?juce::Justification::centred:juce::Justification::centredLeft,1);
     }
     void focusGained(juce::Component::FocusChangeType cause) override{keyboardFocus=cause==juce::Component::focusChangedByTabKey;juce::TextButton::focusGained(cause);repaint();}
     void focusLost(juce::Component::FocusChangeType cause) override{keyboardFocus=false;juce::TextButton::focusLost(cause);repaint();}
 private:
+    accountavatar::Bytes avatarBytes;juce::Image avatar;
     bool keyboardFocus=false;
     juce::ValueTree state{"Button"};jive::StyleSheet::ReferenceCountedPointer skin;juce::String styleKey,badgeText;bool badgeHighlight=false,iconOnly=false;int countBadge=0;Icon icon=Icon::none;
     void paintIcon(juce::Graphics& g,juce::Rectangle<float> a){
+        if(icon==Icon::account&&avatar.isValid()){juce::Graphics::ScopedSaveState saved(g);juce::Path circle;circle.addEllipse(a);g.reduceClipRegion(circle);g.drawImage(avatar,a,juce::RectanglePlacement::fillDestination);return;}
         juce::Graphics::ScopedSaveState saved(g);g.addTransform(juce::AffineTransform::scale(a.getWidth()/16.f).translated(a.getX(),a.getY()));
         const juce::PathStrokeType stroke(1.25f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded);
         juce::Path p;

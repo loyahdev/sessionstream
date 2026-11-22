@@ -672,7 +672,7 @@ private:
         juce::GlyphArrangement name;name.addLineOfText(studio::font(12.f,true),accountButton.getButtonText(),0,0);
         const bool hasBadge=s.accountPhase=="signed-in"&&s.planKnown&&!s.reconnectRequired;
         const int badgeExtra=hasBadge?42:0;
-        const int width=juce::jlimit(76,268,juce::roundToInt(std::ceil(name.getBoundingBox(0,-1,true).getWidth()))+42+badgeExtra);
+        const int width=juce::jlimit(76,268,juce::roundToInt(std::ceil(name.getBoundingBox(0,-1,true).getWidth()))+48+badgeExtra);
         accountButton.setBounds(798-width,20,width,28);
     }
 
@@ -716,6 +716,7 @@ private:
         accountButton.setButtonText(s.accountPhase=="restoring"?"Signing in...":s.accountPhase=="signing-in"?"Cancel sign-in":s.reconnectRequired?"Reconnect account":signedIn?(s.accountName.isNotEmpty()?s.accountName:"Account"):"Sign in");
         if(signedIn&&s.planKnown&&!s.reconnectRequired)accountButton.setBadge(pro?"PRO":"FREE",pro);
         else accountButton.setBadge({},false);
+        accountButton.setAvatar(signedIn?s.accountAvatar:accountavatar::Bytes{});
         accountButton.setIconOnly(false);
         accountButton.setTitle(accountButton.getButtonText());
         layoutAccountButton();

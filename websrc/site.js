@@ -1,7 +1,7 @@
 import {detectDownloadPlatform} from '/websrc/download-platform.js';
 import {startNavigation,navigate} from '/websrc/navigation.js';
 import {billingDestination,checkoutDestination,readBillingPeriod,saveBillingPeriod} from '/websrc/billing-navigation.js';
-import {freshSessionToken} from '/websrc/account-session.js';
+import {freshSessionToken,loadAccountClerk} from '/websrc/account-session.js';
 let configuration;
 async function getConfiguration(){
  if(!configuration)configuration=fetch('/api/account/config',{cache:'no-store',signal:AbortSignal.timeout(15000)}).then(async response=>{
@@ -34,3 +34,29 @@ function displayBillingPeriod(period){
  const renewal=document.querySelector('#pricing-renewal');if(renewal)renewal.textContent=annual?'Billed yearly. 2 months free. Cancel future renewal anytime.':'Billed monthly. Cancel future renewal anytime.';
 }
 document.querySelectorAll('[data-billing-period]').forEach(button=>button.addEventListener('click',()=>displayBillingPeriod(button.dataset.billingPeriod)));displayBillingPeriod(readBillingPeriod());
+
+// Load account UI only when requested, keeping Clerk off the homepage's initial load.
+const homeAccount=document.querySelector('.home-account'),homeAccountToggle=document.querySelector('#home-account-toggle'),homeAccountPanel=document.querySelector('#home-account-panel'),homeSignOut=document.querySelector('#home-sign-out'),homeAccountError=document.querySelector('#home-account-error');
+let homeAccountOpen=false,homeAccountAnimation,homeAccountLoading;
+function setHomeAccountOpen(open){
+ homeAccountOpen=open;homeAccountAnimation?.cancel();homeAccountToggle.setAttribute('aria-expanded',String(open));
+ homeAccountPanel.hidden=false;
+ if(matchMedia('(prefers-reduced-motion: reduce)').matches){homeAccountPanel.hidden=!open;return}
+ homeAccountAnimation=homeAccountPanel.animate(open?[{opacity:0,transform:'translateY(-6px)'},{opacity:1,transform:'translateY(0)'}]:[{opacity:1,transform:'translateY(0)'},{opacity:0,transform:'translateY(-4px)'}],{duration:open?180:130,easing:'ease-out'});
+ homeAccountAnimation.onfinish=()=>{homeAccountPanel.hidden=!homeAccountOpen};
+}
+async function checkHomeAccount(){
+ if(!homeAccountLoading)homeAccountLoading=loadAccountClerk().then(clerk=>{homeSignOut.hidden=!clerk.session;clerk.addListener?.(({session})=>{homeSignOut.hidden=!session});return clerk}).catch(()=>{homeAccountLoading=null;homeSignOut.hidden=false;return null});
+ return homeAccountLoading;
+}
+homeAccountToggle?.addEventListener('click',()=>{setHomeAccountOpen(!homeAccountOpen);if(homeAccountOpen)void checkHomeAccount()});
+document.addEventListener('pointerdown',event=>{if(homeAccountOpen&&!homeAccount.contains(event.target))setHomeAccountOpen(false)});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&homeAccountOpen){setHomeAccountOpen(false);homeAccountToggle.focus()}});
+homeSignOut?.addEventListener('click',async()=>{
+ homeSignOut.disabled=true;homeSignOut.textContent='Signing out…';homeAccountError.hidden=true;
+ try{
+  const response=await fetch('/api/account/sign-out',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+  if(!response.ok&&response.status!==401)throw Error('Could not sign out. Try again.');
+  const clerk=await loadAccountClerk();await clerk.signOut();location.assign('/');
+ }catch{homeAccountError.textContent='Could not finish signing out. Try again.';homeAccountError.hidden=false;homeSignOut.disabled=false;homeSignOut.textContent='Sign out'}
+});

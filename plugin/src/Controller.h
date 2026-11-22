@@ -11,11 +11,12 @@
 #endif
 #include <atomic>
 #include "WorkerThread.h"
+#include "AccountAvatar.h"
 #include "StreamFormat.h"
 
 class StreamController final : private WorkerThread {
 public:
-    struct Status { bool hasSession=false,ending=false,inviteExpired=false,activeElsewhere=false,handoffReady=false;juce::int64 streamStartedAt=0;juce::var transportDiagnostics,listenerAccess,updater;juce::String plan="free",listenerMessage;int listenerLimit=3,receiveChannels=2,streamChannels=2,streamQuality=1;bool canManageListeners=false,planKnown=false,canCloud=false;double cloudHoursRemaining=0;juce::String delivery="direct";bool encrypted=true;juce::String listenerSettingsAck; juce::String customName,linkMode,linkMessage;bool linkBusy=false,linkAuthorized=false;juce::String receivePhase,receiveMessage,receiveTransport="pcm";bool receiving=false;juce::String accountName,accountPhase,accountMessage;bool accountConfigured=false,reconnectRequired=false;juce::String link,message="Preparing streaming engine...";int listeners=0;bool live=false,available=false,ready=false,generating=false,passcodeRequired=false,warning=false; };
+    struct Status { bool hasSession=false,ending=false,inviteExpired=false,activeElsewhere=false,handoffReady=false;juce::int64 streamStartedAt=0;juce::var transportDiagnostics,listenerAccess,updater;juce::String plan="free",listenerMessage;int listenerLimit=3,receiveChannels=2,streamChannels=2,streamQuality=1;bool canManageListeners=false,planKnown=false,canCloud=false;double cloudHoursRemaining=0;juce::String delivery="direct";bool encrypted=true;juce::String listenerSettingsAck; juce::String customName,linkMode,linkMessage;bool linkBusy=false,linkAuthorized=false;juce::String receivePhase,receiveMessage,receiveTransport="pcm";bool receiving=false;accountavatar::Bytes accountAvatar;juce::String accountName,accountPhase,accountMessage;bool accountConfigured=false,reconnectRequired=false;juce::String link,message="Preparing streaming engine...";int listeners=0;bool live=false,available=false,ready=false,generating=false,passcodeRequired=false,warning=false; };
     explicit StreamController(uint32_t id,std::function<bool()> sending,juce::String endpoint="http://127.0.0.1:8788",juce::File resources={},std::function<bool()> enabled=[]{return true;},std::function<void()> expired={},std::function<void()> yielded={},juce::File preferences={})
         :WorkerThread("SessionStream control"),source(id),wantsAudio(std::move(sending)),hostEnabled(std::move(enabled)),onExpired(std::move(expired)),onYielded(std::move(yielded)),base(std::move(endpoint)),runtimeOverride(std::move(resources)),deliveryPrefs(preferences==juce::File{}?deliveryPreferenceFile():preferences){loadDeliveryPreference();startThread();}
     ~StreamController() override{stopThread();}
@@ -170,6 +171,7 @@ private:
         const bool started=child.start(args,0);log(started?"engine launcher started":"engine launcher failed");return started;
     }
     void run() override{
+        juce::String avatarURL;accountavatar::Bytes avatar;juce::int64 avatarRetryAt=0;
         bool ending=false,generating=false,acknowledged=false,disabling=false;uint32_t disabledSince=0;int unavailableReads=0;juce::String requestId,requestPasscode,sessionPasscode;uint64_t appliedReceive=0;
         while(!threadShouldExit()){
             (void)child.isRunning(); // Reap the short-lived launcher, including while bypassed.
@@ -221,6 +223,7 @@ private:
                     const auto result=request("/api/update",juce::var(command));if(result["error"].toString().isNotEmpty()){auto* failure=new juce::DynamicObject();failure->setProperty("phase","error");failure->setProperty("message",result["error"].toString());next.updater=juce::var(failure);}
                 }
                 next.accountName=data["account"]["name"].toString();next.accountPhase=data["account"]["phase"].toString();
+                const auto imageURL=next.accountPhase=="signed-in"?data["account"]["imageUrl"].toString():juce::String{};if(imageURL!=avatarURL||(!avatar&&imageURL.isNotEmpty()&&!wantsAudio()&&juce::Time::currentTimeMillis()>=avatarRetryAt)){avatarURL=imageURL;avatar=imageURL.isEmpty()?accountavatar::Bytes{}:accountavatar::load(imageURL);avatarRetryAt=juce::Time::currentTimeMillis()+30000;}next.accountAvatar=avatar;
                 next.reconnectRequired=bool(data["accountConnection"]["reconnectRequired"]);next.accountMessage=data["accountConnection"]["message"].toString();if(next.accountMessage.isEmpty())next.accountMessage=data["account"]["message"].toString();next.accountConfigured=bool(data["account"]["configured"]);
                 if(const int intent=accountRequested.exchange(0)){
                     auto* command=new juce::DynamicObject();command->setProperty("action",intent==1?"sign-in":intent==3?"reconnect":"sign-out");

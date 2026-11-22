@@ -23,7 +23,7 @@ export class Account {
     if(this.pending && this.pending.expires<=this.now()){this.pending=null;this.message='Sign-in expired. Try again.';}
     if(this.identity && this.identity.expires<=this.now())this.identity=null;
     return {configured:!!this.issuer,phase:this.identity?'signed-in':this.restoring?'restoring':(this.pending||this.exchanging)?'signing-in':'signed-out',
-      name:this.identity?.name||'',message:this.message||''};
+      name:this.identity?.name||'',imageUrl:this.identity?.imageUrl||null,message:this.message||''};
   }
   // Memory-only access grant; never serialize this into studio status or logs.
   accessCredential(){return this.status().phase==='signed-in'?this.accessToken:null;}
@@ -89,10 +89,11 @@ export class Account {
     const user=await this.json('/oauth/userinfo',{headers:{Authorization:`Bearer ${token.access_token}`}});
     if(typeof user.sub!=='string'||!user.sub)throw Error();
     if(generation!==this.generation)return false;
-    const name=[user.given_name,user.name,user.preferred_username].find(v=>typeof v==='string'&&v.trim())||'there';
+    const name=[user.name,[user.given_name,user.family_name].filter(v=>typeof v==='string').join(' '),user.preferred_username].find(v=>typeof v==='string'&&v.trim())||'there';
     const seconds=Math.min(Number(token.expires_in)||3600,86400);if(seconds<=0)throw Error();
     this.accessToken=token.access_token;
-    this.identity={sub:user.sub,name:name.replace(/[\x00-\x1f\x7f]/g,'').trim().slice(0,64),expires:this.now()+seconds*1000};this.message='';
+    let imageUrl=null;for(const value of [user.picture,user.image_url,user.profile_image_url]){try{const u=new URL(value);if(u.protocol==='https:'&&!u.username&&!u.password&&!u.port&&['img.clerk.com','images.clerk.com','images.clerk.dev','clerk.sessionstream.app','avatars.githubusercontent.com','lh3.googleusercontent.com','lh4.googleusercontent.com','lh5.googleusercontent.com','lh6.googleusercontent.com'].includes(u.hostname)){imageUrl=u.href;break}}catch{}}
+    this.identity={sub:user.sub,imageUrl,name:name.replace(/[\x00-\x1f\x7f]/g,'').trim().slice(0,64),expires:this.now()+seconds*1000};this.message='';
     if(this.refreshToken){
       if(saveFailed)this.message='Signed in for this session. Keychain approval is needed to remember this device.';
       this.schedule(generation,Math.max(1000,seconds*1000-60000));
