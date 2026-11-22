@@ -1,3 +1,4 @@
+import '/websrc/disclosures.js';
 import {startNavigation,navigate} from '/websrc/navigation.js';
 import {billingDestination,checkoutDestination,readBillingPeriod} from '/websrc/billing-navigation.js';
 import {freshSessionToken} from '/websrc/account-session.js';

@@ -150,6 +150,26 @@
   <path d="M7 17 17 7" />
 </svg></span></a><p id="sign-in-message" role="status"></p></section><div id="account-content" hidden><p id="account-notice" role="status" hidden></p><section class="welcome" id="top"><div><h1>Overview<span>.</span></h1></div><div class="session-status"><span class="session-status-dot"></span><strong>No session running</strong><span>One session at a time per account</span></div></section><div class="period-toolbar"><div class="period-selector" role="group" aria-label="Usage date range"><button data-period="week">Last 7 days</button><button class="selected" data-period="month" aria-pressed="true">Last 30 days</button></div><span class="sample-label" id="date-label">Last 30 days</span></div>
 <section class="metrics" aria-label="Account usage summary"><article><div class="metric-label">Time streaming</div><strong id="streaming-metric">0<span>h</span> 00<span>m</span></strong><p>Time your plugin was sending audio</p></article><article><div class="metric-label">Listener hours</div><strong id="listener-metric">0<span>h</span> 00<span>m</span></strong><p>Combined time people listened</p></article><article><div class="metric-label">Data sent</div><strong id="data-metric">0<span> MB</span></strong><p>Estimated · from your computers</p></article></section>
+<details class="listener-hours-help">
+<summary>How listener-hours work <span aria-hidden="true">+</span></summary>
+<div class="listener-hours-content">
+<p><strong>Listeners × time listening = listener-hours.</strong> Three people listening for 20 minutes use one listener-hour. Ten people listening for an hour use ten.</p>
+<p>Your Cloud balance currently counts time, regardless of format. Opus and 7.1 PCM deduct the same hours. The difference is how much data they send.</p>
+<table>
+<caption>One listener for one hour</caption>
+<thead><tr><th scope="col">Format</th><th scope="col">Hours used</th><th scope="col">Approx. data</th></tr></thead>
+<tbody>
+<tr><th scope="row">Opus 320 kbps</th><td>1</td><td>144 MB</td></tr>
+<tr><th scope="row">Opus 510 kbps</th><td>1</td><td>230 MB</td></tr>
+<tr><th scope="row">PCM stereo</th><td>1</td><td>1.04 GB</td></tr>
+<tr><th scope="row">PCM 5.1</th><td>1</td><td>3.11 GB</td></tr>
+<tr><th scope="row">PCM 7.1</th><td>1</td><td>4.15 GB</td></tr>
+</tbody>
+</table>
+<p class="listener-hours-note">PCM examples use 24-bit audio at 48 kHz. Higher sample rates and bit depths use more data. Estimates exclude network overhead.</p>
+<p>Only Cloud listening uses your Cloud balance. Included hours refill each billing month. Unused top-ups carry forward.</p>
+</div>
+</details>
 <section class="panel custom-link-panel" id="custom-link-panel" hidden aria-labelledby="custom-link-heading"><div class="panel-heading"><div><h2 id="custom-link-heading">Custom link</h2></div></div><form id="custom-link-form"><label for="custom-link-name">Custom link name</label><div class="custom-link-editor"><div class="custom-link-address"><span>sessionstream.app/</span><input id="custom-link-name" name="name" minlength="3" maxlength="32" pattern="[a-z][a-z0-9\-]{1,30}[a-z0-9]" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="your-studio" aria-describedby="custom-link-message" title="3–32 lowercase letters, numbers or dashes" required></div><button class="button primary" type="submit" id="custom-link-save">Save</button><button class="button tonal" type="button" id="custom-link-copy" title="Copy your saved listening link" disabled>Copy</button></div><p id="custom-link-message" role="status" aria-live="polite"></p></form></section><div class="dashboard-grid"><section class="panel activity-panel" id="usage"><div class="panel-heading"><div><h2>Streaming activity</h2><p>Daily streaming time</p></div></div><div class="activity-empty" id="activity-empty" role="status" hidden><span class="empty-activity-icon" aria-hidden="true"></span><div><h3>No streaming activity yet</h3><p>Your activity will appear after your first account-linked session. Sign in to SessionStream in your DAW, then start streaming.</p></div></div><div class="chart-topline"><strong id="chart-total">0h 00m</strong><span id="chart-unit">total streaming time</span></div><div class="chart" role="group" aria-label="Daily streaming activity"><div class="chart-grid" aria-hidden="true"><span id="chart-max">60 min</span><span id="chart-mid">30 min</span><span>0</span></div><div class="chart-bars" id="chart-bars"></div></div><div class="chart-dates"><span id="chart-start">—</span><span id="chart-middle">—</span><span>—</span></div><div class="chart-note"><span class="chart-legend"><span class="legend-dot"></span> Account-linked sessions</span> <button data-dialog="metrics">What gets counted? <span><svg class="icon" aria-hidden="true" focusable="false"
   
   xmlns="http://www.w3.org/2000/svg"
