@@ -118,11 +118,9 @@ void StreamProcessor::getStateInformation(juce::MemoryBlock& state) {
     stream.writeBool(isReceiveMode());
     stream.writeInt(streamQuality.load());
     int flags=controller
-        ?(controller->listenerPreferences()&3)|(controller->sharesHostName()?4:0)|(controller->requiresPasscode()?8:0)|(controller->prefersCustomLink()?16:0)
+        ?(controller->listenerPreferences()&3)|(controller->sharesHostName()?4:0)|(controller->requiresPasscode()?8:0)
         :0;
     if(controller&&(controller->listenerPreferences()&4)!=0)flags|=1024;
-    flags|=32768; // Saved link choice is distinct from the account default.
-    if(controller&&controller->hasCustomLinkPreference())flags|=65536;
     flags|=16384; // New state records whether delivery was explicitly chosen.
     if(controller&&controller->hasDeliveryPreference())flags|=8192;
     if(controller&&(controller->hasDeliveryPreference()?controller->preferredCloudDelivery():controller->usesCloud()))flags|=2048;
@@ -157,7 +155,8 @@ void StreamProcessor::setStateInformation(const void* data,int size) {
                 controller->restoreListenerPreferences((flags&3)|((flags&1024)?4:0));
                 controller->shareHostName((flags&4)!=0);
                 controller->requirePasscode((flags&8)!=0);
-                controller->restoreCustomLink((flags&16)!=0,(flags&32768)!=0?(flags&65536)!=0:(flags&16)!=0);
+                // Link type follows the account on load. Old link-type bits
+                // are ignored so a saved Random choice cannot mask that default.
             }
         }
     }
@@ -187,10 +186,12 @@ public:
         addAndMakeVisible(cancel);cancel.setComponentID("cancel-link-creation");cancel.setButtonText("Cancel");
         cancel.onClick=[this]{if(onCancel)onCancel();};
     }
-    void show(bool cancelling){
-        stopping=cancelling;cancel.setEnabled(!stopping);cancel.refreshStyle();
+    void show(bool cancelling,bool failed,const juce::String& message){
+        stopping=cancelling;showSpinner=!failed||stopping;progressMessage=message;cancel.setEnabled(!stopping);cancel.refreshStyle();
         const bool opening=!isVisible();setVisible(true);toFront(false);
-        if(opening){startTimerHz(30);cancel.grabKeyboardFocus();}
+        if(showSpinner&&!isTimerRunning())startTimerHz(30);
+        if(!showSpinner)stopTimer();
+        if(opening)cancel.grabKeyboardFocus();
         repaint();
     }
     void hide(){setVisible(false);stopTimer();}
@@ -201,18 +202,16 @@ public:
         auto box=juce::Rectangle<float>(x-172,y-99,344,198);
         g.setColour(studio::panel);g.fillRoundedRectangle(box,8);
         g.setColour(studio::line);g.drawRoundedRectangle(box,8,1);
-        const auto angle=float(std::fmod(juce::Time::getMillisecondCounterHiRes()*.004,juce::MathConstants<double>::twoPi));
-        juce::Path arc;arc.addCentredArc(x,y-47,14,14,0,angle,angle+juce::MathConstants<float>::pi*1.45f,true);
-        g.setColour(studio::violet);g.strokePath(arc,juce::PathStrokeType(2,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+        if(showSpinner){g.setColour(studio::violet);studio::drawSpinner(g,{x,y-48},13,2);}
         g.setColour(studio::text);g.setFont(studio::font(17,true));
-        g.drawText(stopping?"Cancelling…":"Creating your link",int(x)-150,int(y)-13,300,28,juce::Justification::centred);
+        g.drawFittedText(stopping?"Cancelling…":progressMessage,int(x)-145,int(y)-25,290,64,juce::Justification::centred,3);
     }
     bool keyPressed(const juce::KeyPress& key) override {
         if(key==juce::KeyPress::escapeKey){if(!stopping&&onCancel)onCancel();return true;}
         return key.getKeyCode()==juce::KeyPress::tabKey;
     }
 private:
-    studio::ModernButton cancel;bool stopping=false;
+    studio::ModernButton cancel;bool stopping=false,showSpinner=true;juce::String progressMessage;
     void timerCallback() override{repaint();}
 };
 
@@ -357,7 +356,7 @@ public:
         addChildComponent(qrOverlay);
         addChildComponent(linkProgress);linkProgress.onCancel=[this]{cancellingLink=true;p.setSending(false);p.setLocalMuted(false);p.controller->endSession();waitingInviteSettings=false;inviteSettingsDirty=true;timerCallback();};
 
-        addAndMakeVisible(accountButton);accountButton.setButtonText("Sign in");
+        addAndMakeVisible(accountButton);accountButton.setComponentID("account");accountButton.setButtonText("Sign in");
         accountButton.setColour(juce::TextButton::buttonColourId,juce::Colour(0xff161e19));
         accountButton.setColour(juce::TextButton::textColourOffId,studio::text);
         accountButton.onClick=[this]{
@@ -459,7 +458,7 @@ public:
         using namespace studio;
         const bool signedIn=s.accountPhase=="signed-in";
         const bool pro=signedIn&&s.planKnown&&s.plan=="pro";
-        const bool receiving=pro&&p.isReceiveMode();
+        const bool receiving=p.isReceiveMode();
         const bool active=receiving?(p.isReceiving()&&s.receiving):(p.isSending()&&s.live);
         const auto ink=(s.warning||s.receivePhase=="denied")?warm:(active||s.receivePhase=="approval")?accent:muted;
 
@@ -486,7 +485,7 @@ public:
         g.setColour(line);g.drawVerticalLine(584,76.f,468.f);g.drawHorizontalLine(362,20.f,570.f);
 
         // Right Card Live Status & Timer (Always visible — never hidden by pending listener requests)
-        const auto stateText=s.ending?"Ending session..."
+        const auto stateText=loadingStatus.isNotEmpty()?loadingStatus:s.ending?"Ending session..."
             :s.warning?"Check audio"
             :receiving?(s.receivePhase=="approval"?"Awaiting approval":s.receivePhase=="denied"?"Access declined":active?"Receiving":p.isReceiving()?"Connecting":"Ready to receive")
             :s.handoffReady?"Active on other track"
@@ -494,8 +493,10 @@ public:
             :p.isSending()?"Connecting"
             :sessionLatched?"Paused"
             :"Ready";
-        g.setColour(ink);g.fillEllipse(603.f,79.5f,5.f,5.f);
-        label(stateText,614,72,134,20,10.5f,ink,true);
+        g.setColour(ink);
+        if(loadingStatus.isNotEmpty()){g.setColour(violet);studio::drawSpinner(g,{605.5f,82.f},4.3f,1.35f);}
+        else g.fillEllipse(603.f,79.5f,5.f,5.f);
+        label(stateText,614,72,211,20,10.5f,ink,true);
         if(sessionLatched&&s.streamStartedAt>0&&!receiving){
             const auto seconds=juce::jmax<juce::int64>(0,(juce::Time::currentTimeMillis()-s.streamStartedAt)/1000);
             const auto duration=juce::String(seconds/3600).paddedLeft('0',2)+":"+juce::String((seconds/60)%60).paddedLeft('0',2)+":"+juce::String(seconds%60).paddedLeft('0',2);
@@ -626,7 +627,7 @@ public:
     }
 
 private:
-    StreamProcessor& p;studio::Look look;juce::TooltipWindow tooltips{this,450};SpectrumView spectrum;std::unique_ptr<juce::Drawable> logo;
+    StreamProcessor& p;studio::Look look;juce::TooltipWindow tooltips{this,450};SpectrumView spectrum;std::unique_ptr<juce::Drawable> logo;juce::String loadingStatus;
     studio::ModernButton generate,copy,copyWithPasscode,qrButton,toggle,update,ignoreUpdate,more,accountButton,sendMode,receiveMode,claimLink,setupButton,localMute,sessionPageButton,endButton,peopleButton,rxLiveMode,rxPcmMode,rxBuf40,rxBuf90,rxBuf200;
     ListenerPanel listenerPanel;juce::ComboBox linkKind;juce::ToggleButton usePasscode,showHostName,includePasscode;juce::Slider level;
     juce::TextEditor invite,passcode,customName,receiveTarget,receivePasscode;studio::ModernButton useDirect;InviteOverlay qrOverlay;SessionSetup setupOverlay;LinkProgressOverlay linkProgress;
@@ -699,7 +700,6 @@ private:
         if(endConfirmTicks>0)--endConfirmTicks;
         s=p.controller->status();
         if(cancellingLink&&!s.generating&&!s.ending)cancellingLink=false;
-        if(s.available&&s.accountPhase=="signed-out"&&p.isReceiveMode())p.setReceiveMode(false);
         refreshUpdate();
         if((s.link.isNotEmpty()||(!s.generating&&!waitingInviteSettings))&&invite.getText()!=s.link)invite.setText(s.link,false);
         if(s.inviteExpired&&!s.generating&&!waitingInviteSettings&&p.isSending())p.setSending(false);
@@ -713,26 +713,33 @@ private:
 
         const bool signedIn=s.accountPhase=="signed-in";
         const bool pro=signedIn&&s.planKnown&&s.plan=="pro";
-        accountButton.setButtonText(s.accountPhase=="restoring"?"Signing in...":s.accountPhase=="signing-in"?"Cancel sign-in":s.reconnectRequired?"Reconnect account":signedIn?(s.accountName.isNotEmpty()?s.accountName:"Account"):"Sign in");
+        const bool engineLoading=p.isHostEnabled()&&!s.available&&s.message!="Streaming runtime missing. Reinstall this plugin.";
+        const bool restoring=s.accountPhase=="restoring";
+        const bool signingIn=s.accountPhase=="signing-in";
+        const bool checkingPlan=signedIn&&!s.planKnown&&!s.reconnectRequired;
+        const bool accountLoading=engineLoading||restoring||signingIn||checkingPlan;
+        const juce::String nextLoading=engineLoading?"Starting engine...":restoring?"Restoring account...":signingIn?"Waiting for browser sign-in...":checkingPlan?"Checking account...":pro&&s.linkBusy&&!sessionLatched?"Loading saved link...":"";
+        if(nextLoading.isNotEmpty()||nextLoading!=loadingStatus)repaint(597,70,230,24);
+        loadingStatus=nextLoading;
+        accountButton.setButtonText(engineLoading?"Loading...":restoring?"Restoring account...":signingIn?"Cancel sign-in":checkingPlan?"Checking account...":s.reconnectRequired?"Reconnect account":signedIn?(s.accountName.isNotEmpty()?s.accountName:"Account"):"Sign in");
+        accountButton.setIcon(accountLoading?studio::ModernButton::Icon::loading:studio::ModernButton::Icon::account);
+        if(accountLoading)accountButton.repaint();
         if(signedIn&&s.planKnown&&!s.reconnectRequired)accountButton.setBadge(pro?"PRO":"FREE",pro);
         else accountButton.setBadge({},false);
         accountButton.setAvatar(signedIn?s.accountAvatar:accountavatar::Bytes{});
         accountButton.setIconOnly(false);
         accountButton.setTitle(accountButton.getButtonText());
         layoutAccountButton();
-        accountButton.setEnabled(s.available&&s.accountPhase!="restoring");
+        accountButton.setEnabled(s.available&&!restoring);
         accountButton.setTooltip(signedIn?"Account & subscription":s.accountMessage.isNotEmpty()?s.accountMessage:s.accountConfigured?"Sign in to start streaming":"Account sign-in is not configured yet.");
 
-        if(s.available&&s.planKnown&&!pro&&p.isReceiveMode())p.setReceiveMode(false);
         if(!pro)showingPeople=false;
-        const bool receiving=pro&&p.isReceiveMode();
+        const bool receiving=p.isReceiveMode();
         spectrum.setReceiving(receiving);const int sourceChannels=receiving?s.receiveChannels:pro?p.streamChannels.load():2;spectrum.setLayout(streamformat::layout(sourceChannels)+(sourceChannels>2?" / front L-R":""));
         if(!signedIn&&wasSignedIn){nameDirty=false;lastClaimedName.clear();customName.setText({},false);}wasSignedIn=signedIn;
 
-        // Free plugin strictly hides Pro-only controls until planKnown confirms Pro
-        sendMode.setVisible(pro);receiveMode.setVisible(pro);
-        sendMode.setEnabled(!p.isReceiving());receiveMode.setEnabled(pro&&!p.isSending());
-        receiveMode.setTooltip(pro?"Receive another SessionStream session in this track.":"");
+        sendMode.setEnabled(!p.isReceiving());receiveMode.setEnabled(!p.isSending());
+        receiveMode.setTooltip("Receive a Pro sender's SessionStream session in this track.");
         studio::syncToggleState(sendMode,!receiving);studio::syncToggleState(receiveMode,receiving);
 
         const bool receiveFailed=s.receivePhase=="error"||s.receivePhase=="passcode"||s.receivePhase=="denied";
@@ -756,7 +763,10 @@ private:
 
         linkKind.setVisible(showingSetup&&pro&&!receiving);
         const bool customSelected=pro&&p.controller->prefersCustomLink();
-        linkKind.setSelectedId(customSelected?2:1,juce::dontSendNotification);
+        const bool customReady=p.controller->linkChoiceReady(s);
+        const bool checkingSavedLink=pro&&!customSelected&&!customReady;
+        linkKind.setTextWhenNothingSelected(s.linkBusy?"Loading saved link...":"Choose link type");
+        linkKind.setSelectedId(customSelected?2:checkingSavedLink?0:1,juce::dontSendNotification);
         linkKind.setItemEnabled(2,pro);
         linkKind.setEnabled(settingsEditable&&(signedIn||customSelected)&&!s.linkBusy);
         const bool custom=pro&&linkKind.getSelectedId()==2;
@@ -768,7 +778,6 @@ private:
         claimLink.setButtonText(s.linkBusy?"Saving...":"Save name");
         level.setTooltip(receiving?"Adjusts received audio output in this DAW.":"Adjusts stream output only. DAW output is unchanged.");
 
-        const bool customReady=!(pro&&s.linkBusy)&&(!custom||(pro&&!s.customName.isEmpty()&&!s.linkBusy&&s.linkAuthorized));
         const bool needsPlan=p.controller->listenerPreferences()!=0||p.controller->prefersCustomLink()||p.streamQuality.load()!=1||p.streamChannels.load()!=2;
         const bool planReady=(s.accountPhase!="signed-in"||s.planKnown)&&(!needsPlan||s.planKnown||s.accountPhase=="signed-out");
         const bool matchingBus=p.streamChannels.load()<=2||p.getMainBusNumInputChannels()==p.streamChannels.load();
@@ -805,7 +814,12 @@ private:
         if(!signedIn&&!receiving){toggle.setEnabled(s.available&&s.accountConfigured&&s.accountPhase!="restoring"&&s.accountPhase!="signing-in");}
         toggle.setIcon(canHandoff?studio::ModernButton::Icon::swap:studio::ModernButton::Icon::play);
         toggle.setButtonText(s.ending?"Ending session...":p.isSending()?(s.live?"Pause streaming":"Starting... | Pause"):canHandoff?"Stream from this track":sessionLatched?"Resume streaming":"Start streaming");
-        if(!signedIn&&!receiving)toggle.setButtonText(s.accountPhase=="restoring"?"Signing in...":s.accountPhase=="signing-in"?"Finish sign-in in browser":"Sign in to stream");
+        if(!signedIn&&!receiving)toggle.setButtonText(engineLoading?"Starting engine...":restoring?"Restoring account...":signingIn?"Finish sign-in in browser":"Sign in to stream");
+        else if(!receiving&&!sessionLatched&&!p.isSending()&&loadingStatus.isNotEmpty())toggle.setButtonText(loadingStatus);
+        if(pro&&!customReady&&!s.linkBusy&&!sessionLatched&&s.linkMessage.isNotEmpty()){
+            s.message=s.linkMessage;
+            s.warning=true;
+        }
         toggle.setColour(juce::TextButton::buttonColourId,p.isSending()?juce::Colour(0xff263129):studio::accent);
         toggle.setColour(juce::TextButton::textColourOffId,p.isSending()?studio::text:juce::Colour(0xff171e14));
 
@@ -895,7 +909,7 @@ private:
         if(s.generating||cancellingLink){
             qrOverlay.setVisible(false);
             for(int i=0;i<getNumChildComponents();++i){auto* child=getChildComponent(i);if(child==&linkProgress)continue;progressEnabledStates.emplace_back(child,child->isEnabled());child->setEnabled(false);if(auto* button=dynamic_cast<studio::ModernButton*>(child))button->refreshStyle();}
-            linkProgress.show(cancellingLink);
+            linkProgress.show(cancellingLink,s.warning,s.message);
         }else linkProgress.hide();
 
         const auto footer=diagnosticsTicks>0?diagnosticsMessage:s.message;

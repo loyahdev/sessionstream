@@ -2,6 +2,8 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import dgram from 'node:dgram';
 import {once} from 'node:events';
+import {WebSocket} from 'ws';
+import {senderPlanFixture} from './fixtures/sender-plan.mjs';
 import {NativeReceiver,receiveURL} from '../server/native-receiver.mjs';
 import {createStreamServer} from '../server/index.mjs';
 import {tonePacket,parsePacket} from '../server/protocol.mjs';
@@ -15,14 +17,31 @@ test('receiver accepts share codes and names while rejecting arbitrary or privat
  for(const value of ['http://127.0.0.1:8788','https://example.com/audio','https://sessionstream.app/api/studio','https://sessionstream.app:12345/studio','https://user:pass@sessionstream.app/123456'])assert.throws(()=>receiveURL(value));
 });
 test('real host session forwards stereo PCM to a receiver and enforces its passcode',async t=>{
- let now=Date.now();const app=await createStreamServer({nativeSender:true,managedTunnel:true,publicPort:0,studioPort:0,udpPort:0,now:()=>now});t.after(()=>app.close());
+ let now=Date.now(),plan='free';const app=await createStreamServer({nativeSender:true,managedTunnel:true,publicPort:0,studioPort:0,udpPort:0,now:()=>now,...senderPlanFixture(()=>plan,()=>now)});t.after(()=>app.close());
  app.setTunnelState('ready','https://sessionstream.app/studio-test');
  const studio=`http://127.0.0.1:${app.studioPort}`,remote=`http://127.0.0.1:${app.publicPort}/studio-test`;
  const data=await (await fetch(studio+'/api/studio')).json();
  const control=(action,more={})=>fetch(studio+'/api/control',{method:'POST',headers:{Origin:studio,Authorization:`Bearer ${data.token}`,'Content-Type':'application/json'},body:JSON.stringify({source:12345,action,...more})});
- await control('generate',{passcode:'protected',expiresInHours:24});app.setTunnelState('ready','https://sessionstream.app/studio-test');await control('start');
+ assert.equal((await control('generate',{passcode:'protected',expiresInHours:24})).status,200);app.setTunnelState('ready','https://sessionstream.app/studio-test');await control('start');
  const sink=dgram.createSocket('udp4');sink.bind(0,'127.0.0.1');await once(sink,'listening');t.after(()=>sink.close());const packets=[];sink.on('message',packet=>packets.push(packet));
  const denied=new NativeReceiver({urlOverride:new URL(remote),port:sink.address().port});t.after(()=>denied.close());await until(()=>denied.phase==='passcode');assert.equal(packets.length,0);
+ const freeSender=new NativeReceiver({urlOverride:new URL(remote),passcode:'protected',port:sink.address().port});
+ t.after(()=>freeSender.close());
+ await until(()=>freeSender.phase==='error');
+ assert.match(freeSender.message,/sender needs SessionStream Pro/);
+ const browser=new WebSocket(remote.replace('http','ws')+'/signal',{origin:new URL(remote).origin});
+ t.after(()=>browser.terminate());
+ const joined=new Promise((resolve,reject)=>{
+  browser.once('error',reject);
+  browser.on('message',data=>{if(JSON.parse(data).type==='joined')resolve();});
+ });
+ await once(browser,'open');
+ const {room}=await fetch(studio+'/api/studio').then(r=>r.json());
+ browser.send(JSON.stringify({type:'join',role:'listener',room,mode:'pcm',passcode:'protected'}));
+ await joined;
+ browser.close();
+ plan='pro';now+=26000;
+
  const receiver=new NativeReceiver({urlOverride:new URL(remote),passcode:'protected',port:sink.address().port});t.after(()=>receiver.close());await until(()=>receiver.phase==='waiting');
  const source=dgram.createSocket('udp4');t.after(()=>source.close());
  for(let i=0;i<20;i++){source.send(tonePacket(i,256,48000,12345),app.udpPort,'127.0.0.1');await sleep(2);}
@@ -34,22 +53,26 @@ test('real host session forwards stereo PCM to a receiver and enforces its passc
  receiver.close();denied.close();
 });
 
-test('local Receive start requires a signed-in account while stop remains available',async t=>{
+test('local Receive is available both as a guest and with a free account',async t=>{
  let signedIn=false;const account={identity:{sub:'test-user'},status:()=>({phase:signedIn?'signed-in':'signed-out'}),close(){}};
  const app=await createStreamServer({account,nativeSender:true,publicPort:0,studioPort:0,udpPort:0,linkStore:{read:async()=>null,clear:async()=>{},write:async()=>{}}});t.after(()=>app.close());
  const base=`http://127.0.0.1:${app.studioPort}`,data=await (await fetch(base+'/api/studio')).json();
  const post=(path,body)=>fetch(base+path,{method:'POST',headers:{Origin:base,Authorization:`Bearer ${data.token}`,'Content-Type':'application/json'},body:JSON.stringify(body)});
  await post('/api/engine',{source:123,action:'attach'});
  const command={source:123,action:'start',port:43210,target:'http://127.0.0.1/not-allowed'};
- assert.equal((await post('/api/receive',command)).status,403);signedIn=true;
- const allowed=await post('/api/receive',command);assert.equal(allowed.status,200);assert.equal((await allowed.json()).ok,false); // origin validation still applies after login
+ for(const loggedIn of [false,true]){
+  signedIn=loggedIn;
+  const allowed=await post('/api/receive',command);
+  assert.equal(allowed.status,200);
+  assert.match((await allowed.json()).error,/share link/);
+ }
  signedIn=false;assert.equal((await post('/api/receive',{source:123,action:'stop'})).status,200);
 });
 
 test('receiver handles Pro waiting room approval, account tickets, cancellation, and stops retrying on 4014/4015',async t=>{
  const tickets=new Map();
  const hostAccount={identity:{sub:'host'},issuer:'https://clerk.example',clientId:'public',status:()=>({phase:'signed-in',name:'Host Producer'}),accessCredential:()=>'host-token',close(){},renew:async()=>{}};
- const app=await createStreamServer({nativeSender:true,managedTunnel:true,publicPort:0,studioPort:0,udpPort:0,account:hostAccount,linkStore:{read:async()=>null,write:async()=>{},clear:async()=>{}},dashboardOptions:{enabled:true,autoTimer:false,storeFactory:()=>({read:async()=>null,write:async()=>{},clear:async()=>{}}),fetchImpl:async(url,opt)=>{
+ const app=await createStreamServer({nativeSender:true,managedTunnel:true,publicPort:0,studioPort:0,udpPort:0,account:hostAccount,linkStore:{read:async()=>null,write:async()=>{},clear:async()=>{}},linkOptions:{request:async()=>Response.json({error:'Unavailable'},{status:503})},dashboardOptions:{enabled:true,autoTimer:false,storeFactory:()=>({read:async()=>null,write:async()=>{},clear:async()=>{}}),fetchImpl:async(url,opt)=>{
   if(url.endsWith('/enroll'))return Response.json({deviceCredential:'c'.repeat(64)});
   if(url.endsWith('/listener/verify')){const {ticket,room}=JSON.parse(opt.body);const entry=tickets.get(ticket);tickets.delete(ticket);return entry&&entry.room===room?Response.json({listener:entry.listener}):Response.json({error:'Invalid proof'},{status:403});}
   return Response.json({plan:'pro',listeners:8});

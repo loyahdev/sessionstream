@@ -73,7 +73,7 @@ int main(int argc,char** argv) {
     auto restoredOwned=std::make_unique<StreamProcessor>();auto& restored=*restoredOwned;restored.setStateInformation(state.getData(),int(state.getSize()));
     if(restored.isSending()||std::abs(restored.gainDb()+6)>1.e-4f)return 20;
     if(restored.controller->listenerPreferences()!=7||!restored.controller->sharesHostName()
-       ||!restored.controller->requiresPasscode()||!restored.controller->prefersCustomLink())return 21;
+       ||!restored.controller->requiresPasscode()||restored.controller->prefersCustomLink())return 21;
     p.setSending(false);
     p.setStateInformation(nullptr, 0);
     if (p.transport.enabled.load()) return 7;

@@ -21,6 +21,7 @@ int main(int argc,char** argv){
   if(scenario=="exhausted-pro"&&controller->status().canCloud)return 9;
  }
  if(scenario=="saved-custom"&&!controller->prefersCustomLink())return 11;
+ if(scenario=="loading-custom"&&controller->linkChoiceReady(controller->status()))return 13;
  if(scenario=="custom-random-choice"){controller->preferCustomLink(false);juce::Thread::sleep(500);if(controller->prefersCustomLink())return 12;}
  if(scenario!="exhausted-pro"){
   controller->generate();

@@ -14,7 +14,7 @@ const state=runtimeStateDirectory();
 await mkdir(state,{recursive:true});
 if(process.argv.includes('--replace-legacy'))await retireLegacyHelper(Number(process.env.STUDIO_PORT||8788));
 const urlFile=path.join(state,'public-url.json'),config=path.join(state,'tunnel.yml');
-let tunnel,stopping=false,retry,managed=null,managedFailed=false,leaseTimer,leaseBusy=false,leaseRoom,leaseRenewed=0,leaseSelection='',requested=false;
+let tunnel,stopping=false,retry,managed=null,managedFailed=false,leaseTimer,leaseBusy=false,leaseRoom,leaseRenewed=0,leaseSelection='',requested=false,customAttemptRoom;
 // Managed helpers keep readiness in memory. A crashed predecessor's URL file
 // cannot advertise a dead tunnel, even during the initial server bind.
 let app;try{app=await createStreamServer({log,nativeSender:true,managedTunnel:true,managedLifetime:true,onNoClients:()=>stop(),onInviteRequested:requestTunnel,tunnelPID:()=>tunnel?.pid,runtimeDir:state});}catch(e){console.error(e.message);process.exit(1);}
@@ -23,6 +23,7 @@ async function launch(){
   if(stopping)return;
   if(!managedFailed&&!managed){
     const initialRoom=app.inviteRevision;
+    if(app.customLinkSelection)customAttemptRoom=initialRoom;
     try{managed=await acquireManagedTunnel({port:app.publicPort,room:initialRoom,custom:()=>app.customLinkSelection});}
     catch{managedFailed=true;log('tunnel','Managed provisioning unavailable; using Quick Tunnel');}
     if(stopping){await managed?.release().catch(()=>{});managed=null;return;}
@@ -83,7 +84,17 @@ async function launch(){
     },500);
   }
 }
-function requestTunnel(){if(requested||stopping)return;requested=true;launch().catch(()=>stop());}
+function requestTunnel(){
+  if(stopping)return;
+  if(!requested){requested=true;launch().catch(()=>stop());return;}
+  // A new custom invite can retry managed provisioning after a Quick Tunnel.
+  if(!managed&&managedFailed&&tunnel?.exitCode===null&&tunnel.signalCode===null
+      &&app.customLinkSelection&&customAttemptRoom!==app.inviteRevision){
+    managedFailed=false;
+    app.setTunnelState('retrying');
+    tunnel.kill('SIGTERM');
+  }
+}
 process.send?.({ready:true});
 async function stop(){
   if(stopping)return;stopping=true;clearTimeout(retry);clearInterval(leaseTimer);app.setTunnelState('stopped');

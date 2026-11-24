@@ -7,9 +7,10 @@ import {existsSync} from 'node:fs';
 import dgram from 'node:dgram';
 import {NativeReceiver} from '../server/native-receiver.mjs';
 import {createStreamServer} from '../server/index.mjs';
+import {senderPlanFixture} from './fixtures/sender-plan.mjs';
 
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-const app=await createStreamServer({nativeSender:true,managedTunnel:true,managedLifetime:true,studioPort:8788,udpPort:49300,publicPort:0,ignoreStoredURL:true});
+const app=await createStreamServer({nativeSender:true,managedTunnel:true,managedLifetime:true,studioPort:8788,udpPort:49300,publicPort:0,ignoreStoredURL:true,...senderPlanFixture()});
 app.setTunnelState('ready','https://render-test.invalid');
 const state=()=>fetch(`http://127.0.0.1:${app.studioPort}/api/studio`).then(r=>r.json());
 const build=process.platform==='win32'?'build-windows-x64':'build';

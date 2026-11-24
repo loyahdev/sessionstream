@@ -1,5 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
+import {EventEmitter} from 'node:events';
+import {setTimeout as delay} from 'node:timers/promises';
 import {WebSocket} from 'ws';
 import {EngineLifetime} from '../server/engine-lifetime.mjs';
 import {createStreamServer} from '../server/index.mjs';
@@ -16,6 +18,73 @@ test('removing one plugin preserves the helper for another enabled plugin',()=>{
   lease.attach(1);lease.attach(2);lease.detach(1);assert(!lease.poll().idle);
   now=4000;lease.attach(2);now=6000;assert(!lease.poll().idle);
   lease.detach(2);assert(lease.poll().idle);
+});
+
+test('a stalled or disconnected control request cannot keep the helper alive indefinitely',()=>{
+  let now=0;const lifetime=new EngineLifetime({now:()=>now});
+  lifetime.attach(1);
+  const stalled=new EventEmitter();
+  lifetime.trackRequest(1,stalled,()=>assert.fail('expired request renewed the lease'));
+  now=39999;assert(!lifetime.poll().idle);
+  now=40000;assert.deepEqual(lifetime.poll(),{expired:[1],idle:true});
+  stalled.emit('finish');
+
+  lifetime.attach(2);
+  const disconnected=new EventEmitter();
+  lifetime.trackRequest(2,disconnected,()=>assert.fail('disconnected request renewed the lease'));
+  now+=5000;assert(!lifetime.poll().idle);
+  disconnected.emit('close');
+  assert.deepEqual(lifetime.poll(),{expired:[2],idle:true});
+});
+
+test('a slow Start response preserves the controller, invite and stream ownership',async t=>{
+  const waiting=Promise.withResolvers();
+  const approval=Promise.withResolvers();
+  let idle=false;
+  const account={
+    identity:{sub:'host'},
+    status:()=>({phase:'signed-in'}),
+    accessCredential:()=>'test-access',
+    close:()=>{}
+  };
+  const app=await createStreamServer({
+    account,nativeSender:true,publicPort:0,studioPort:0,udpPort:0,ignoreStoredURL:true,
+    managedLifetime:true,onNoClients:()=>{idle=true;},
+    dashboardOptions:{
+      enabled:true,autoTimer:false,
+      storeFactory:()=>({read:async()=>JSON.stringify({
+        device:'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',deviceCredential:'a'.repeat(64)
+      })}),
+      fetchImpl:async (_url,{body})=>{
+        if(JSON.parse(body).live){waiting.resolve();await approval.promise;}
+        return Response.json({plan:'free',listeners:3});
+      }
+    }
+  });
+  t.after(async()=>{approval.resolve();await app.close();});
+  const base=`http://127.0.0.1:${app.studioPort}`;
+  const studio=()=>fetch(base+'/api/studio').then(r=>r.json());
+  const {token}=await studio();
+  const post=(endpoint,action)=>fetch(base+endpoint,{method:'POST',headers:{Origin:base,Authorization:`Bearer ${token}`},body:JSON.stringify({action,source:1})});
+  assert.equal((await post('/api/engine','attach')).status,200);
+  assert.equal((await post('/api/control','generate')).status,200);
+  const {room}=await studio();
+  const started=post('/api/control','start');
+  await Promise.race([waiting.promise,started.then(()=>assert.fail('Start bypassed authorization'))]);
+  await delay(6250);
+  const pending=await studio();
+  approval.resolve();
+  assert.equal((await started).status,200);
+  assert.equal(idle,false);
+  assert.equal(pending.engineClients,1);
+  assert.equal(pending.owner,1);
+  const current=await studio();
+  assert.equal(current.live,true);
+  assert.equal(current.room,room);
+  assert.equal(current.owner,1);
+  assert.equal(current.inviteSource,1);
+  assert.equal((await post('/api/engine','attach')).status,200);
+  assert.equal((await post('/api/control','stop')).status,200);
 });
 
 test('private engine leases invalidate a removed owner invite, protect other instances and signal idle shutdown',async t=>{

@@ -167,7 +167,7 @@ export class NativeReceiver {
       url.protocol=url.protocol==='http:'?'ws:':'wss:';
       const ws=this.ws=new WebSocket(url,{origin:this.url.origin,handshakeTimeout:10000,maxPayload:65536,followRedirects:false});
       ws.on('error',()=>{});
-      let lastPong=Date.now(),lastPing=0,sentTicket=false;
+      let lastPong=Date.now(),lastPing=0,sentTicket=false,admitted=false;
       ws.on('pong',()=>{lastPong=Date.now();});
       this.heartbeat=setInterval(()=>{
         if(!current())return;
@@ -182,7 +182,7 @@ export class NativeReceiver {
       const sendJoin=listenerTicket=>{
         if(!current()||ws.readyState!==WebSocket.OPEN)return;
         ws.send(JSON.stringify({
-          type:'join',role:'listener',mode:this.activeMode,room,
+          type:'join',role:'listener',dawReceive:true,mode:this.activeMode,room,
           listenerCredential:this.listenerCredential,name:this.resolveName(),
           ...(listenerTicket?{listenerTicket}:{}),
           ...(this.passcode?{passcode:this.passcode}:{})
@@ -192,6 +192,7 @@ export class NativeReceiver {
       ws.on('message',async(raw,binary)=>{
         if(!current())return;
         if(binary){
+          if(!admitted)return;
           if(this.encrypted){void this.delivery?.buffered(raw);}else this.forwardPCM(raw);
           return;
         }
@@ -215,6 +216,10 @@ export class NativeReceiver {
         if(message.type==='name-required'){this.noRetry=true;this.phase='error';this.message='Host requires listener identification.';ws.close();return;}
         if(message.type==='passcode-required'){this.phase='passcode';this.message=message.invalid?'Incorrect passcode':'This session needs a passcode';this.noRetry=true;ws.close();return;}
         if(message.type==='joined'){
+          if(message.dawReceive!==true){
+            this.noRetry=true;this.phase='error';this.message='Ask the sender to update SessionStream and stream with Pro.';ws.close();return;
+          }
+          admitted=true;
           this.sourceFormat=message.format;this.cloudMode=message.delivery==='cloud';if(message.format?.codec==='pcm')this.activeMode='pcm';this.encrypted=message.encrypted===true;this.needsControl=this.cloudMode||this.encrypted;
           this.iceServers=Array.isArray(message.iceServers)?message.iceServers:[];
           ws.send(JSON.stringify({type:'mode',mode:this.activeMode}));
@@ -253,6 +258,7 @@ export class NativeReceiver {
         if(code===4011){this.noRetry=true;this.phase='error';this.message='This invite has expired. Ask the host for a new link.';return;}
         if(code===4014){this.noRetry=true;this.phase='denied';this.message=reason||'Access declined by the host.';return;}
         if(code===4015){this.noRetry=true;this.phase='error';this.message=reason||'This host requires a signed-in account.';return;}
+        if(code===4017){this.noRetry=true;this.phase='error';this.message=reason||'The sender needs SessionStream Pro for DAW-to-DAW.';return;}
         if(code===4016){this.noRetry=true;this.phase='error';this.message='Host approval timed out. Click Retry connection to request again.';return;}
         this.phase='reconnecting';
         this.message=code===4009?'Session is full. Retrying...':'Host disconnected. Reconnecting...';

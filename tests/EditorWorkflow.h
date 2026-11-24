@@ -12,12 +12,19 @@ public:
   if(stage>1)check(button("stream-toggle")->getBounds()==primaryBounds,"Primary control moved during an edit or session transition");
   switch(stage){
   case 0:
+   if(button("account")->getButtonText()=="Restoring account..."){
+    check(!button("account")->isEnabled()&&!button("stream-toggle")->isEnabled(),"Actions enabled during account restore");
+    if(!sawAccountRestore)snapshot(editor,"/private/tmp/sessionstream-account-loading.png");
+    sawAccountRestore=true;return;
+   }
    if(!s.ready||!s.linkAuthorized||!s.planKnown||!button("ignore-update")->isVisible())return;
+   if(combo->getSelectedId()!=2)return;
+   check(sawAccountRestore,"Account restore had no loading state");
    check(editor.getWidth()==860&&editor.getHeight()==572,"Update layout");bounds(editor);button("ignore-update")->triggerClick();next();return;
   case 1:
    if(editor.getHeight()!=510)return;primaryBounds=button("stream-toggle")->getBounds();
    check(onSession()&&!button("copy-link")->isEnabled()&&!button("qr-code")->isEnabled(),"Initial share controls should stay in place");
-   check(!button("end-session")->isEnabled(),"Empty session can be ended");check(combo->getSelectedId()==1,"Random code default");
+   check(!button("end-session")->isEnabled(),"Empty session can be ended");check(combo->getSelectedId()==2,"Saved custom link was not selected by default");
    button("session-setup")->triggerClick();next();return;
   case 2:
    if(!find<juce::Component>(editor,"setup-panel")->isVisible())return;
@@ -85,13 +92,16 @@ public:
   case 26:
    if(p.isReceiving())return;button("send-mode")->triggerClick();p.controller->account(false);next();return;
   case 27:
-   if(s.accountPhase!="signed-out"||p.isReceiveMode()||button("receive-mode")->isEnabled()||!button("stream-toggle")->isEnabled())return;
-   check(!button("receive-mode")->isVisible(),"Unavailable guest Receive shown");bounds(editor);snapshot(editor,"/private/tmp/sessionstream-stable-guest.png");done=true;
+   if(s.accountPhase!="signed-out"||p.isReceiveMode()||!button("receive-mode")->isEnabled()||!button("stream-toggle")->isEnabled())return;
+   check(button("receive-mode")->isVisible(),"Guest cannot access Receive");button("receive-mode")->triggerClick();next();return;
+  case 28:
+   if(!p.isReceiveMode()||!field("receive-target")->isVisible())return;
+   bounds(editor);snapshot(editor,"/private/tmp/sessionstream-stable-guest.png");done=true;
    std::cout<<"PASS: native editor stable inline settings, no automatic navigation, fixed primary position, custom auth/conflicts, passcode, quality, timer, monitor mute, pause/resume invite continuity, confirmed End, Receive recovery and guest/update states"<<std::endl;return;
   }
  }
 private:
- juce::String savedLink;juce::Rectangle<int> primaryBounds;
+ juce::String savedLink;juce::Rectangle<int> primaryBounds;bool sawAccountRestore=false;
  void next(){++stage;std::cout<<"UI_QA_STAGE "<<stage<<std::endl;}
  static void check(bool ok,const char* text){if(!ok)throw std::runtime_error(text);}
  template<class T> static T* lookup(juce::Component& root,const char* id){if(root.getComponentID()==id)if(auto* value=dynamic_cast<T*>(&root))return value;for(auto* child:root.getChildren())if(auto* value=lookup<T>(*child,id))return value;return nullptr;}

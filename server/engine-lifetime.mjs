@@ -8,13 +8,42 @@ export class EngineLifetime {
     this.created = now();
     this.attached = false;
     this.clients = new Map();
+    this.requests = new Map();
   }
   attach(source) { this.attached = true; this.clients.set(source, this.now()); }
-  detach(source) { return this.clients.delete(source); }
+  detach(source) {
+    this.requests.delete(source);
+    return this.clients.delete(source);
+  }
+  // The controller waits synchronously for control responses. Allow it to
+  // wait up to its 40-second HTTP timeout without losing its lease.
+  trackRequest(source, response, onFinish) {
+    if (!this.clients.has(source) || response.destroyed) return;
+    const request = {deadline:this.now() + 40000};
+    this.requests.set(source, request);
+    const clear = () => {
+      if (this.requests.get(source) === request) this.requests.delete(source);
+    };
+    response.once('finish', () => {
+      if (this.requests.get(source) === request && this.now() < request.deadline) {
+        this.attach(source);
+        onFinish();
+      }
+      clear();
+    });
+    response.once('close', clear);
+  }
+  isHandlingRequest(source) {
+    const request = this.requests.get(source);
+    return request !== undefined && this.now() < request.deadline;
+  }
   poll() {
     const now = this.now(), expired = [];
     for (const [source, last] of this.clients) {
-      if (now - last >= this.leaseMs) { this.clients.delete(source); expired.push(source); }
+      if (now - last >= this.leaseMs && !this.isHandlingRequest(source)) {
+        this.detach(source);
+        expired.push(source);
+      }
     }
     return {expired, idle:this.clients.size === 0 && (this.attached || now - this.created >= this.startupMs)};
   }

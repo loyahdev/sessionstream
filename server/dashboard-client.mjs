@@ -5,7 +5,7 @@ import {CredentialStore} from './credential-store.mjs';
 // One client per shared companion, never per processor. Secrets stay in private
 // OS-store pipes and HTTPS requests; status is an explicit public allowlist.
 export class DashboardClient {
-  constructor({account, storeFactory, onDenied=()=>{}, onLimits=()=>{}, fetchImpl=fetch, now=Date.now, origin='https://sessionstream.app', version='1.0.3', enabled=true, autoTimer=true}) {
+  constructor({account, storeFactory, onDenied=()=>{}, onLimits=()=>{}, fetchImpl=fetch, now=Date.now, origin='https://sessionstream.app', version='1.0.4', enabled=true, autoTimer=true}) {
     this.enabled=enabled;this.account=account; this.storeFactory=storeFactory || (sub=>new CredentialStore(account.issuer,`${account.clientId}|installation-v1|${sub}`));
     this.onDenied=onDenied; this.onLimits=onLimits; this.fetch=fetchImpl; this.now=now; this.origin=origin; this.version=version;
     this.plan='free'; this.listenerLimit=3; this.live=false; this.queue=Promise.resolve(); this.reset();

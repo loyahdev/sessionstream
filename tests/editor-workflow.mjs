@@ -7,8 +7,8 @@ import path from 'node:path';
 import {createStreamServer} from '../server/index.mjs';
 import {validName} from '../server/link-names.mjs';
 const directory=await mkdtemp(path.join(tmpdir(),'sessionstream-editor-workflow-'));
-let signedIn=true,name='preview-studio',saved=null,exchanges=0,browserStarts=0,app,timer,child;
-const account={identity:{sub:'qa-user'},ready:Promise.resolve(),accessCredential:()=>signedIn?'qa-existing-login':null,status:()=>({configured:true,phase:signedIn?'signed-in':'signed-out',name:signedIn?'Preview':''}),signOut:async()=>{signedIn=false;account.identity=null;return {ok:true};},close(){}};
+let signedIn=false,restoring=true,name='preview-studio',saved=null,exchanges=0,browserStarts=0,app,timer,accountTimer,child;
+const account={identity:null,ready:Promise.resolve(),accessCredential:()=>signedIn?'qa-existing-login':null,status:()=>({configured:true,phase:restoring?'restoring':signedIn?'signed-in':'signed-out',name:signedIn?'Preview':''}),signOut:async()=>{signedIn=false;account.identity=null;return {ok:true};},close(){}};
 const request=async(url,options)=>{
  const route=new URL(url).pathname;
  if(route.endsWith('/exchange')){exchanges++;return Response.json({token:'e'.repeat(64),user:'qa-user'});}
@@ -26,7 +26,8 @@ try{
  const dashboardOptions={enabled:true,autoTimer:true,storeFactory:sub=>({read:async()=>dashboardStore.get(sub)||null,write:async v=>dashboardStore.set(sub,v),clear:async()=>dashboardStore.delete(sub)}),fetchImpl:async url=>Response.json(url.endsWith('/enroll')?{deviceCredential:'c'.repeat(64)}:{plan:'pro',listeners:8})};
  app=await createStreamServer({nativeSender:true,managedTunnel:true,publicPort:0,studioPort:0,udpPort:0,account,runtimeDir:directory,linkStore:{read:async()=>saved,write:async v=>{saved=v;},clear:async()=>{saved=null;}},linkOptions:{request},dashboardOptions,onInviteRequested:advertise});advertise();timer=setInterval(advertise,500);
  child=spawn('./build/invite-editor',[],{env:{...process.env,SESSIONSTREAM_EDITOR_WORKFLOW:'1',SESSIONSTREAM_EDITOR_ENDPOINT:`http://127.0.0.1:${app.studioPort}`},stdio:['ignore','pipe','pipe']});let output='';
+ accountTimer=setTimeout(()=>{account.identity={sub:'qa-user'};signedIn=true;restoring=false;},2000);
  child.stdout.on('data',b=>{output+=b;process.stdout.write(b);});child.stderr.on('data',b=>{output+=b;process.stderr.write(b);});
  const timeout=setTimeout(()=>child.kill('SIGTERM'),70000);const code=await new Promise(r=>child.once('exit',r));clearTimeout(timeout);
  await writeFile('/private/tmp/sessionstream-native-workflow.log',output);assert.equal(code,0);assert(output.includes('PASS: native editor'));assert.equal(exchanges,1);assert.equal(browserStarts,0);const final=await (await fetch(`http://127.0.0.1:${app.studioPort}/api/studio`)).json();assert.equal(final.quality,'balanced');assert.equal(final.expiresInHours,0);console.log('PASS: one scoped credential exchange, zero extra browser sign-ins; native workflow complete.');
-}finally{clearInterval(timer);if(child?.exitCode===null)child.kill('SIGTERM');await app?.close();await rm(directory,{recursive:true,force:true});}
+}finally{clearTimeout(accountTimer);clearInterval(timer);if(child?.exitCode===null)child.kill('SIGTERM');await app?.close();await rm(directory,{recursive:true,force:true});}

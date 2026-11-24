@@ -92,6 +92,43 @@ test('public Worker routes the code prefix, translates only a valid Origin, and 
   assert.equal((await worker.fetch(new Request('https://sessionstream.app/000001'),env)).status,429);assert.equal(lookups,before);
 });
 
+test('a custom invite waits for its reserved path even when a random tunnel is ready',async t=>{
+  const account={identity:{sub:'host'},status:()=>({phase:'signed-in'}),accessCredential:()=> 'test-account',close(){}};
+  const app=await createStreamServer({
+    account,nativeSender:true,managedTunnel:true,publicPort:0,studioPort:0,udpPort:0,
+    linkStore:{read:async()=>null,write:async()=>{},clear:async()=>{}},
+    linkOptions:{request:async url=>Response.json(url.pathname.endsWith('/exchange')?{token:'a'.repeat(64),user:'host'}:{name:'my-studio'})}
+  });
+  t.after(()=>app.close());
+  const base=`http://127.0.0.1:${app.studioPort}`;
+  const studio=()=>fetch(base+'/api/studio').then(r=>r.json());
+  let status=await studio();
+  for(let attempt=0;status.links.busy&&attempt<50;attempt++){
+    await new Promise(r=>setTimeout(r,20));
+    status=await studio();
+  }
+  assert.equal(status.links.name,'my-studio');
+  const generate=linkType=>fetch(base+'/api/control',{method:'POST',headers:{Origin:base,Authorization:`Bearer ${status.token}`},body:JSON.stringify({action:'generate',source:42,linkType})});
+  assert.equal((await generate('custom')).status,200);
+  for(const url of ['https://quick.trycloudflare.com','https://sessionstream.app/123456']){
+    app.setTunnelState('ready',url);
+    status=await studio();
+    assert.equal(status.publicSiteReady,false);
+    assert.equal(status.listenerURL,'');
+    assert.match(status.tunnelError,/saved link is unavailable/);
+  }
+  app.setTunnelState('ready','https://sessionstream.app/my-studio');
+  status=await studio();
+  assert.equal(status.publicSiteReady,true);
+  assert.equal(status.listenerURL,'https://sessionstream.app/my-studio');
+  assert.equal(status.tunnelError,'');
+  assert.equal((await generate('random')).status,200);
+  app.setTunnelState('ready','https://sessionstream.app/123456');
+  status=await studio();
+  assert.equal(status.publicSiteReady,true);
+  assert.equal(status.listenerURL,'https://sessionstream.app/123456');
+});
+
 
 test('warm tunnel pool skips hostname creation on the request path and never reuses a released connector',async()=>{
   const f=fixture();f.env.MAX_LEASES='4';f.env.WARM_POOL_SIZE='2';

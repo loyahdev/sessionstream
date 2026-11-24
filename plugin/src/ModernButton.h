@@ -4,6 +4,13 @@
 #include "AccountAvatar.h"
 
 namespace studio {
+inline void drawSpinner(juce::Graphics& g,juce::Point<float> center,float radius,float width){
+    const auto angle=float(std::fmod(juce::Time::getMillisecondCounterHiRes()*.004,juce::MathConstants<double>::twoPi));
+    juce::Path arc;
+    arc.addCentredArc(center.x,center.y,radius,radius,0,angle,angle+juce::MathConstants<float>::pi*1.45f,true);
+    g.strokePath(arc,juce::PathStrokeType(width,juce::PathStrokeType::curved,juce::PathStrokeType::rounded));
+}
+
 // This JUCE build ignores setToggleState while disabled. Model synchronization
 // must still update locked/read-only controls, including their internal state.
 inline void syncToggleState(juce::Button& button,bool value){
@@ -18,7 +25,7 @@ inline void syncToggleState(juce::Button& button,bool value){
 // paint above its background canvas, using the shared embedded typeface.
 class ModernButton final : public juce::TextButton {
 public:
-    enum class Icon {none,copy,qr,link,play,account,settings,speaker,more,swap,users,stop};
+    enum class Icon {none,copy,qr,link,play,account,settings,speaker,more,swap,users,stop,loading};
     ModernButton(){setMouseClickGrabsKeyboardFocus(false);refreshStyle();}
     void setAvatar(accountavatar::Bytes value){if(avatarBytes==value)return;avatarBytes=std::move(value);const auto loaded=avatarBytes?juce::ImageFileFormat::loadFrom(avatarBytes->getData(),avatarBytes->getSize()):juce::Image{};avatar=loaded.isValid()?loaded.rescaled(64,64,juce::Graphics::highResamplingQuality):juce::Image{};repaint();}
     void setIconOnly(bool value){if(iconOnly!=value){iconOnly=value;repaint();}}
@@ -116,6 +123,7 @@ private:
     bool keyboardFocus=false;
     juce::ValueTree state{"Button"};jive::StyleSheet::ReferenceCountedPointer skin;juce::String styleKey,badgeText;bool badgeHighlight=false,iconOnly=false;int countBadge=0;Icon icon=Icon::none;
     void paintIcon(juce::Graphics& g,juce::Rectangle<float> a){
+        if(icon==Icon::loading){g.setColour(violet);drawSpinner(g,a.getCentre(),a.getWidth()*.28f,1.5f);return;}
         if(icon==Icon::account&&avatar.isValid()){juce::Graphics::ScopedSaveState saved(g);juce::Path circle;circle.addEllipse(a);g.reduceClipRegion(circle);g.drawImage(avatar,a,juce::RectanglePlacement::fillDestination);return;}
         juce::Graphics::ScopedSaveState saved(g);g.addTransform(juce::AffineTransform::scale(a.getWidth()/16.f).translated(a.getX(),a.getY()));
         const juce::PathStrokeType stroke(1.25f,juce::PathStrokeType::curved,juce::PathStrokeType::rounded);

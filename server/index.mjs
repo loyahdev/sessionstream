@@ -61,7 +61,7 @@ export async function createStreamServer(options = {}) {
   let managedIce=null;
   const token = randomBytes(32).toString('hex');
   const instance = randomBytes(16).toString('hex');
-  let tunnel={phase:'starting',url:''},inviteRequest=null;
+  let tunnel={phase:'starting',url:''},inviteRequest=null,inviteCustomName='';
   let room = randomBytes(24).toString('hex'), publisher = null, live = false, title = 'Studio session';
   let native = null, delivery=null, deliveryMode='direct', extraEncryption=false, cloudStarting=false, owner = null, inviteSource = null, lease = 0;
   const lifetime = new EngineLifetime(options.lifetimeOptions);
@@ -95,7 +95,7 @@ export async function createStreamServer(options = {}) {
   const notifyHost = m => native ? native.handle(m) : send(publisher,m);
   const info = () => ({...sessionPolicy.status(),delivery:deliveryMode,encrypted:extraEncryption,native:!!native, owner, inviteSource, engine:native?.buffer.stats(), engineError:native?.error, type:'status', feedbackEnabled:admission.feedback&&dashboard.plan==='pro', live, title, hostName:hostName(), listeners:peers.size, audio:Date.now()-lastAudio < 1500 ? audio : null,
     packets, drops, relayConfigured:ice().length > 1});
-  const dashboard=new DashboardClient({account,enabled:options.dashboardReporting??(!options.account&&!testWorker),...options.dashboardOptions,onDenied:message=>{accountError=message;native?.stop();live=false;owner=null;sessionPolicy.stop();listenerHealth.clear();for(const p of peers.values())send(p,{type:'publisher-left'});},onLimits:limit=>{if(dashboard.plan!=='pro'&&(admission.approval||admission.requireAccount)&&live){accountError='Pro is required for the current listener controls.';native?.stop();live=false;stopReporting();}if(deliveryMode==='direct')for(const p of [...peers.values()].slice(limit))p.close(4009,'Session listener limit changed');}});
+  const dashboard=new DashboardClient({account,enabled:options.dashboardReporting??(!options.account&&!testWorker),...options.dashboardOptions,onDenied:message=>{accountError=message;native?.stop();live=false;owner=null;sessionPolicy.stop();listenerHealth.clear();for(const p of peers.values())send(p,{type:'publisher-left'});},onLimits:limit=>{if(dashboard.plan!=='pro'&&(admission.approval||admission.requireAccount)&&live){accountError='Pro is required for the current listener controls.';native?.stop();live=false;stopReporting();}if(dashboard.plan!=='pro')for(const p of peers.values())if(p.dawReceive)p.close(4017,'The sender needs SessionStream Pro for DAW-to-DAW.');if(deliveryMode==='direct')for(const p of [...peers.values()].slice(limit))p.close(4009,'Session listener limit changed');}});
   const stopReporting=()=>{void dashboard.stopped();void delivery?.pause();};
   const listenerLimit=()=>deliveryMode==='cloud'?(dashboard.plan==='pro'?Infinity:3):dashboard.listenerLimit;
   async function beginStreaming(id){cloudStarting=true;try{await delivery?.start();source=id;lease=Date.now();lastAudio=0;live=true;native.start([...peers.entries()].filter(([,p])=>native.needsControl||p.mode==='webrtc').map(([id])=>id));}catch(error){accountError=error.message;live=false;owner=null;sessionPolicy.stop();stopReporting();throw Object.assign(error,{status:503});}finally{cloudStarting=false;}}
@@ -108,7 +108,7 @@ export async function createStreamServer(options = {}) {
     if (owner === id) { native?.stop();sessionPolicy.stop(); live = false; stopReporting(); owner = null; listenerHealth.clear(); }
     if (inviteSource === id) {
       void delivery?.end().catch(e=>log('cloud',e.message));
-      inviteSource = null; inviteRequest = null; hostNameAccount=null; admission.reset();for(const p of waiting.values())p.close(4003,'Invite changed');waiting.clear(); room = randomBytes(24).toString('hex');
+      inviteSource = null; inviteRequest = null; inviteCustomName=''; hostNameAccount=null; admission.reset();for(const p of waiting.values())p.close(4003,'Invite changed');waiting.clear(); room = randomBytes(24).toString('hex');
       inviteAccess.clear();sessionPolicy.end(); listenerHealth.clear();
       source = null; lastAudio = 0;
       for (const p of peers.values()) p.close(closeCode,reason);
@@ -146,11 +146,14 @@ export async function createStreamServer(options = {}) {
     if (url.pathname === '/health') return reply(200,{ok:true,instance});
     if (url.pathname === '/api/studio') {
       if (!studio) return reply(404,{error:'Not found'});
-      if(account.status().phase==='signed-out'&&receivers.size){for(const receiver of receivers.values())receiver.close();receivers.clear();}
       let publicURL = process.env.PUBLIC_URL || `http://127.0.0.1:${pub.address().port}`;
       if(options.managedTunnel)publicURL=(currentInvite&&tunnel.phase==='ready'?tunnel.url:'')||`http://127.0.0.1:${pub.address().port}`;
       else try { const stored = JSON.parse(await readFile(path.join(options.runtimeDir||path.join(root,'.runtime'),'public-url.json'),'utf8')); if (stored.url && !options.ignoreStoredURL) publicURL = stored.url; } catch {}
-      return reply(200,{account:account.status(),accountConnection:dashboard.status(),updater:await updater.status(),listenerAccess:admission.snapshot(),accountError, links:links.status(), receivers:Object.fromEntries([...receivers].map(([id,receiver])=>[id,receiver.status()])), featureProtocol:1, token, room, listenerURL:!!sharePrefix(new URL(publicURL).pathname)?publicURL:`${publicURL}/listen#${room}`,transportDiagnostics:native?.diagnostics(),controlProtocol:10,passcodeRequired:inviteAccess.required,listenerIssue:listenerHealth.issue(live),engineProtocol:native?1:0,enginePID:process.pid,tunnelPID:options.tunnelPID?.(),engineClients:lifetime.clients.size,publicSiteReady:options.managedTunnel?(tunnel.phase==='ready'&&currentInvite):publicURL.startsWith('https://'),tunnelPhase:options.managedTunnel?tunnel.phase:undefined,inviteRequest,iceServers:ice(), ...info()});
+      const publicPath=new URL(publicURL).pathname;
+      const tunnelReady=tunnel.phase==='ready'&&currentInvite;
+      const wrongCustomLink=options.managedTunnel&&tunnelReady&&inviteCustomName&&publicPath!==`/${inviteCustomName}`;
+      const tunnelError=wrongCustomLink?'Your saved link is unavailable. Cancel to retry or choose Random code in Settings.':'';
+      return reply(200,{account:account.status(),accountConnection:dashboard.status(),updater:await updater.status(),listenerAccess:admission.snapshot(),accountError, links:links.status(), receivers:Object.fromEntries([...receivers].map(([id,receiver])=>[id,receiver.status()])), featureProtocol:1, token, room, listenerURL:wrongCustomLink?'':sharePrefix(publicPath)?publicURL:`${publicURL}/listen#${room}`,transportDiagnostics:native?.diagnostics(),controlProtocol:10,passcodeRequired:inviteAccess.required,listenerIssue:listenerHealth.issue(live),engineProtocol:native?1:0,enginePID:process.pid,tunnelPID:options.tunnelPID?.(),engineClients:lifetime.clients.size,publicSiteReady:options.managedTunnel?tunnelReady&&!wrongCustomLink:publicURL.startsWith('https://'),tunnelPhase:options.managedTunnel?tunnel.phase:undefined,tunnelError,inviteRequest,iceServers:ice(), ...info()});
     }
     if(url.pathname==='/api/update'&&req.method==='POST'){
       if(!studio||!native||!headerAuth(req)||req.headers.origin!==`http://${req.headers.host}`)return reply(403,{error:'Unauthorized'});
@@ -196,8 +199,6 @@ export async function createStreamServer(options = {}) {
       const body=await readJSON(req,2048);if(body.error)return reply(body.status,{error:body.error});const m=body.value;
       if(!Number.isInteger(m?.source)||!lifetime.clients.has(m.source))return reply(400,{error:'Attach the plugin first.'});
       if(!['start','stop'].includes(m.action))return reply(400,{error:'Unknown receive action'});
-      if(m.action==='start'&&account.status().phase!=='signed-in')return reply(403,{error:'Sign in to use Receive mode.'});
-      if(m.action==='start'){const access=await dashboard.requirePro();if(!access.ok)return reply(403,{error:access.error});}
       if(m.action==='start'&&(!Number.isInteger(m.port)||m.port<1024||m.port>65535||!validPasscode(m.passcode)))return reply(400,{error:'Invalid receiver'});
       if(m.action==='start'&&m.transport!==undefined&&!['pcm','webrtc'].includes(m.transport))return reply(400,{error:'Invalid receive transport'});
       receivers.get(m.source)?.close();receivers.delete(m.source);
@@ -292,6 +293,9 @@ export async function createStreamServer(options = {}) {
       const requestedQuality=m.quality||(['start','handoff'].includes(m.action)&&sessionPolicy.created?sessionPolicy.quality:'balanced');
       const requestedChannels=m.channels??(['start','handoff'].includes(m.action)&&sessionPolicy.created?sessionPolicy.channels:2);let requestedFormat;try{requestedFormat=audioFormat(requestedQuality,requestedChannels);}catch(e){return reply(400,{error:e.message});}
       if(['generate','start','handoff'].includes(m.action)&&m.inputChannels!==undefined&&(![1,2,6,8].includes(m.inputChannels)||requestedChannels>2&&requestedChannels!==m.inputChannels))return reply(409,{error:'The selected surround layout requires a matching DAW bus.'});
+      if(['generate','start','handoff','end'].includes(m.action)){
+        lifetime.trackRequest(m.source,res,()=>{if(owner===m.source)lease=Date.now();});
+      }
       if(['generate','start','handoff'].includes(m.action)&&!freeAudioFormat(requestedQuality,requestedChannels)){if(account.status().phase!=='signed-in')return reply(403,{error:'SessionStream Pro is required for this audio format.'});const access=await dashboard.requirePro();if(!access.ok)return reply(403,{error:access.error});}
       if((m.action==='start'||m.action==='handoff')&&sessionPolicy.expired)return reply(410,{error:'This invite has expired. Create a new invite.'});
       if(m.action==='end'){
@@ -337,8 +341,10 @@ export async function createStreamServer(options = {}) {
           return reply(409,{error:'Claim or authorize your custom link first.'});
         owner=m.source;lease=Date.now();
         if(creating){
+          const customName=links.selection()?.name||'';
           const mode=m.delivery||'direct';if(mode==='cloud'){const access=await dashboard.requirePro();if(!access.ok)return reply(403,{error:access.error});const status=await dashboard.cloud('status');if(!status.ok||!status.canCloud||!status.configured)return reply(status.status||402,{error:status.error||'Add Cloud listener-hours before using Cloud.'});}
           await delivery?.configure({mode,encrypted:m.encrypted===true,quality:requestedQuality,channels:requestedChannels});deliveryMode=mode;admission.uncapped=mode==='cloud';extraEncryption=m.encrypted===true;native.needsControl=mode==='cloud'||extraEncryption;native.cloudMode=mode==='cloud';dashboard.mode=mode;
+          inviteCustomName=customName;
           if(hasPreferences||accessOwner!==m.source){
             admission.configure({approval:m.listenerApproval===true,requireAccount:m.listenerAccounts===true,feedback:m.listenerFeedback===true});
             accessOwner=m.source;
@@ -390,9 +396,10 @@ export async function createStreamServer(options = {}) {
   upgrade(pub,false); upgrade(local,true);
   function admitListener(ws){
     if(ws.readyState!==WebSocket.OPEN||ws.requestRoom!==room)return;
+    if(ws.dawReceive&&dashboard.plan!=='pro'){ws.close(4017,'The sender needs SessionStream Pro for DAW-to-DAW.');return;}
     if(peers.size>=listenerLimit()){ws.close(4009,'Session is full');return;}
     waiting.delete(ws.id);ws.role='listener';peers.set(ws.id,ws);clearTimeout(ws.joinTimer);
-    send(ws,{type:'joined',id:ws.id,iceServers:ice(),delivery:deliveryMode,encrypted:extraEncryption,format:sessionPolicy.status().format});if(native?.needsControl||ws.mode!=='pcm')notifyHost({type:'peer-joined',id:ws.id});send(ws,info());broadcastStatus();
+    send(ws,{type:'joined',id:ws.id,dawReceive:ws.dawReceive===true,iceServers:ice(),delivery:deliveryMode,encrypted:extraEncryption,format:sessionPolicy.status().format});if(native?.needsControl||ws.mode!=='pcm')notifyHost({type:'peer-joined',id:ws.id});send(ws,info());broadcastStatus();
   }
   wss.on('connection',(ws,studio)=>{
     ws.isAlive = true; ws.role = null; ws.id = randomBytes(8).toString('hex'); ws.mode = 'webrtc';
@@ -418,6 +425,14 @@ export async function createStreamServer(options = {}) {
           if (inviteAccess.required && !inviteAccess.accepts(m.passcode)) {
             if (!attempts.allow() || !joinAttempts.allow()) return ws.close(4008,'Too many passcode attempts. Try again shortly.');
             return send(ws,{type:'passcode-required',invalid:typeof m.passcode==='string'&&m.passcode.length>0});
+          }
+          if(m.dawReceive===true){
+            ws.verifying=true;
+            const access=dashboard.enabled?await dashboard.requirePro():{ok:false};
+            ws.verifying=false;
+            if(ws.readyState!==WebSocket.OPEN||m.room!==room)return;
+            if(!access.ok)return ws.close(4017,'The sender needs SessionStream Pro for DAW-to-DAW.');
+            ws.dawReceive=true;
           }
           ws.requestRoom=room;ws.mode=sessionPolicy.status().format.codec==='pcm'||m.mode==='pcm'?'pcm':'webrtc';
           let identity;
@@ -531,7 +546,7 @@ export async function createStreamServer(options = {}) {
     const state=lifetime.poll();for(const id of state.expired){log('engine','controller heartbeat expired');releaseSource(id);}
     if(state.idle&&!idleNotified){idleNotified=true;options.onNoClients?.();}
   },250) : null;
-  const statusTimer = setInterval(()=>{for(const r of admission.expirePending())waiting.get(r.connection)?.close(4016,'Access request expired. Request access again.');expireInvite();if(native&&!cloudStarting&&owner!==null&&Date.now()-lease>5000){native.stop();sessionPolicy.stop();live=false;stopReporting();owner=null;listenerHealth.clear();for(const p of peers.values())send(p,{type:'publisher-left'});}broadcastStatus();},1000);
+  const statusTimer = setInterval(()=>{for(const r of admission.expirePending())waiting.get(r.connection)?.close(4016,'Access request expired. Request access again.');expireInvite();if(native&&!cloudStarting&&owner!==null&&Date.now()-lease>5000&&!lifetime.isHandlingRequest(owner)){native.stop();sessionPolicy.stop();live=false;stopReporting();owner=null;listenerHealth.clear();for(const p of peers.values())send(p,{type:'publisher-left'});}broadcastStatus();},1000);
   const heartbeat = setInterval(()=>{ for (const ws of wss.clients) {if (!ws.isAlive) ws.terminate(); else {ws.isAlive=false;ws.ping();}} },15000);
   return {instance,get customLinkSelection(){return links.selection();},get inviteRevision(){return room;},publicPort:pub.address().port, studioPort:local.address().port, udpPort:udp.address().port,
     setManagedIceServers(servers){managedIce=Array.isArray(servers)&&servers.length?servers:null;},

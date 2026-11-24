@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.3-baf77a?style=flat-square&amp;labelColor=202a23" alt="Version 1.0.3">
+  <img src="https://img.shields.io/badge/version-1.0.4-baf77a?style=flat-square&amp;labelColor=202a23" alt="Version 1.0.4">
   <img src="https://img.shields.io/badge/macOS-13.5%2B-baf77a?style=flat-square&amp;labelColor=202a23&amp;logo=apple&amp;logoColor=white" alt="macOS 13.5 or newer">
   <img src="https://img.shields.io/badge/Apple_Silicon-VST3_%2B_AU-baf77a?style=flat-square&amp;labelColor=202a23" alt="Apple Silicon · VST3 and AU">
   <img src="https://img.shields.io/badge/Windows_11-x64_%2B_ARM64-baf77a?style=flat-square&amp;labelColor=202a23" alt="Windows 11 · Intel/AMD x64 and ARM64">
@@ -57,9 +57,9 @@ SessionStream is a VST3 and Audio Units (AU) plugin for producers who teach, col
 
 ## Quick start
 
-**Current build: 1.0.3 · macOS Apple Silicon + Windows 11 x64 / ARM64**
+**Current build: 1.0.4 · macOS Apple Silicon + Windows 11 x64 / ARM64**
 
-[1.0.3 release notes and verification limits](docs/RELEASE-1.0.3.md)
+[1.0.4 release notes and verification limits](docs/RELEASE-1.0.4.md)
 
 
 | Operating system | Architecture | Plugin formats | Installer |
