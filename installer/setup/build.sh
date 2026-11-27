@@ -116,7 +116,7 @@ for bundle in "$app" "$uninstaller"; do
 done
 "${DMGBUILD_PATH:-dmgbuild}" -s "$root/installer/setup/dmg-settings.py" \
   -D "app=$app" -D "uninstaller=$uninstaller" -D "background=$artwork/Background.tiff" \
-  -D "icon=$app/Contents/Resources/Setup.icns" "SessionStream Setup" "$work/$mac_name"
+  -D "icon=$app/Contents/Resources/Setup.icns" "SessionStream Setup $version" "$work/$mac_name"
 
 if [[ "$mac_only" == 1 ]]; then
   /bin/mv "$work/$mac_name" "$output/"

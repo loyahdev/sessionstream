@@ -69,3 +69,53 @@ test('revoked installations can only re-enroll after a successful browser callba
  assert.notEqual(enrolled.at(-1),revoked);
  assert.equal((await studio()).accountConnection.reconnectRequired,false);
 });
+
+
+test('the plugin browser confirms readiness, temporary sign-in, or unfinished device setup',async()=>{
+ for(const [failure,title] of [
+  [null,'Ready to stream.'],
+  ['save','Signed in for this session.'],
+  ['device-limit','All three computer slots are in use.'],
+  ['offline','Finishing setup in SessionStream.'],
+ ]){
+  let refresh=null,installation=null,block=failure;
+  const account=new Account({...accountConfig(),autoRestore:false,
+   store:{read:async()=>refresh,write:async value=>{if(block==='save')throw Error('Secure store unavailable');refresh=value;}},
+   fetchImpl:async url=>Response.json(url.pathname==='/oauth/token'
+    ?{access_token:'access',refresh_token:'refresh',token_type:'bearer'}:{sub:'user',name:'Account'})
+  });
+  const app=await createStreamServer({account,studioPort:0,publicPort:0,udpPort:0,
+   linkStore:{read:async()=>null},
+   dashboardOptions:{enabled:true,autoTimer:false,storeFactory:()=>({
+    read:async()=>installation,write:async value=>{installation=value;}
+   }),fetchImpl:async url=>{
+    if(block==='device-limit')return Response.json({error:'Three computers are already connected. Remove one in your account.'},{status:409});
+    if(block==='offline')return Response.json({error:'Account unavailable.'},{status:503});
+    return Response.json(url.endsWith('/enroll')?{deviceCredential:'a'.repeat(64)}:{plan:'free',listeners:3});
+   }}
+  });
+  try{
+   const local=`http://127.0.0.1:${app.studioPort}`;
+   const studio=()=>fetch(local+'/api/studio').then(r=>r.json());
+   const {token}=await studio();
+   const action=action=>fetch(local+'/api/account',{method:'POST',headers:{Origin:local,Authorization:`Bearer ${token}`},body:JSON.stringify({action})}).then(r=>r.json());
+   const {url}=await action('sign-in');
+   const authorize=new URL(new URL(url).searchParams.get('plugin'));
+   const result=await fetch(local+'/auth/callback?'+new URLSearchParams({state:authorize.searchParams.get('state'),code:'mock'}));
+   const html=await result.text();
+   assert.equal(result.status,200);
+   assert(html.includes('<h2 id="result-title">'+title+'</h2>'));
+   assert.equal((await studio()).account.remembered,failure!=='save');
+   if(failure==='device-limit'){
+    const before=await studio();
+    assert(before.accountConnection.deviceLimitReached);
+    assert(!before.accountConnection.reconnectRequired);
+    block=null;
+    await action('retry-device');
+    for(let i=0;i<20&&!(await studio()).accountConnection.planKnown;i++)await new Promise(resolve=>setTimeout(resolve,10));
+    assert((await studio()).accountConnection.planKnown);
+    assert((await (await fetch(result.url)).text()).includes('Ready to stream.'));
+   }
+  }finally{await app.close();}
+ }
+});

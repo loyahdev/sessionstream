@@ -24,6 +24,15 @@ cpSync(process.argv[2], process.argv[3], {
 });
 JS
 }
+credential_identity="${SESSIONSTREAM_MAC_SIGNING_IDENTITY:--}"
+credential_signing=(--force --sign "$credential_identity" --identifier dev.loyah.sessionstream.account-credentials)
+if [[ "$credential_identity" != - ]]; then
+  [[ "$credential_identity" == "Developer ID Application: "* ]] || {
+    echo 'SESSIONSTREAM_MAC_SIGNING_IDENTITY must name a Developer ID Application certificate.' >&2
+    exit 1
+  }
+  credential_signing+=(--timestamp)
+fi
 node scripts/build-cloud-codec.mjs
 for plugin in build/SessionStream_artefacts/Release/VST3/SessionStream.vst3 build/SessionStream_artefacts/Release/AU/SessionStream.component build/SessionStream_artefacts/Release/Standalone/SessionStream.app; do
   runtime="$plugin/Contents/Resources/runtime"
@@ -38,10 +47,10 @@ for plugin in build/SessionStream_artefacts/Release/VST3/SessionStream.vst3 buil
   cp vendor/JIVE/LICENSE.md "$runtime/notices/JIVE-LICENSE.md"
   cp plugin/assets/Inter-LICENSE.txt "$runtime/notices/Inter-LICENSE.txt"
   cp plugin/assets/DMSans-OFL.txt plugin/assets/Manrope-OFL.txt "$runtime/notices/"
-  node --input-type=module - "$runtime/package.json" <<'JS'
+  node --input-type=module - "$runtime/package.json" "$credential_identity" <<'JS'
 import {readFileSync,writeFileSync} from 'node:fs';
 const {version}=JSON.parse(readFileSync('package.json','utf8'));
-writeFileSync(process.argv[2],JSON.stringify({name:'sessionstream-runtime',version,private:true,type:'module'})+'\n');
+writeFileSync(process.argv[2],JSON.stringify({name:'sessionstream-runtime',version,private:true,type:'module',stableCredentialSigning:process.argv[3]!=='-'})+'\n');
 JS
   copy_tree server "$runtime/server"
   copy_tree web "$runtime/web"
@@ -54,7 +63,9 @@ JS
   for module in ws @roamhq domexception webidl-conversions opusscript opus-decoder @wasm-audio-decoders @eshaz simple-yenc; do
     copy_tree "node_modules/$module" "$runtime/node_modules/$module"
   done
-  for binary in "$runtime/bin/account-credentials" "$runtime/bin/node" "$runtime/bin/cloudflared" "$runtime/node_modules/@roamhq/wrtc-darwin-arm64/wrtc.node"; do
+  codesign "${credential_signing[@]}" "$runtime/bin/account-credentials"
+  codesign --verify --strict "$runtime/bin/account-credentials"
+  for binary in "$runtime/bin/node" "$runtime/bin/cloudflared" "$runtime/node_modules/@roamhq/wrtc-darwin-arm64/wrtc.node"; do
     codesign --force --sign - "$binary"
   done
 done

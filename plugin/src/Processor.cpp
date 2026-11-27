@@ -360,8 +360,24 @@ public:
         accountButton.setColour(juce::TextButton::buttonColourId,juce::Colour(0xff161e19));
         accountButton.setColour(juce::TextButton::textColourOffId,studio::text);
         accountButton.onClick=[this]{
+            if(s.accountPhase=="signing-in"||s.deviceLimitReached){
+                const bool browser=s.accountPhase=="signing-in";
+                juce::PopupMenu menu;menu.setLookAndFeel(&look);
+                menu.addItem(1,browser?"Open browser again":"Manage computers");
+                menu.addItem(2,browser?"Cancel sign-in":"Retry connection");
+                const juce::Component::SafePointer<StreamEditor> safe(this);
+                menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&accountButton).withParentComponent(this),[safe,browser](int result){
+                    if(!safe)return;
+                    if(result==1&&browser)safe->p.controller->openAccountSignIn();
+                    if(result==2&&browser)safe->p.controller->cancelAccountSignIn();
+                    if(result==1&&!browser)juce::URL("https://sessionstream.app/dashboard/#devices").launchInDefaultBrowser();
+                    if(result==2&&!browser)safe->p.controller->retryAccountConnection();
+                });
+                return;
+            }
+            if(s.deviceAccessRequired){p.controller->retryAccountConnection();return;}
             if(s.reconnectRequired&&s.accountPhase=="signed-in"){p.controller->reconnectAccount();return;}
-            if(s.accountPhase!="signed-in"){p.controller->account(s.accountPhase!="signing-in");return;}
+            if(s.accountPhase!="signed-in"){p.controller->account(true);return;}
             juce::PopupMenu menu;menu.setLookAndFeel(&look);if(s.canCloud)menu.addSectionHeader("Cloud: "+juce::String(s.cloudHoursRemaining,1)+" Cloud hours left");menu.addItem(1,"Sign out");menu.addItem(3,"Open account dashboard");if(s.planKnown&&s.plan=="pro"&&s.customName.isNotEmpty())menu.addItem(2,"Release custom link");
             const juce::Component::SafePointer<StreamEditor> safe(this);
             menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&accountButton).withParentComponent(this),[safe](int result){if(safe&&result==1)safe->p.controller->account(false);if(safe&&result==2)safe->p.controller->links("release");if(safe&&result==3)juce::URL("https://sessionstream.app/dashboard/").launchInDefaultBrowser();});
@@ -486,6 +502,7 @@ public:
 
         // Right Card Live Status & Timer (Always visible — never hidden by pending listener requests)
         const auto stateText=loadingStatus.isNotEmpty()?loadingStatus:s.ending?"Ending session..."
+            :s.reconnectRequired||s.deviceLimitReached||s.deviceAccessRequired?"Check account"
             :s.warning?"Check audio"
             :receiving?(s.receivePhase=="approval"?"Awaiting approval":s.receivePhase=="denied"?"Access declined":active?"Receiving":p.isReceiving()?"Connecting":"Ready to receive")
             :s.handoffReady?"Active on other track"
@@ -616,9 +633,13 @@ public:
         }
 
         // Bottom Status Bar
-        if(diagnosticsTicks>0||s.warning||!s.ready){g.setColour(ink);g.fillEllipse(17.f,487.5f,4.5f,4.5f);}
-        g.setFont(font(11));g.setColour(muted);
-        if(diagnosticsTicks>0||s.warning||!s.ready)g.drawFittedText(diagnosticsTicks>0?diagnosticsMessage:s.message,29,477,810,26,juce::Justification::centredLeft,1);
+        const bool hasAccountNotice=s.accountMessage.isNotEmpty();
+        if(diagnosticsTicks>0||s.warning||!s.ready||hasAccountNotice){
+            g.setColour(hasAccountNotice?warm:ink);g.fillEllipse(17.f,487.5f,4.5f,4.5f);
+            g.setFont(font(11));g.setColour(muted);
+            const auto notice=diagnosticsTicks>0?diagnosticsMessage:s.warning||!hasAccountNotice?s.message:s.accountMessage;
+            g.drawFittedText(notice,29,477,810,26,juce::Justification::centredLeft,1);
+        }
 
         if(updateVisible){
             g.setColour(line);g.drawHorizontalLine(513,16.f,844.f);
@@ -683,8 +704,15 @@ private:
         updateVisible=u.available||active;
         updateMessage=active?s.updater["message"].toString():"SessionStream "+latest+" is available";
         if(phase=="downloading")updateMessage="Downloading SessionStream "+s.updater["version"].toString()+" · "+juce::String(juce::jlimit(0,100,int(double(s.updater["progress"])*100)))+"%";
-        update.setButtonText(phase=="ready"?"Install on close":phase=="waiting"?"Queued":phase=="downloading"?"Downloading...":phase=="applying"?"Installing...":phase=="complete"||phase=="cancelled"?"Done":phase=="error"?"Try again":"Update plugin");
-        update.setTooltip(phase=="error"?updateMessage:phase=="ready"?"Updates after you close all DAWs. Your account and preferences are kept.":"Downloads and verifies the release without opening a browser.");
+       #if JUCE_MAC
+        const auto installLabel="Install & reopen";
+        const auto installHint="Installs after you quit and reopens your DAW when ready.";
+       #else
+        const auto installLabel="Install on close";
+        const auto installHint="Installs after you close all DAWs.";
+       #endif
+        update.setButtonText(phase=="ready"?installLabel:phase=="waiting"?"Queued":phase=="downloading"?"Downloading...":phase=="applying"?"Installing...":phase=="complete"||phase=="cancelled"?"Done":phase=="error"?"Try again":"Update plugin");
+        update.setTooltip(phase=="error"?updateMessage:phase=="ready"?installHint:"Downloads and verifies the release without opening a browser.");
         update.setEnabled(phase!="downloading"&&phase!="waiting"&&phase!="applying");
         ignoreUpdate.setButtonText(phase=="downloading"||phase=="ready"||phase=="waiting"?"Cancel":"Not now");
         update.setVisible(updateVisible);ignoreUpdate.setVisible(updateVisible&&phase!="applying"&&phase!="complete"&&phase!="cancelled");
@@ -716,12 +744,12 @@ private:
         const bool engineLoading=p.isHostEnabled()&&!s.available&&s.message!="Streaming runtime missing. Reinstall this plugin.";
         const bool restoring=s.accountPhase=="restoring";
         const bool signingIn=s.accountPhase=="signing-in";
-        const bool checkingPlan=signedIn&&!s.planKnown&&!s.reconnectRequired;
+        const bool checkingPlan=signedIn&&!s.planKnown&&!s.reconnectRequired&&!s.deviceLimitReached&&!s.deviceAccessRequired;
         const bool accountLoading=engineLoading||restoring||signingIn||checkingPlan;
         const juce::String nextLoading=engineLoading?"Starting engine...":restoring?"Restoring account...":signingIn?"Waiting for browser sign-in...":checkingPlan?"Checking account...":pro&&s.linkBusy&&!sessionLatched?"Loading saved link...":"";
         if(nextLoading.isNotEmpty()||nextLoading!=loadingStatus)repaint(597,70,230,24);
         loadingStatus=nextLoading;
-        accountButton.setButtonText(engineLoading?"Loading...":restoring?"Restoring account...":signingIn?"Cancel sign-in":checkingPlan?"Checking account...":s.reconnectRequired?"Reconnect account":signedIn?(s.accountName.isNotEmpty()?s.accountName:"Account"):"Sign in");
+        accountButton.setButtonText(engineLoading?"Loading...":restoring?"Restoring account...":signingIn?"Browser sign-in":s.deviceAccessRequired?"Approve Mac access":s.deviceLimitReached?"Manage computers":checkingPlan?"Checking account...":s.reconnectRequired?"Reconnect account":signedIn?(s.accountName.isNotEmpty()?s.accountName:"Account"):"Sign in");
         accountButton.setIcon(accountLoading?studio::ModernButton::Icon::loading:studio::ModernButton::Icon::account);
         if(accountLoading)accountButton.repaint();
         if(signedIn&&s.planKnown&&!s.reconnectRequired)accountButton.setBadge(pro?"PRO":"FREE",pro);
@@ -731,7 +759,7 @@ private:
         accountButton.setTitle(accountButton.getButtonText());
         layoutAccountButton();
         accountButton.setEnabled(s.available&&!restoring);
-        accountButton.setTooltip(signedIn?"Account & subscription":s.accountMessage.isNotEmpty()?s.accountMessage:s.accountConfigured?"Sign in to start streaming":"Account sign-in is not configured yet.");
+        accountButton.setTooltip(s.accountMessage.isNotEmpty()?s.accountMessage:signedIn?"Account & subscription":s.accountConfigured?"Sign in to start streaming":"Account sign-in is not configured yet.");
 
         if(!pro)showingPeople=false;
         const bool receiving=p.isReceiveMode();
@@ -811,11 +839,15 @@ private:
         qrOverlay.refresh(s.link);
 
         if(p.isSending()&&!p.isHostEnabled()&&p.shouldKeepSession())s.message="DAW render paused streaming. Audio resumes with playback.";
+        if(signedIn&&!receiving&&!s.planKnown&&!p.isSending())toggle.setEnabled(false);
         if(!signedIn&&!receiving){toggle.setEnabled(s.available&&s.accountConfigured&&s.accountPhase!="restoring"&&s.accountPhase!="signing-in");}
         toggle.setIcon(canHandoff?studio::ModernButton::Icon::swap:studio::ModernButton::Icon::play);
         toggle.setButtonText(s.ending?"Ending session...":p.isSending()?(s.live?"Pause streaming":"Starting... | Pause"):canHandoff?"Stream from this track":sessionLatched?"Resume streaming":"Start streaming");
         if(!signedIn&&!receiving)toggle.setButtonText(engineLoading?"Starting engine...":restoring?"Restoring account...":signingIn?"Finish sign-in in browser":"Sign in to stream");
-        else if(!receiving&&!sessionLatched&&!p.isSending()&&loadingStatus.isNotEmpty())toggle.setButtonText(loadingStatus);
+        else if(!receiving&&!sessionLatched&&!p.isSending()){
+            if(s.deviceLimitReached||s.reconnectRequired||s.deviceAccessRequired)toggle.setButtonText("Check account");
+            else if(loadingStatus.isNotEmpty())toggle.setButtonText(loadingStatus);
+        }
         if(pro&&!customReady&&!s.linkBusy&&!sessionLatched&&s.linkMessage.isNotEmpty()){
             s.message=s.linkMessage;
             s.warning=true;
@@ -903,8 +935,8 @@ private:
         const auto timeTick=sessionLatched?juce::Time::currentTimeMillis()/1000:0;
         if(timeTick!=lastDurationTick){lastDurationTick=timeTick;repaint(704,430,126,38);}
 
-        const auto paintKey=s.listenerMessage+juce::String(int(showingPeople))+juce::String(int(showingSetup))+juce::String(int(sessionLatched))+juce::String(int(endConfirmTicks>0))+juce::String(int(s.ending))+s.link+s.linkMessage+juce::String(int(s.live))+juce::String(int(s.warning))+juce::String(int(s.linkBusy))+juce::String(int(s.passcodeRequired))+customName.getText()+juce::String(int(validDraftName()))+s.receivePhase+s.receiveTransport+juce::String(int(s.handoffReady))+juce::String(pendingRequests)+"/"+juce::String(int(p.controller->usesCloud()))+"/"+juce::String(int(s.canCloud))+"/"+juce::String(p.streamQuality.load())+"/"+juce::String(p.streamChannels.load())+"/"+juce::String(p.signalRate())+"/"+juce::String(int(p.controller->encryptsAudio()));
-        if(paintKey!=lastPaintKey){lastPaintKey=paintKey;repaint(584,64,260,408);}
+        const auto paintKey=s.message+s.accountMessage+s.listenerMessage+juce::String(int(showingPeople))+juce::String(int(showingSetup))+juce::String(int(sessionLatched))+juce::String(int(endConfirmTicks>0))+juce::String(int(s.ending))+s.link+s.linkMessage+juce::String(int(s.live))+juce::String(int(s.warning))+juce::String(int(s.linkBusy))+juce::String(int(s.passcodeRequired))+customName.getText()+juce::String(int(validDraftName()))+s.receivePhase+s.receiveTransport+juce::String(int(s.handoffReady))+juce::String(pendingRequests)+"/"+juce::String(int(p.controller->usesCloud()))+"/"+juce::String(int(s.canCloud))+"/"+juce::String(p.streamQuality.load())+"/"+juce::String(p.streamChannels.load())+"/"+juce::String(p.signalRate())+"/"+juce::String(int(p.controller->encryptsAudio()));
+        if(paintKey!=lastPaintKey){lastPaintKey=paintKey;repaint(584,64,260,408);repaint(16,477,824,26);}
 
         if(s.generating||cancellingLink){
             qrOverlay.setVisible(false);

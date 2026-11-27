@@ -7,7 +7,7 @@
 
 class UpdateChecker final : private WorkerThread {
 public:
-    static constexpr const char* currentVersion = "1.0.4";
+    static constexpr const char* currentVersion = "1.0.5";
     static constexpr const char* versionURL = "https://raw.githubusercontent.com/loyahdev/sessionstream/refs/heads/main/version.txt";
     static constexpr const char* releasesURL = "https://github.com/loyahdev/sessionstream/releases/latest";
     struct Status { juce::String latest; bool checked=false, available=false; };

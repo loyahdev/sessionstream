@@ -95,7 +95,7 @@ export async function createStreamServer(options = {}) {
   const notifyHost = m => native ? native.handle(m) : send(publisher,m);
   const info = () => ({...sessionPolicy.status(),delivery:deliveryMode,encrypted:extraEncryption,native:!!native, owner, inviteSource, engine:native?.buffer.stats(), engineError:native?.error, type:'status', feedbackEnabled:admission.feedback&&dashboard.plan==='pro', live, title, hostName:hostName(), listeners:peers.size, audio:Date.now()-lastAudio < 1500 ? audio : null,
     packets, drops, relayConfigured:ice().length > 1});
-  const dashboard=new DashboardClient({account,enabled:options.dashboardReporting??(!options.account&&!testWorker),...options.dashboardOptions,onDenied:message=>{accountError=message;native?.stop();live=false;owner=null;sessionPolicy.stop();listenerHealth.clear();for(const p of peers.values())send(p,{type:'publisher-left'});},onLimits:limit=>{if(dashboard.plan!=='pro'&&(admission.approval||admission.requireAccount)&&live){accountError='Pro is required for the current listener controls.';native?.stop();live=false;stopReporting();}if(dashboard.plan!=='pro')for(const p of peers.values())if(p.dawReceive)p.close(4017,'The sender needs SessionStream Pro for DAW-to-DAW.');if(deliveryMode==='direct')for(const p of [...peers.values()].slice(limit))p.close(4009,'Session listener limit changed');}});
+  const dashboard=new DashboardClient({account,enabled:options.dashboardReporting??(!options.account&&!testWorker),...options.dashboardOptions,onDenied:message=>{if(live)accountError=message;native?.stop();live=false;owner=null;sessionPolicy.stop();listenerHealth.clear();for(const p of peers.values())send(p,{type:'publisher-left'});},onLimits:limit=>{if(dashboard.plan!=='pro'&&(admission.approval||admission.requireAccount)&&live){accountError='Pro is required for the current listener controls.';native?.stop();live=false;stopReporting();}if(dashboard.plan!=='pro')for(const p of peers.values())if(p.dawReceive)p.close(4017,'The sender needs SessionStream Pro for DAW-to-DAW.');if(deliveryMode==='direct')for(const p of [...peers.values()].slice(limit))p.close(4009,'Session listener limit changed');}});
   const stopReporting=()=>{void dashboard.stopped();void delivery?.pause();};
   const listenerLimit=()=>deliveryMode==='cloud'?(dashboard.plan==='pro'?Infinity:3):dashboard.listenerLimit;
   async function beginStreaming(id){cloudStarting=true;try{await delivery?.start();source=id;lease=Date.now();lastAudio=0;live=true;native.start([...peers.entries()].filter(([,p])=>native.needsControl||p.mode==='webrtc').map(([id])=>id));}catch(error){accountError=error.message;live=false;owner=null;sessionPolicy.stop();stopReporting();throw Object.assign(error,{status:503});}finally{cloudStarting=false;}}
@@ -158,8 +158,8 @@ export async function createStreamServer(options = {}) {
     if(url.pathname==='/api/update'&&req.method==='POST'){
       if(!studio||!native||!headerAuth(req)||req.headers.origin!==`http://${req.headers.host}`)return reply(403,{error:'Unauthorized'});
       const body=await readJSON(req,512);if(body.error)return reply(body.status,{error:body.error});const value=body.value;
-      if(!value||!['download','install','cancel','dismiss'].includes(value.action)||Object.keys(value).some(k=>!['action','hostPID'].includes(k)))return reply(400,{error:'Invalid update action.'});
-      try{const result=value.action==='download'?await updater.prepare():value.action==='install'?await updater.install(value.hostPID):value.action==='cancel'?await updater.cancel():await updater.dismiss();return reply(200,{ok:true,...result});}catch(error){if(!['applying','waiting'].includes(updater.state?.phase))await updater.save({phase:'error',message:error.message}).catch(()=>{});return reply(400,{ok:false,error:error.message});}
+      if(!value||!['download','install','cancel','dismiss'].includes(value.action)||Object.keys(value).some(k=>!['action','hostPID','reopen'].includes(k))||(value.reopen!==undefined&&(value.action!=='install'||typeof value.reopen!=='boolean')))return reply(400,{error:'Invalid update action.'});
+      try{const result=value.action==='download'?await updater.prepare():value.action==='install'?await updater.install(value.hostPID,{reopen:value.reopen}):value.action==='cancel'?await updater.cancel():await updater.dismiss();return reply(200,{ok:true,...result});}catch(error){if(!['applying','waiting'].includes(updater.state?.phase))await updater.save({phase:'error',message:error.message}).catch(()=>{});return reply(400,{ok:false,error:error.message});}
     }
     if (url.pathname === '/api/links' && req.method === 'POST') {
       if(!studio||!headerAuth(req)||req.headers.origin!==`http://${req.headers.host}`)return reply(403,{error:'Unauthorized'});
@@ -222,6 +222,22 @@ export async function createStreamServer(options = {}) {
       if (!studio || !headerAuth(req) || req.headers.origin !== `http://${req.headers.host}`) return reply(403,{error:'Unauthorized'});
       const body = await readJSON(req,512);
       if (body.error) return reply(body.status,{error:body.error});
+      if (body.value?.action === 'open-sign-in'){
+        const target=account.signInURL();
+        return reply(200,target?{url:pluginSignInURL(target)}:{error:'Sign-in is already finishing. Check your account in SessionStream.'});
+      }
+      if (body.value?.action === 'cancel-sign-in'){
+        const cancelled=account.cancelSignIn();
+        if(cancelled){
+          if(reconnectFlow)void account.restore();
+          reconnectFlow=null;
+        }
+        return reply(200,{ok:cancelled,...(!cancelled?{error:'Sign-in is already finishing. Check your account in SessionStream.'}:{})});
+      }
+      if (body.value?.action === 'retry-device'){
+        void dashboard.retryDeviceConnection()?.catch(()=>{});
+        return reply(200,{ok:true});
+      }
       if (body.value?.action === 'sign-out'){accountCompletion.clear();reconnectFlow=null;native?.stop();live=false;stopReporting();await delivery?.end();owner=null;sessionPolicy.stop();await dashboard.stopped();for(const receiver of receivers.values())receiver.close();receivers.clear();await linkAuth.clear().catch(()=>{});return reply(200,await account.signOut());}
       if (['sign-in','reconnect'].includes(body.value?.action)){
         const reconnect=body.value.action==='reconnect'||!!reconnectFlow;
@@ -230,11 +246,7 @@ export async function createStreamServer(options = {}) {
         // account. A cancelled or invalid callback must never re-enroll it.
         const previous=reconnect?(reconnectFlow?.previous||{sub:dashboard.sub,status:dashboard.blockedStatus}):null;
         reconnectFlow=null;
-        if(reconnect&&account.status().phase==='signed-in'){
-          await linkAuth.clear().catch(()=>{});
-          await account.signOut();
-        }
-        const result=account.begin(`http://127.0.0.1:${local.address().port}/auth/callback`);
+        const result=account.begin(`http://127.0.0.1:${local.address().port}/auth/callback`,{reconnect});
         if(result.url){
           if(reconnect)reconnectFlow={state:new URL(result.url).searchParams.get('state'),previous};
           result.url=pluginSignInURL(result.url);
@@ -246,8 +258,14 @@ export async function createStreamServer(options = {}) {
     if(url.pathname.startsWith('/auth/complete/')){
       if(!studio||req.method!=='GET')return reply(404,{error:'Not found'});
       const ok=accountCompletion.get(url.pathname.slice('/auth/complete/'.length),accountEpoch());
-      res.writeHead(ok?200:410,{'Content-Type':'text/html; charset=utf-8','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; img-src https://sessionstream.app; font-src https://sessionstream.app; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"});
-      return res.end(accountResultPage(ok,{expired:!ok}));
+      const connection=dashboard.status();
+      const result=ok&&dashboard.enabled
+        ?connection.deviceLimitReached?'limit'
+          :connection.deviceAccessRequired?'storage'
+          :connection.connected&&connection.planKnown?(account.status().remembered&&connection.deviceRemembered?'ready':'session'):'pending'
+        :undefined;
+      res.writeHead(ok?200:410,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; img-src https://sessionstream.app; font-src https://sessionstream.app; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"});
+      return res.end(accountResultPage(ok,{expired:!ok,result}));
     }
     if (url.pathname === '/auth/callback') {
       if (!studio || req.method !== 'GET' || url.searchParams.getAll('state').length !== 1 || url.searchParams.getAll('code').length > 1) return reply(404,{error:'Not found'});
@@ -255,15 +273,20 @@ export async function createStreamServer(options = {}) {
       if(completed){res.writeHead(303,{Location:'/auth/complete/'+completed});return res.end();}
       const linkCallback=linkAuth.matches(url.searchParams);
       const reconnect=!linkCallback&&reconnectFlow?.state===url.searchParams.get('state')?reconnectFlow:null;
+      const generation=account.generation;
       const ok=linkCallback?await links.callback(url.searchParams):await account.callback(url.searchParams);
-      if(!linkCallback&&ok){
+      if(!linkCallback&&ok&&generation===account.generation){
         reconnectFlow=null;
-        const result=await dashboard.reconnectAfterSignIn(reconnect?.previous);
-        accountError=result.ok?'':result.error;
+        accountError='';
+        await dashboard.reconnectAfterSignIn(reconnect?.previous);
       }
-      if(ok){const receipt=accountCompletion.remember(url.searchParams,accountEpoch());res.writeHead(303,{Location:'/auth/complete/'+receipt});return res.end();}
-      res.writeHead(400,{'Content-Type':'text/html; charset=utf-8','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; img-src https://sessionstream.app; font-src https://sessionstream.app; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"});
-      return res.end(accountResultPage(ok));
+      if(ok&&generation===account.generation){
+        const receipt=accountCompletion.remember(url.searchParams,accountEpoch());
+        res.writeHead(303,{Location:'/auth/complete/'+receipt,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'});
+        return res.end();
+      }
+      res.writeHead(400,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; img-src https://sessionstream.app; font-src https://sessionstream.app; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"});
+      return res.end(accountResultPage(false));
     }
     if (url.pathname === '/api/invite' && req.method === 'POST') {
       const body=await readJSON(req,512);if(body.error)return reply(body.status,{error:body.error});const m=body.value;

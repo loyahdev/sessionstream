@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(SessionStream VERSION 1.0.4)
+project(SessionStream VERSION 1.0.5)
 set(CMAKE_CXX_STANDARD 17)
 if(WIN32)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded" CACHE STRING "Windows static C++ runtime")

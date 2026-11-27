@@ -35,6 +35,33 @@ async function workerFixture(){const folder=await mkdtemp(path.join(tmpdir(),'ss
 test('detached update waits for both host and engine exit before applying, then confirms completion',async()=>{
  const f=await workerFixture();let tick=0,applied=0;try{await runUpdateJob(f.file,{platform:'darwin',alive:pid=>pid===99991?tick<1:tick<3,sleep:async()=>{tick++;},apply:async(file,job)=>{assert.equal(tick,3);assert.equal(job.asset.version,'1.0.4');assert.equal(file,path.join(f.folder,job.asset.name));applied++;}});assert.equal(applied,1);assert.equal((await f.status()).phase,'complete');}finally{await f.close();}
 });
+test('macOS captures the DAW for an opt-in reopen and waits for a verified install',async()=>{
+ const host='/Applications/Ableton Live 12 Suite.app';
+ const f=await fixture({
+  hostApplication:async pid=>{assert.equal(pid,99999);return host;},
+  launch:()=>{const child=new EventEmitter();child.unref=()=>{};queueMicrotask(()=>child.emit('spawn'));return child;}
+ });
+ try{
+  await f.updater.prepare();await f.updater.pending;
+  const state=await f.updater.install(99999,{reopen:true});
+  assert.match(state.message,/reopen after the update/);
+  assert.equal(JSON.parse(await readFile(path.join(f.updater.job,'job.json'),'utf8')).reopenApp,host);
+ }finally{await f.close();}
+
+ for(const failed of [false,true]){
+  const job=await workerFixture();
+  let tick=0;const events=[];
+  try{
+   job.job.reopenApp=host;await writeFile(job.file,JSON.stringify(job.job));
+   await runUpdateJob(job.file,{
+    platform:'darwin',alive:()=>tick===0,sleep:async()=>{tick++;},
+    apply:async()=>{assert(tick>0);events.push('install');if(failed)throw Error('Installer failed');},
+    reopen:async app=>{assert.equal(app,host);assert.equal((await job.status()).phase,'complete');events.push('reopen');}
+   });
+   assert.deepEqual(events,failed?['install']:['install','reopen']);
+  }finally{await job.close();}
+ }
+});
 test('cancelling a queued update, changed payload, invalid job, and install failure never report success',async()=>{
  for(const mode of ['cancel','tamper','invalid','install-failure']){const f=await workerFixture();let applied=0;try{if(mode==='cancel')await writeFile(path.join(f.folder,'cancel'),'');if(mode==='tamper')await writeFile(path.join(f.folder,f.job.asset.name),'changed');if(mode==='invalid'){f.job.asset.name='../unexpected.exe';await writeFile(f.file,JSON.stringify(f.job));}await runUpdateJob(f.file,{platform:'darwin',alive:()=>false,apply:async()=>{applied++;throw Error('fixture installer failed');}});assert.equal((await f.status()).phase,mode==='cancel'?'cancelled':'error');assert.equal(applied,mode==='install-failure'?1:0);}finally{await f.close();}}
 });

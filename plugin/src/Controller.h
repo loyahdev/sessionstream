@@ -16,7 +16,7 @@
 
 class StreamController final : private WorkerThread {
 public:
-    struct Status { bool hasSession=false,ending=false,inviteExpired=false,activeElsewhere=false,handoffReady=false;juce::int64 streamStartedAt=0;juce::var transportDiagnostics,listenerAccess,updater;juce::String plan="free",listenerMessage;int listenerLimit=3,receiveChannels=2,streamChannels=2,streamQuality=1;bool canManageListeners=false,planKnown=false,canCloud=false;double cloudHoursRemaining=0;juce::String delivery="direct";bool encrypted=true;juce::String listenerSettingsAck; juce::String customName,linkMode,linkMessage;bool linkBusy=false,linkAuthorized=false;juce::String receivePhase,receiveMessage,receiveTransport="pcm";bool receiving=false;accountavatar::Bytes accountAvatar;juce::String accountName,accountPhase,accountMessage;bool accountConfigured=false,reconnectRequired=false;juce::String link,message="Preparing streaming engine...";int listeners=0;bool live=false,available=false,ready=false,generating=false,passcodeRequired=false,warning=false; };
+    struct Status { bool hasSession=false,ending=false,inviteExpired=false,activeElsewhere=false,handoffReady=false;juce::int64 streamStartedAt=0;juce::var transportDiagnostics,listenerAccess,updater;juce::String plan="free",listenerMessage;int listenerLimit=3,receiveChannels=2,streamChannels=2,streamQuality=1;bool canManageListeners=false,planKnown=false,canCloud=false;double cloudHoursRemaining=0;juce::String delivery="direct";bool encrypted=true;juce::String listenerSettingsAck; juce::String customName,linkMode,linkMessage;bool linkBusy=false,linkAuthorized=false;juce::String receivePhase,receiveMessage,receiveTransport="pcm";bool receiving=false;accountavatar::Bytes accountAvatar;juce::String accountName,accountPhase,accountMessage;bool accountConfigured=false,reconnectRequired=false,deviceLimitReached=false,deviceAccessRequired=false;juce::String link,message="Preparing streaming engine...";int listeners=0;bool live=false,available=false,ready=false,generating=false,passcodeRequired=false,warning=false; };
     explicit StreamController(uint32_t id,std::function<bool()> sending,juce::String endpoint="http://127.0.0.1:8788",juce::File resources={},std::function<bool()> enabled=[]{return true;},std::function<void()> expired={},std::function<void()> yielded={},juce::File preferences={})
         :WorkerThread("SessionStream control"),source(id),wantsAudio(std::move(sending)),hostEnabled(std::move(enabled)),onExpired(std::move(expired)),onYielded(std::move(yielded)),base(std::move(endpoint)),runtimeOverride(std::move(resources)),deliveryPrefs(preferences==juce::File{}?deliveryPreferenceFile():preferences){loadDeliveryPreference();startThread();}
     ~StreamController() override{stopThread();}
@@ -60,6 +60,9 @@ public:
     juce::String activePasscode()const{const juce::ScopedLock l(lock);return memoryPasscode;}
     void manageListeners(juce::var command){const juce::ScopedLock l(lock);listenerCommands.add(command);prepared=true;notify();}
     void reconnectAccount(){accountRequested=3;prepared=true;notify();}
+    void cancelAccountSignIn(){accountRequested=4;prepared=true;notify();}
+    void openAccountSignIn(){accountRequested=5;prepared=true;notify();}
+    void retryAccountConnection(){accountRequested=6;prepared=true;notify();}
     void account(bool signIn){if(!signIn){const juce::ScopedLock l(lock);memoryPasscode.clear();}accountRequested=signIn?1:2;prepared=true;notify();}
     void receive(bool start,juce::String target,juce::String passcode,int port,bool lowLatency=false){
         const juce::ScopedLock l(lock);receiveDesired=start;receiveTarget=std::move(target);receivePasscode=std::move(passcode);receivePort=port;receiveLowLatency=lowLatency;++receiveRevision;prepared=true;notify();
@@ -181,6 +184,7 @@ private:
     void run() override{
         juce::String avatarURL;accountavatar::Bytes avatar;juce::int64 avatarRetryAt=0;
         bool ending=false,generating=false,acknowledged=false,disabling=false;uint32_t disabledSince=0;int unavailableReads=0;juce::String requestId,requestPasscode,sessionPasscode;uint64_t appliedReceive=0;
+        juce::String accountActionError,accountActionPhase;
         while(!threadShouldExit()){
             (void)child.isRunning(); // Reap the short-lived launcher, including while bypassed.
             if(!hostEnabled()){
@@ -227,21 +231,42 @@ private:
                 next.updater=data["updater"];
                 if(const int update=updateRequested.exchange(0)){
                     auto* command=new juce::DynamicObject();command->setProperty("action",update==1?"download":update==2?"install":update==3?"cancel":"dismiss");
-                    if(update==2)command->setProperty("hostPID",hostProcessId());
+                    if(update==2){
+                        command->setProperty("hostPID",hostProcessId());
+                       #if JUCE_MAC
+                        command->setProperty("reopen",true);
+                       #endif
+                    }
                     const auto result=request("/api/update",juce::var(command));if(result["error"].toString().isNotEmpty()){auto* failure=new juce::DynamicObject();failure->setProperty("phase","error");failure->setProperty("message",result["error"].toString());next.updater=juce::var(failure);}
                 }
                 next.accountName=data["account"]["name"].toString();next.accountPhase=data["account"]["phase"].toString();
                 const auto imageURL=next.accountPhase=="signed-in"?data["account"]["imageUrl"].toString():juce::String{};if(imageURL!=avatarURL||(!avatar&&imageURL.isNotEmpty()&&!wantsAudio()&&juce::Time::currentTimeMillis()>=avatarRetryAt)){avatarURL=imageURL;avatar=imageURL.isEmpty()?accountavatar::Bytes{}:accountavatar::load(imageURL);avatarRetryAt=juce::Time::currentTimeMillis()+30000;}next.accountAvatar=avatar;
-                next.reconnectRequired=bool(data["accountConnection"]["reconnectRequired"]);next.accountMessage=data["accountConnection"]["message"].toString();if(next.accountMessage.isEmpty())next.accountMessage=data["account"]["message"].toString();next.accountConfigured=bool(data["account"]["configured"]);
+                const auto connection=data["accountConnection"];
+                next.reconnectRequired=bool(connection["reconnectRequired"]);
+                next.deviceLimitReached=bool(connection["deviceLimitReached"]);
+                next.deviceAccessRequired=bool(connection["deviceAccessRequired"]);
+                next.accountMessage=connection["message"].toString();
+                if(next.accountMessage.isEmpty())next.accountMessage=data["account"]["message"].toString();
+                if(next.accountMessage.isEmpty()&&next.planKnown&&!connection["deviceRemembered"].isVoid()&&!bool(connection["deviceRemembered"]))
+                    next.accountMessage="Signed in for this session. SessionStream could not remember this computer's registration.";
+                next.accountConfigured=bool(data["account"]["configured"]);
+                if(next.accountPhase!=accountActionPhase)accountActionError.clear();
                 if(const int intent=accountRequested.exchange(0)){
-                    auto* command=new juce::DynamicObject();command->setProperty("action",intent==1?"sign-in":intent==3?"reconnect":"sign-out");
+                    const char* action=intent==1?"sign-in":intent==2?"sign-out":intent==3?"reconnect":
+                        intent==4?"cancel-sign-in":intent==5?"open-sign-in":"retry-device";
+                    auto* command=new juce::DynamicObject();command->setProperty("action",action);
                     const auto result=request("/api/account",juce::var(command));
                     const auto target=result["url"].toString();
-                    if((intent==1||intent==3)&&target.startsWith("https://")){
+                    accountActionError=result["error"].toString();
+                    if(result.isVoid())accountActionError="Could not reach the SessionStream engine. Try again.";
+                    if((intent==1||intent==3||intent==5)&&target.startsWith("https://")){
                         next.accountPhase="signing-in";
-                        juce::URL(target).launchInDefaultBrowser();
+                        if(!juce::URL(target).launchInDefaultBrowser())
+                            accountActionError="Could not open your browser. Choose Open browser again.";
                     }
+                    accountActionPhase=next.accountPhase;
                 }
+                if(accountActionError.isNotEmpty())next.accountMessage=accountActionError;
                 next.customName=data["links"]["name"].toString();next.linkMode=data["links"]["mode"].toString();next.linkMessage=data["links"]["error"].toString();next.linkBusy=bool(data["links"]["busy"]);next.linkAuthorized=bool(data["links"]["authorized"]);
                 accountHasCustomLink.store(next.accountPhase=="signed-in"&&next.customName.isNotEmpty());
                 juce::String pendingLinkAction,pendingLinkValue;{const juce::ScopedLock l(lock);pendingLinkAction=linkAction;pendingLinkValue=linkValue;linkAction.clear();linkValue.clear();}

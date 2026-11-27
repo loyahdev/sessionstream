@@ -15,7 +15,7 @@ document.querySelectorAll('[data-buy]').forEach(button=>button.addEventListener(
 const downloadPlatform=detectDownloadPlatform({platform:navigator.userAgentData?.platform||navigator.platform,userAgent:navigator.userAgent,maxTouchPoints:navigator.maxTouchPoints});
 if(downloadPlatform){
  const mac=downloadPlatform==='mac',title=mac?'Download for macOS':'Download for Windows';
- const direct=mac?'https://github.com/loyahdev/sessionstream/releases/latest/download/SessionStream-mac-arm64.dmg':'https://github.com/loyahdev/sessionstream/releases/latest/download/SessionStream-windows-x64-arm64.exe';
+ const direct=document.querySelector(`.download-links [data-download="${downloadPlatform}"]`).href;
  const recommended=document.querySelector('#recommended-download');
  recommended.dataset.download=downloadPlatform;recommended.href=direct;recommended.hidden=false;
  recommended.querySelector('[data-recommended-title]').textContent=title;

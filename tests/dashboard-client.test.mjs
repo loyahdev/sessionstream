@@ -66,3 +66,18 @@ test('Free allowance stops on accepted audio time, not listener count, and sends
  assert((await c.authorizeStart()).ok);c.audio(1,3,120000);assert(c.live);c.audio(1,3,120000);assert.equal(c.live,false);assert.equal(f.denied.length,1);await c.queue;
  const last=JSON.parse(f.requests.at(-1).body);assert.equal(last.live,false);assert.equal(last.totals.reduce((n,t)=>n+t.seconds,0),2);assert.equal(last.totals.reduce((n,t)=>n+t.listenerSeconds,0),6);
 });
+
+
+test('an active session conflict clears without another browser sign-in',async()=>{
+ const {client}=fixture();
+ const send=client.fetch;let otherSession=true;
+ client.fetch=(url,options)=>otherSession&&JSON.parse(options.body).live
+  ?Promise.resolve(Response.json({error:'Your account is already streaming in another session.'},{status:409}))
+  :send(url,options);
+ try{
+  assert.equal((await client.authorizeStart()).status,409);
+  assert.equal(client.status().reconnectRequired,false);
+  otherSession=false;
+  assert.equal((await client.authorizeStart()).ok,true);
+ }finally{await client.close();}
+});

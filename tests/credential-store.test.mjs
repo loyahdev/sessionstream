@@ -23,18 +23,18 @@ const [action,key,mode]=process.argv.slice(2);if(key.length!==64)process.exit(2)
  }finally{await rm(directory,{recursive:true,force:true});}
 });
 
-test('blocked background enrollment stops retrying and explicit reconnect preserves the existing device',async()=>{
+test('blocked background enrollment stops retrying and explicit approval preserves the existing device',async()=>{
  const {DashboardClient}=await import('../server/dashboard-client.mjs');
  const record={device:'12345678-1234-1234-1234-123456789abc',deviceCredential:'a'.repeat(64)};
  const reads=[],requests=[];let clears=0;
  const account={identity:{sub:'test'},status:()=>({phase:'signed-in'}),accessCredential:()=> 'test-only'};
  const client=new DashboardClient({account,autoTimer:false,storeFactory:()=>({read:async options=>{reads.push(options.interactive);if(!options.interactive)throw Object.assign(Error('approval'),{code:'SECURE_STORAGE_AUTH_REQUIRED'});return JSON.stringify(record);},clear:async()=>{clears++;}}),fetchImpl:async(url,options)=>{requests.push({url,body:JSON.parse(options.body)});return Response.json({plan:'pro',listeners:8});}});
  try{
-  await client.tick();assert.equal(client.status().reconnectRequired,true);
+  await client.tick();assert.equal(client.status().reconnectRequired,false);assert.equal(client.status().deviceAccessRequired,true);
   assert.equal(client.blockedStatus,423);assert.deepEqual(reads,[false]);
   await client.tick();assert.deepEqual(reads,[false]);
-  assert.equal((await client.reconnectAfterSignIn()).ok,true);
-  assert.deepEqual(reads,[false,true]);assert.equal(clears,0);
+  await client.retryDeviceConnection();assert.equal(client.status().planKnown,true);assert.equal(client.status().deviceRemembered,false);
+  assert.deepEqual(reads,[false,false,true,false]);assert.equal(clears,0);
   assert.equal(requests.length,1);assert.match(requests[0].url,/\/report$/);
   assert.equal(requests[0].body.device,record.device);
   assert.equal(client.authorizingCredentials,false);

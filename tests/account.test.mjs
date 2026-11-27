@@ -56,10 +56,14 @@ test('account controls and callback remain local, authenticated, and independent
  try {
   const local=`http://127.0.0.1:${app.studioPort}`,pub=`http://127.0.0.1:${app.publicPort}`;
   const before=await (await fetch(`${local}/api/studio`)).json();
-  const post=(base,authorization=before.token,origin=local)=>fetch(`${base}/api/account`,{method:'POST',headers:{Origin:origin,Authorization:`Bearer ${authorization}`,'Content-Type':'application/json'},body:JSON.stringify({action:'sign-in'})});
+  const post=(base,authorization=before.token,origin=local,action='sign-in')=>fetch(`${base}/api/account`,{method:'POST',headers:{Origin:origin,Authorization:`Bearer ${authorization}`,'Content-Type':'application/json'},body:JSON.stringify({action})});
   assert.equal((await post(local,'wrong')).status,403);
   assert.equal((await post(local,before.token,'https://evil.example')).status,403);
   assert.equal((await post(pub)).status,403);
+  const initial=await (await post(local)).json();
+  assert.equal((await (await post(local,before.token,local,'open-sign-in')).json()).url,initial.url);
+  assert.equal((await (await post(local,before.token,local,'cancel-sign-in')).json()).ok,true);
+  assert.equal((await fetch(`${local}/auth/callback?${callback(new URL(initial.url))}`)).status,400);
   const {url}=await (await post(local)).json();const auth=new URL(url);
   assert.equal(auth.searchParams.get('redirect_uri'),`${local}/auth/callback`);
   assert.equal((await fetch(`${pub}/auth/callback?${callback(auth)}`)).status,404);
@@ -130,8 +134,8 @@ test('background restore and refresh stay silent; only browser sign-in and sign-
   await account.ready;
   assert.equal(reads[0],undefined);
   assert.equal(writes[0].interactive,false);
-  await account.renew();assert.equal(writes.at(-1).interactive,false);
-  const url=begin(account);assert.equal(await account.callback(callback(url)),true);
+  await account.renew();assert.equal(writes.length,1);
+  const url=new URL(account.begin('http://127.0.0.1:8788/auth/callback',{reconnect:true}).url);assert.equal(await account.callback(callback(url)),true);
   assert.equal(writes.at(-1).interactive,true);
   await account.signOut();assert.equal(clears.at(-1).interactive,true);
  }finally{account.close();}

@@ -19,6 +19,11 @@ The plugin's header Sign in control opens the browser. A successful callback dis
 
 Refresh tokens are saved in macOS Keychain or Windows Credential Manager through the bundled native `account-credentials` helper. They never enter plugin project state, cache files, command arguments, logs, or diagnostics. The helper restores the account from Clerk on startup and renews access automatically. Token rotation is saved before fetching the user profile, so a temporary profile outage cannot strand an obsolete refresh token. Temporary network failures retain saved login and retry; revoked grants require sign-in again. Sign-out clears saved credentials. No paid features or reserved links are enabled.
 
+On macOS, setup installs the AU and VST3. Open the plugin inside your DAW and choose **Sign in**. The browser confirms readiness after the computer is registered and the account plan is loaded. If the login cannot be saved, the browser and plugin identify the session as temporary.
+
+For a distribution build, set `SESSIONSTREAM_MAC_SIGNING_IDENTITY` to the full name of a Developer ID Application certificate before running `npm run build:plugin`. Use the same Apple team for subsequent releases. Both plugin formats ship an updated helper with the same signing identifier. Local ad-hoc builds share a private helper so switching plugin formats does not require another helper identity. Credentials saved by an earlier signing identity can require one-time macOS approval during explicit sign-in.
+
+
 The callback is accepted only on the local studio listener, uses an expiring random state, and consumes each transaction once. Tokens are exchanged by the helper, never returned to the browser or plugin UI. Identity comes from Clerk's HTTPS user-info endpoint, not an unverified JWT. Sign-out invalidates in-flight callbacks and clears local identity and secure storage; it does not sign the browser out of Clerk. OAuth errors and credentials are not logged.
 
 ## Validation

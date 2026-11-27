@@ -21,7 +21,7 @@ private final class SetupWindow: NSWindow {
 @MainActor
 final class SetupModel: NSObject, NSApplicationDelegate, ObservableObject {
     enum Phase {
-        case ready, working, account, complete, failed
+        case ready, working, complete, failed
     }
 
     static let windowSize = NSSize(width: 620, height: 321)
@@ -30,9 +30,6 @@ final class SetupModel: NSObject, NSApplicationDelegate, ObservableObject {
     @Published private(set) var phase = Phase.ready
     @Published private(set) var progress: Double?
     @Published private(set) var log = ""
-    @Published private(set) var keychainMessage = ""
-    @Published private(set) var signingIn = false
-    private var signInProcess: Process?
 
     let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
     let isUninstaller = Bundle.main.bundleIdentifier == "dev.loyah.sessionstream.uninstall"
@@ -80,37 +77,17 @@ final class SetupModel: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     @objc func closeSetup(_ sender: Any?) {
-        guard phase != .working else { return }; signInProcess?.terminate()
+        guard phase != .working else { return }
         window?.close()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         if phase == .working { return .terminateCancel }
-        signInProcess?.terminate()
         return .terminateNow
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
-    }
-
-    func signIn() {
-        guard phase == .account, !signingIn else { return }
-        let runtime = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Audio/Plug-Ins/VST3/SessionStream.vst3/Contents/Resources/runtime")
-        let task = Process()
-        task.executableURL = runtime.appendingPathComponent("bin/node")
-        task.arguments = [runtime.appendingPathComponent("server/setup-sign-in.mjs").path]
-        task.standardOutput = FileHandle.nullDevice; task.standardError = FileHandle.nullDevice
-        signingIn = true; keychainMessage = "Finish signing in in your browser."
-        task.terminationHandler = { process in
-            Task { @MainActor in
-                self.signingIn = false; self.signInProcess = nil
-                if process.terminationStatus == 0 { self.phase = .complete; self.keychainMessage = "" }
-                else { self.keychainMessage = "Sign-in was not completed. Try again." }
-            }
-        }
-        do { try task.run(); signInProcess = task }
-        catch { signingIn = false; keychainMessage = "Could not open sign-in. Try again." }
     }
 
     func start() {
@@ -145,12 +122,7 @@ final class SetupModel: NSObject, NSApplicationDelegate, ObservableObject {
                 }
             }.value
             log = result.log
-            if result.succeeded {
-                // Installation must not open every saved account item. Only the
-                // plugin's explicit sign-in flow may request credential access.
-                keychainMessage = "If macOS asks for saved sign-in access in the plug-in, choose Always Allow to remember it."
-            }
-            phase = result.succeeded ? .account : .failed
+            phase = result.succeeded ? .complete : .failed
         }
     }
 }

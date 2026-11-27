@@ -16,12 +16,14 @@ export DEVELOPER_DIR="${DEVELOPER_DIR:-$(xcode-select -p)}"
 "$cmake_command" --build build --config Release -j 4
 zsh scripts/bundle-runtime.sh
 plugin='build/SessionStream_artefacts/Release/VST3/SessionStream.vst3'
-codesign --force --deep --sign - "$plugin"
-codesign --verify --deep --strict "$plugin"
-codesign --force --deep --sign - build/SessionStream_artefacts/Release/AU/SessionStream.component
-codesign --verify --deep --strict build/SessionStream_artefacts/Release/AU/SessionStream.component
-codesign --force --deep --sign - build/SessionStream_artefacts/Release/Standalone/SessionStream.app
-codesign --verify --deep --strict build/SessionStream_artefacts/Release/Standalone/SessionStream.app
+signing=(--force --sign "${SESSIONSTREAM_MAC_SIGNING_IDENTITY:--}")
+if [[ "${SESSIONSTREAM_MAC_SIGNING_IDENTITY:--}" != - ]]; then
+  signing+=(--timestamp)
+fi
+for bundle in "$plugin" build/SessionStream_artefacts/Release/AU/SessionStream.component build/SessionStream_artefacts/Release/Standalone/SessionStream.app; do
+  codesign "${signing[@]}" "$bundle"
+  codesign --verify --deep --strict "$bundle"
+done
 mkdir -p artifacts
 /usr/bin/ditto -c -k --keepParent "$plugin" artifacts/SessionStream-mac-arm64.vst3.zip
 shasum -a 256 artifacts/SessionStream-mac-arm64.vst3.zip > artifacts/SHA256SUMS.txt

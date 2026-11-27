@@ -23,23 +23,34 @@ export class Account {
     if(this.pending && this.pending.expires<=this.now()){this.pending=null;this.message='Sign-in expired. Try again.';}
     if(this.identity && this.identity.expires<=this.now())this.identity=null;
     return {configured:!!this.issuer,phase:this.identity?'signed-in':this.restoring?'restoring':(this.pending||this.exchanging)?'signing-in':'signed-out',
+      remembered: !!this.identity && this.remembered === true,
       name:this.identity?.name||'',imageUrl:this.identity?.imageUrl||null,message:this.message||''};
   }
   // Memory-only access grant; never serialize this into studio status or logs.
   accessCredential(){return this.status().phase==='signed-in'?this.accessToken:null;}
-  begin(redirectUri) {
+  begin(redirectUri,{reconnect=false}={}) {
     if(!this.issuer)return {error:'Sign-in is not configured yet.'};
     clearTimeout(this.refreshTimer);this.restoring=false;this.exchanging=false;
+    if(reconnect){this.identity=null;this.accessToken=null;this.refreshToken=null;this.remembered=false;}
     const state=randomBytes(32).toString('base64url'),verifier=randomBytes(32).toString('base64url');
     this.pending={state,verifier,redirectUri,expires:this.now()+300000,generation:++this.generation};this.message='';
     const url=new URL('/oauth/authorize',this.issuer);
     url.search=new URLSearchParams({client_id:this.clientId,response_type:'code',redirect_uri:redirectUri,
       scope:'profile offline_access',state,code_challenge:createHash('sha256').update(verifier).digest('base64url'),code_challenge_method:'S256'});
+    this.pending.url=url.href;
     return {url:url.href};
+  }
+  signInURL() {
+    return this.status().phase==='signing-in'?this.pending?.url:null;
+  }
+  cancelSignIn() {
+    if(!this.pending)return false;
+    ++this.generation;this.pending=null;this.message='Sign-in cancelled.';
+    return true;
   }
   async signOut() {
     ++this.generation;clearTimeout(this.refreshTimer);this.pending=null;this.exchanging=false;this.restoring=false;
-    this.identity=null;this.accessToken=null;this.refreshToken=null;this.message='';
+    this.identity=null;this.accessToken=null;this.refreshToken=null;this.remembered=false;this.message='';
     try{await this.store?.clear({interactive:true});return {ok:true};}
     catch{this.message='Could not remove saved sign-in. Try signing out again.';return {ok:false};}
   }
@@ -51,7 +62,7 @@ export class Account {
       const refreshToken=await this.store.read();
       if(generation!==this.generation)return;
       if(!refreshToken)return;
-      this.refreshToken=refreshToken;await this.renew(generation);
+      this.refreshToken=refreshToken;this.remembered=true;await this.renew(generation);
     }catch(error){if(generation===this.generation)this.message=error.code==='SECURE_STORAGE_AUTH_REQUIRED'?'Saved sign-in needs Keychain approval. Use Sign in to reconnect.':'Saved sign-in is unavailable. You can sign in again.';}
     finally{if(generation===this.generation)this.restoring=false;}
   }
@@ -82,9 +93,16 @@ export class Account {
     if(generation!==this.generation)return false;
     // Persist rotated refresh tokens before user-info: a temporary profile
     // outage must not leave the old, already consumed token on this device.
-    let saveFailed=false;
-    if(typeof token.refresh_token==='string'&&token.refresh_token.length>0)this.refreshToken=token.refresh_token;
-    if(this.refreshToken){try{await this.store?.write(this.refreshToken,{interactive});if(interactive&&this.store&&(await this.store.read())!==this.refreshToken)throw Error('Saved login could not be restored silently');}catch{saveFailed=true;}}
+    if(typeof token.refresh_token==='string'&&token.refresh_token.length>0&&token.refresh_token!==this.refreshToken){
+      this.refreshToken=token.refresh_token;this.remembered=false;
+    }
+    if(this.refreshToken&&this.store&&!this.remembered){
+      try{
+        await this.store.write(this.refreshToken,{interactive});
+        if(interactive&&(await this.store.read())!==this.refreshToken)throw Error('Saved login could not be restored silently');
+        if(generation===this.generation)this.remembered=true;
+      }catch{}
+    }
     if(generation!==this.generation)return false;
     const user=await this.json('/oauth/userinfo',{headers:{Authorization:`Bearer ${token.access_token}`}});
     if(typeof user.sub!=='string'||!user.sub)throw Error();
@@ -95,9 +113,9 @@ export class Account {
     let imageUrl=null;for(const value of [user.picture,user.image_url,user.profile_image_url]){try{const u=new URL(value);if(u.protocol==='https:'&&!u.username&&!u.password&&!u.port&&['img.clerk.com','images.clerk.com','images.clerk.dev','clerk.sessionstream.app','avatars.githubusercontent.com','lh3.googleusercontent.com','lh4.googleusercontent.com','lh5.googleusercontent.com','lh6.googleusercontent.com'].includes(u.hostname)){imageUrl=u.href;break}}catch{}}
     this.identity={sub:user.sub,imageUrl,name:name.replace(/[\x00-\x1f\x7f]/g,'').trim().slice(0,64),expires:this.now()+seconds*1000};this.message='';
     if(this.refreshToken){
-      if(saveFailed)this.message='Signed in for this session. Keychain approval is needed to remember this device.';
+      if(!this.remembered)this.message='Signed in for this session. This device could not save your sign-in.';
       this.schedule(generation,Math.max(1000,seconds*1000-60000));
-    }else this.message='Signed in for this session. Enable offline_access in Clerk to remember this device.';
+    }else this.message='Signed in for this session. Your account did not return a saved sign-in.';
     return true;
   }
   async callback(params) {
@@ -105,7 +123,7 @@ export class Account {
     if(!pending||pending.expires<=this.now()||!state||Buffer.byteLength(state)!==Buffer.byteLength(pending.state)||
       !timingSafeEqual(Buffer.from(state),Buffer.from(pending.state)))return false;
     this.pending=null;
-    if(params.has('error')){this.message='Sign-in was cancelled.';return false;}
+    if(params.has('error')){this.message=params.get('error')==='access_denied'?'Sign-in was cancelled.':'The sign-in provider could not finish. Try again.';return false;}
     const code=params.get('code');if(!code||code.length>4096){this.message='Sign-in failed. Try again.';return false;}
     if(params.has('iss')&&params.get('iss')!==this.issuer){this.message='Sign-in failed. Try again.';return false;}
     this.exchanging=true;

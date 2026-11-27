@@ -4,7 +4,7 @@ Effective November 4, 2026.
 
 ## Who is responsible
 
-Jaxon Hensch operates SessionStream from Alberta, Canada and is the contact responsible for its handling of personal information. For privacy questions, access or correction requests, or account and data deletion, email support@sessionstream.app.
+SessionStream operates from Canada and is responsible for handling personal information as described in this policy. For privacy questions, access or correction requests, or account and data deletion, email support@sessionstream.app.
 
 ## Information we handle
 
@@ -26,7 +26,7 @@ We use information to authenticate accounts; connect devices and enforce plan/se
 
 ## Providers and processing outside Canada
 
-We use Clerk for authentication, profile and subscription management, Cloudflare for hosting, account storage, network routing and security, and Stripe for payment processing. The website loads fonts through Google Fonts, and profile photos may load from Clerk or a connected-account image provider. Those requests disclose the technical information needed to serve them, such as your IP address and browser headers. Providers may process information outside Alberta and Canada, including in the United States, where it may be subject to the laws and lawful access requirements of those places. Providers also handle some information under their own policies. We may disclose information when legally required or reasonably needed to protect users and the service; access is otherwise limited to service delivery and the purposes described here.
+We use Clerk for authentication, profile and subscription management, Cloudflare for hosting, account storage, network routing and security, and Stripe for payment processing. The website loads fonts through Google Fonts, and profile photos may load from Clerk or a connected-account image provider. Those requests disclose the technical information needed to serve them, such as your IP address and browser headers. Providers may process information outside Canada, including in the United States, where it may be subject to the laws and lawful access requirements of those places. Providers also handle some information under their own policies. We may disclose information when legally required or reasonably needed to protect users and the service; access is otherwise limited to service delivery and the purposes described here.
 
 ## Cookies and local storage
 
@@ -38,7 +38,7 @@ Account and device records are kept while needed to provide your account and man
 
 ## Your choices and requests
 
-You can edit profile information through account settings, disconnect computers in the dashboard, cancel subscription renewal through Billing, sign out, or use account-free features where available. You may request access to or correction of your personal information, ask about our practices and service providers, withdraw consent where applicable, or request deletion by emailing support. Requests are handled manually. We may need to verify your identity and explain any records we must retain or services we can no longer provide after a request. For deletion, we also confirm how your active subscription will be closed so future renewals stop. You may ask Jaxon Hensch at the support email above about our service-provider practices, including processing outside Canada. We will respond in accordance with applicable law. You may also raise a privacy concern with the Office of the Information and Privacy Commissioner of Alberta or another privacy authority with jurisdiction.
+You can edit profile information through account settings, disconnect computers in the dashboard, cancel subscription renewal through Billing, sign out, or use account-free features where available. You may request access to or correction of your personal information, ask about our practices and service providers, withdraw consent where applicable, or request deletion by emailing support. Requests are handled manually. We may need to verify your identity and explain any records we must retain or services we can no longer provide after a request. For deletion, we also confirm how your active subscription will be closed so future renewals stop. You may contact SessionStream at the support email above about our service-provider practices, including processing outside Canada. We will respond in accordance with applicable law. You may also raise a privacy concern with the privacy authority with jurisdiction.
 
 ## Age requirements and updates
 

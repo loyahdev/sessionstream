@@ -2,18 +2,21 @@ import {randomBytes, randomUUID} from 'node:crypto';
 import os from 'node:os';
 import {CredentialStore} from './credential-store.mjs';
 
+const deviceLimit='Three computers are already connected. Remove one in your account.';
+const activeSessionConflict='Your account is already streaming in another session.';
+
 // One client per shared companion, never per processor. Secrets stay in private
 // OS-store pipes and HTTPS requests; status is an explicit public allowlist.
 export class DashboardClient {
-  constructor({account, storeFactory, onDenied=()=>{}, onLimits=()=>{}, fetchImpl=fetch, now=Date.now, origin='https://sessionstream.app', version='1.0.4', enabled=true, autoTimer=true}) {
+  constructor({account, storeFactory, onDenied=()=>{}, onLimits=()=>{}, fetchImpl=fetch, now=Date.now, origin='https://sessionstream.app', version='1.0.5', enabled=true, autoTimer=true}) {
     this.enabled=enabled;this.account=account; this.storeFactory=storeFactory || (sub=>new CredentialStore(account.issuer,`${account.clientId}|installation-v1|${sub}`));
     this.onDenied=onDenied; this.onLimits=onLimits; this.fetch=fetchImpl; this.now=now; this.origin=origin; this.version=version;
     this.plan='free'; this.listenerLimit=3; this.live=false; this.queue=Promise.resolve(); this.reset();
     this.timer=autoTimer&&enabled?setInterval(()=>void this.tick(),1000):null; this.timer?.unref();
     if(autoTimer&&enabled)Promise.resolve(account?.ready).then(()=>{if(!this.closed)void this.tick();}).catch(()=>{});
   }
-  reset() {this.run=randomBytes(16).toString('hex');this.sequence=0;this.totals=new Map();this.pending=null;this.next=0;this.backoff=1000;this.lastAck=0;this.planKnown=false;this.cloudAccess=null;this.broadcast=null;this.broadcastAck=0;this.blocked=false;this.blockedStatus=0;this.message='';this.record=null;this.enrollingId=null;this.unsaved=null;}
-  status(){const cloudValid=!this.blocked&&this.sub===this.account.identity?.sub&&this.account.status().phase==='signed-in';return {broadcast:cloudValid?this.broadcast:null,cloud:cloudValid?this.cloudAccess:null,plan:this.plan,planKnown:this.planKnown&&!this.blocked&&this.sub===this.account.identity?.sub,listeners:this.listenerLimit,connected:!!this.record&&!this.blocked,message:this.message,reconnectRequired:!this.connectingAfterSignIn&&this.blocked&&this.sub===this.account.identity?.sub};}
+  reset() {this.run=randomBytes(16).toString('hex');this.sequence=0;this.totals=new Map();this.pending=null;this.next=0;this.backoff=1000;this.lastAck=0;this.planKnown=false;this.cloudAccess=null;this.broadcast=null;this.broadcastAck=0;this.blocked=false;this.blockedStatus=0;this.deviceLimitReached=false;this.message='';this.record=null;this.deviceRemembered=false;this.enrollingId=null;this.unsaved=null;}
+  status(){const cloudValid=!this.blocked&&this.sub===this.account.identity?.sub&&this.account.status().phase==='signed-in';return {broadcast:cloudValid?this.broadcast:null,cloud:cloudValid?this.cloudAccess:null,plan:this.plan,planKnown:this.planKnown&&!this.blocked&&this.sub===this.account.identity?.sub,listeners:this.listenerLimit,connected:!!this.record&&!this.blocked,message:this.message,deviceRemembered:cloudValid&&this.deviceRemembered,deviceAccessRequired:!this.connectingAfterSignIn&&this.blockedStatus===423&&this.sub===this.account.identity?.sub,deviceLimitReached:cloudValid&&this.deviceLimitReached,reconnectRequired:!this.connectingAfterSignIn&&this.blocked&&this.blockedStatus!==423&&this.sub===this.account.identity?.sub};}
   serial(fn){const task=this.queue.then(fn);this.queue=task.catch(()=>{});return task;}
   async syncAccount(){
     if(!this.enabled)return false;
@@ -37,19 +40,36 @@ export class DashboardClient {
     if(this.record)return {ok:true};
     this.store=this.storeFactory(this.sub);
     const interaction={interactive:this.authorizingCredentials===true};
-    const saved=await this.store.read(interaction);
-    let stored=saved?JSON.parse(saved):null;
-    if(stored?.deviceCredential){if(!/^[a-f0-9-]{36}$/.test(stored.device)||!/^[a-f0-9]{64}$/.test(stored.deviceCredential))throw Error('Invalid saved installation');this.record=stored;return {ok:true};}
+    let saved;
+    try{saved=await this.store.read({interactive:false});}
+    catch(error){
+      if(!interaction.interactive||error.code!=='SECURE_STORAGE_AUTH_REQUIRED')throw error;
+      saved=await this.store.read(interaction);
+    }
+    const stored=saved?JSON.parse(saved):null;
+    if(stored?.deviceCredential){
+      if(!/^[a-f0-9-]{36}$/.test(stored.device)||!/^[a-f0-9]{64}$/.test(stored.deviceCredential))throw Error('Invalid saved installation');
+      if(interaction.interactive)await this.acceptInstallation(stored);
+      else {this.record=stored;this.deviceRemembered=true;}
+      return {ok:true};
+    }
     // Persist an enrollment intent before the request. If its response is lost,
     // retry the same ID; 409 then requires an explicit dashboard cleanup.
     const id=stored?.device || (this.enrollingId ||= randomUUID());
     if(!stored)await this.store.write(JSON.stringify({device:id}),interaction);
-    if(this.unsaved){await this.store.write(JSON.stringify(this.unsaved),interaction);this.record=this.unsaved;this.unsaved=null;return {ok:true};}
+    if(this.unsaved){await this.store.write(JSON.stringify(this.unsaved),interaction);await this.acceptInstallation(this.unsaved);this.unsaved=null;return {ok:true};}
     const result=await this.request('enroll',JSON.stringify({device:id,name:os.hostname().slice(0,80),platform:process.platform==='darwin'?'macOS':process.platform==='win32'?'Windows':process.platform,version:this.version}));
     if(!result.ok)return result;
     if(!/^[a-f0-9]{64}$/.test(result.deviceCredential))throw Error('Invalid enrollment response');
     const record={device:id,deviceCredential:result.deviceCredential};
-    this.unsaved=record;await this.store.write(JSON.stringify(record),interaction);this.unsaved=null;this.record=record;this.enrollingId=null;return {ok:true};
+    this.unsaved=record;await this.store.write(JSON.stringify(record),interaction);this.unsaved=null;await this.acceptInstallation(record);this.enrollingId=null;return {ok:true};
+  }
+  async acceptInstallation(record){
+    this.record=record;
+    try{
+      const saved=JSON.parse(await this.store.read({interactive:false}));
+      this.deviceRemembered=saved?.device===record.device&&saved?.deviceCredential===record.deviceCredential;
+    }catch{this.deviceRemembered=false;}
   }
   totalsForReport(){const date=new Date(this.now()).toISOString().slice(0,10),yesterday=new Date(this.now()-86400000).toISOString().slice(0,10);for(const key of this.totals.keys())if(key!==date&&key!==yesterday)this.totals.delete(key);if(!this.totals.has(date))this.totals.set(date,{date,seconds:0,listenerSeconds:0,bytes:0});return [...this.totals.values()].sort((a,b)=>a.date.localeCompare(b.date)).map(t=>({...t}));}
   // Called from the UDP handler with packet duration, never from the audio
@@ -66,10 +86,25 @@ export class DashboardClient {
     if(!await this.syncAccount())return {ok:true};
     if(this.blocked)return {ok:false,status:403,error:this.message};
     try{
-      const enrollment=await this.enroll();if(!enrollment.ok)return this.failure(enrollment);
+      const enrollment=await this.enroll();
+      if(!enrollment.ok){
+        if(enrollment.status===409&&enrollment.error===deviceLimit){
+          this.deviceLimitReached=true;this.message=deviceLimit;this.next=this.now()+15000;
+          return enrollment;
+        }
+        return this.failure(enrollment);
+      }
+      this.deviceLimitReached=false;
       if(!this.pending)this.pending=JSON.stringify({...this.record,run:this.run,sequence:++this.sequence,live,...(this.mode==='cloud'?{mode:'cloud'}:{}),version:this.version,totals:this.totalsForReport()});
       const sent=JSON.parse(this.pending),result=await this.request('report',this.pending);
-      if(!result.ok)return this.failure(result);
+      if(!result.ok){
+        if(sent.live&&result.status===409&&result.error===activeSessionConflict){
+          this.pending=null;
+          if(this.live){this.live=false;this.onDenied(result.error);}
+          return result;
+        }
+        return this.failure(result);
+      }
       if(result.broadcast){this.broadcast=result.broadcast;this.broadcastAck=sent.totals.reduce((sum,t)=>sum+t.seconds,0);}
       if(result.cloud&&typeof result.cloud.canCloud==='boolean')this.cloudAccess=result.cloud;
       this.pending=null;this.backoff=1000;this.next=this.now()+15000;this.message='';
@@ -80,7 +115,7 @@ export class DashboardClient {
       // (also renew on duplicate: replay does not renew the server lease).
       if(result.duplicate||sent.live!==live)return this.flush(live);
       return {ok:true};
-    }catch(error){if(error.code==='SECURE_STORAGE_AUTH_REQUIRED'){const result={ok:false,status:423,error:'Saved installation needs Keychain approval. Use Sign in to reconnect.'};this.deny(result.error,result.status);return result;}return this.failure({ok:false,status:503,error:'Account connection unavailable. Retrying automatically.'});}
+    }catch(error){if(error.code==='SECURE_STORAGE_AUTH_REQUIRED'){const result={ok:false,status:423,error:'macOS needs approval to read or save this computer’s registration.'};this.deny(result.error,result.status);return result;}return this.failure({ok:false,status:503,error:'Account connection unavailable. Retrying automatically.'});}
   }
   failure(result){if(result.broadcast?.remainingSeconds===0){this.broadcast=result.broadcast;this.live=false;this.pending=null;this.message=result.error;this.next=this.now()+15000;this.onDenied(result.error);return result;}if(this.mode==='cloud'&&result.status===403&&result.error==='Cloud listener-hours are required.'){this.live=false;this.mode='direct';this.pending=null;this.onDenied(result.error);this.next=this.now()+1000;return result;}this.message=result.error||'Account reporting failed.';
     if([400,403,409,426].includes(result.status))this.deny(this.message,result.status);
@@ -111,6 +146,22 @@ export class DashboardClient {
     if(this.live&&this.sub&&this.now()-this.lastAck>=30000){this.live=false;this.onDenied('Account connection lost. Start again when connected.');}
     this.ticking=true;return this.serial(async()=>{await this.syncAccount();if(this.sub&&!this.blocked&&this.now()>=this.next)await this.flush();}).finally(()=>{this.ticking=false;});
   }
+  retryDeviceConnection(){
+    if(this.connectingAfterSignIn)return;
+    if(this.deviceLimitReached)return this.serial(()=>this.flush(false));
+    if(this.blockedStatus!==423)return;
+    this.connectingAfterSignIn=true;
+    return this.serial(async()=>{
+      if(!await this.syncAccount()||this.blockedStatus!==423)return;
+      this.authorizingCredentials=true;
+      this.blocked=false;
+      this.blockedStatus=0;
+      await this.flush(false);
+    }).finally(()=>{
+      this.authorizingCredentials=false;
+      this.connectingAfterSignIn=false;
+    });
+  }
   reconnectAfterSignIn(previous={}){
     this.connectingAfterSignIn=true;
     return this.serial(async()=>{
@@ -128,9 +179,12 @@ export class DashboardClient {
       // Only a fresh browser callback can replace a denied installation.
       await this.storeFactory(this.sub).clear({interactive:true});
       this.reset();
-      return this.flush(false);
+      return await this.flush(false);
       }finally{this.authorizingCredentials=false;}
-    }).catch(()=>({ok:false,error:'Could not update the saved installation. Try reconnecting again.'}))
+    }).catch(()=>{
+      this.message='Could not update the saved installation. Try reconnecting again.';
+      return {ok:false,error:this.message};
+    })
       .finally(()=>{this.connectingAfterSignIn=false;});
   }
   async close(){this.closed=true;clearInterval(this.timer);await this.stopped();}

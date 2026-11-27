@@ -20,7 +20,8 @@ export async function applyPackage(file,job){
   const base=process.env.CommonProgramW6432||process.env.CommonProgramFiles;if(!base)throw Error('The installed version could not be confirmed.');const version=await readFile(path.join(base,'VST3/SessionStream.vst3/Contents/Resources/sessionstream-version.txt'),'utf8');if(version.trim()!==job.asset.version)throw Error('The installed version could not be confirmed.');
  }
 }
-export async function runUpdateJob(file,{alive=processAlive,apply=applyPackage,sleep=delay,now=Date.now,platform=process.platform}={}){
+const reopenApplication=app=>exec('/usr/bin/open',['-a',app],{timeout:15000,maxBuffer:8192});
+export async function runUpdateJob(file,{alive=processAlive,apply=applyPackage,reopen=reopenApplication,sleep=delay,now=Date.now,platform=process.platform}={}){
  const folder=path.dirname(file),status=async state=>{const target=path.join(folder,'status.json');await writeFile(target+'.worker',JSON.stringify(state),{mode:0o600});await rename(target+'.worker',target);};let job,lock;
  try{
   job=JSON.parse(await readFile(file,'utf8'));const expected=platform==='darwin'?'SessionStream-mac-arm64.pkg':platform==='win32'?'SessionStream-windows-x64-arm64.exe':null;
@@ -31,7 +32,11 @@ export async function runUpdateJob(file,{alive=processAlive,apply=applyPackage,s
   for(let attempt=0;!lock;attempt++){try{lock=await open(path.join(folder,'control.lock'),'wx',0o600);}catch(error){if(error.code!=='EEXIST'||attempt>=10)throw Error('The updater is busy. Try again.');await sleep(100);}}
   if(await cancelled()){await status({phase:'cancelled',message:'Update cancelled.'});return;}
   const packageFile=path.join(folder,expected),info=await stat(packageFile);if(info.size!==job.asset.size)throw Error('Update verification failed. Nothing was installed.');const hash=createHash('sha256');for await(const chunk of createReadStream(packageFile))hash.update(chunk);if(hash.digest('hex')!==job.asset.sha256)throw Error('Update verification failed. Nothing was installed.');
-  await status({phase:'applying',version:job.asset.version,message:'Installing SessionStream…'});try{await apply(packageFile,job);}catch{throw Error('The update could not be installed. Reopen your DAW and try again.');}await status({phase:'complete',version:job.asset.version,message:`Updated to ${job.asset.version}. Reopen your DAW.`});
+  await status({phase:'applying',version:job.asset.version,message:'Installing SessionStream…'});try{await apply(packageFile,job);}catch{throw Error('The update could not be installed. Reopen your DAW and try again.');}
+  await status({phase:'complete',version:job.asset.version,message:`Updated to ${job.asset.version}. You can reopen your DAW.`});
+  if(platform==='darwin'&&typeof job.reopenApp==='string'&&/^\/.+\.app$/.test(job.reopenApp)){
+    await reopen(job.reopenApp).catch(()=>{});
+  }
  }catch(error){await status({phase:'error',version:job?.asset?.version,message:error.code==='ERR_CHILD_PROCESS_STDIO_MAXBUFFER'?'Update installation failed. Try again.':String(error.message).slice(0,250)});}finally{if(lock){await lock.close();await rm(path.join(folder,'control.lock'),{force:true});}}
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))await runUpdateJob(path.resolve(process.argv[2]||''));

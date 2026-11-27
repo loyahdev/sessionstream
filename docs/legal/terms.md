@@ -4,7 +4,7 @@ Effective November 4, 2026.
 
 ## Who operates SessionStream
 
-SessionStream is operated by Jaxon Hensch, an individual based in Alberta, Canada. These Terms cover the SessionStream website, accounts, subscriptions, and related online services. Read them before creating an account or purchasing Pro; by doing either after these Terms are presented to you, you agree to them. A separate software licence included with a download applies to that software. Questions: support@sessionstream.app.
+SessionStream provides its services from Canada. These Terms cover the SessionStream website, accounts, subscriptions, and related online services. Read them before creating an account or purchasing Pro; by doing either after these Terms are presented to you, you agree to them. A separate software licence included with a download applies to that software. Questions: support@sessionstream.app.
 
 ## Eligibility and accounts
 
@@ -24,7 +24,7 @@ Free and Pro features and limits are described on the pricing page. Pro is adver
 
 ## Refunds
 
-Refunds are possible and are reviewed case by case at Jaxon Hensch’s discretion. To request one, email support@sessionstream.app from your account email, with your purchase reference and a short explanation. Do not send full payment-card details. Review may take account of usage, billing errors, service issues, duplicate payments, and suspected abuse. There is no automatic refund window. This policy does not limit any refund, cancellation, or other consumer right required by applicable law. A cancellation request and a refund request are separate; we will confirm any approved refund and its effect on your subscription.
+SessionStream reviews refund requests case by case. To request one, email support@sessionstream.app from your account email, with your purchase reference and a short explanation. Do not send full payment-card details. Review may take account of usage, billing errors, service issues, duplicate payments, and suspected abuse. There is no automatic refund window. This policy does not limit any refund, cancellation, or other consumer right required by applicable law. A cancellation request and a refund request are separate; we will confirm any approved refund and its effect on your subscription.
 
 ## Availability and changes
 
@@ -36,5 +36,5 @@ To request account and data deletion, contact support@sessionstream.app. We hand
 
 ## Responsibility and applicable law
 
-Nothing in these Terms excludes non-waivable consumer protections or liability that cannot lawfully be limited. Subject to those protections, you are responsible for choosing suitable settings, obtaining recording permissions, and protecting your original projects. To the extent permitted by applicable law, we are not responsible for failures caused by your equipment, your connection, or other circumstances outside our reasonable control. This does not exclude responsibility for our own conduct where the law does not allow that exclusion. These Terms are governed by the laws of Alberta and the applicable federal laws of Canada, without taking away mandatory protections or dispute rights available where you live. If a provision is unenforceable, the remaining provisions continue to apply to the extent permitted by law.
+Nothing in these Terms excludes non-waivable consumer protections or liability that cannot lawfully be limited. Subject to those protections, you are responsible for choosing suitable settings, obtaining recording permissions, and protecting your original projects. To the extent permitted by applicable law, we are not responsible for failures caused by your equipment, your connection, or other circumstances outside our reasonable control. This does not exclude responsibility for our own conduct where the law does not allow that exclusion. These Terms are governed by applicable Canadian law, without taking away mandatory protections or dispute rights available where you live. If a provision is unenforceable, the remaining provisions continue to apply to the extent permitted by law.
 

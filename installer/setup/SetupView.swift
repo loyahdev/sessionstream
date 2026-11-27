@@ -18,8 +18,7 @@ struct SetupView: View {
         switch setup.phase {
         case .ready: setup.isUninstaller ? "Uninstall SessionStream?" : "Install plug-in"
         case .working: setup.isUninstaller ? "Uninstalling" : "Installing"
-        case .account: "Sign in"
-        case .complete: setup.isUninstaller ? "Uninstall complete" : "Ready to stream"
+        case .complete: setup.isUninstaller ? "Uninstall complete" : "Installation complete"
         case .failed: setup.isUninstaller ? "Uninstall interrupted" : "Installation interrupted"
         }
     }
@@ -88,6 +87,9 @@ struct SetupView: View {
 
     private var header: some View {
         HStack {
+            Text("Version \(setup.version)")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(muted)
             Spacer()
             Button {
                 setup.closeSetup(nil)
@@ -123,25 +125,12 @@ struct SetupView: View {
         case .working:
             Text("Audio Units + VST3")
                 .foregroundStyle(muted)
-        case .account:
-            Text("A free account includes 15 streaming hours each month. Your sign-in is saved for the plug-in.")
-                .foregroundStyle(muted)
-                .fixedSize(horizontal: false, vertical: true)
-            if !setup.keychainMessage.isEmpty {
-                Text(setup.keychainMessage).font(.system(size: 12)).foregroundStyle(muted)
-            }
         case .complete:
             Text(setup.isUninstaller
                  ? setup.log
-                 : "Reopen your DAW and add SessionStream to a track or your master bus. Start a stream to get your invite link.")
+                 : "Reopen your DAW, add SessionStream to a track or your master bus, and choose Sign in to start streaming.")
                 .foregroundStyle(muted)
                 .fixedSize(horizontal: false, vertical: true)
-            if !setup.isUninstaller && !setup.keychainMessage.isEmpty {
-                Text(setup.keychainMessage)
-                    .font(.system(size: 12))
-                    .foregroundStyle(muted)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
         case .failed:
             Text("Close your DAW and try again.")
                 .foregroundStyle(muted)
@@ -164,7 +153,7 @@ struct SetupView: View {
             installMeter
         } else {
             Button {
-                if setup.phase == .complete { NSApp.terminate(nil) } else if setup.phase == .account { setup.signIn() } else { setup.start() }
+                if setup.phase == .complete { NSApp.terminate(nil) } else { setup.start() }
             } label: {
                 HStack {
                     Text(actionTitle)
@@ -173,7 +162,6 @@ struct SetupView: View {
                         .accessibilityHidden(true)
                 }
             }
-            .disabled(setup.signingIn)
             .buttonStyle(InstallSwitchStyle(lime: lime, ink: ink))
             .keyboardShortcut(setup.isUninstaller && setup.phase != .complete ? nil : .defaultAction)
         }
@@ -181,7 +169,6 @@ struct SetupView: View {
 
     private var actionTitle: String {
         switch setup.phase {
-        case .account: setup.signingIn ? "Waiting for sign-in…" : "Sign in"
         case .complete: "Done"
         case .failed: "Try Again"
         default: setup.isUninstaller ? "Uninstall" : "Install"
